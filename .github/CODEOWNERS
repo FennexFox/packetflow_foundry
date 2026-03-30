@@ -1,0 +1,16 @@
+# Default owner
+* @FennexFox
+
+# Repository metadata and workflow docs
+/.github/ @FennexFox
+/AGENTS.md @FennexFox
+/CONTRIBUTING.md @FennexFox
+/README.md @FennexFox
+/docs/ @FennexFox
+
+# Foundry surfaces
+/agents/ @FennexFox
+/builders/ @FennexFox
+/core/ @FennexFox
+/profiles/ @FennexFox
+/skills/ @FennexFox

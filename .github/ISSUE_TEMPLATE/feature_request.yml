@@ -1,0 +1,50 @@
+name: Feature request
+description: Propose a new reusable capability or a meaningful improvement.
+title: "[Feature] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for intentional behavior changes or new reusable capabilities.
+        For confirmed breakage, use the Bug report form instead.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem or limitation
+      description: What consumer pain, maintenance issue, or workflow gap motivates this?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+      description: Describe the behavior you want, not just the implementation.
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Evidence or examples
+      description: Link issues, generated output, prior investigations, or consumer examples if available.
+  - type: textarea
+    id: constraints
+    attributes:
+      label: Constraints and non-goals
+      description: Note compatibility concerns, vendoring impact, or what the change should explicitly avoid.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - agents
+        - builders
+        - contracts
+        - defaults
+        - templates
+        - profiles
+        - skills
+        - docs
+        - vendoring
+    validations:
+      required: true

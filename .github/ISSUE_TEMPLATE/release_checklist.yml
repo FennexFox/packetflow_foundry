@@ -1,0 +1,58 @@
+name: Release checklist
+description: Prepare and verify a packetflow_foundry release.
+title: "[Release] "
+labels: ["release"]
+body:
+  - type: input
+    id: version
+    attributes:
+      label: Target version
+      placeholder: e.g. v0.2.0
+    validations:
+      required: true
+  - type: textarea
+    id: changes
+    attributes:
+      label: Included changes
+      description: Summarize the main reusable changes shipping in this release.
+    validations:
+      required: true
+  - type: textarea
+    id: compatibility
+    attributes:
+      label: Consumer impact / compatibility notes
+      description: Call out required consumer actions, regenerated output, or migration notes.
+      placeholder: |
+        - consumer action required: yes / no
+        - generated output or template refresh needed: ...
+        - vendoring or migration note: ...
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Validation evidence
+      description: List the tests, generation checks, and manual review evidence that gate this release.
+      placeholder: |
+        - builder tests:
+          - ...
+        - generated output or fixture validation:
+          - ...
+        - docs / template review:
+          - ...
+        - manual verification:
+          - ...
+    validations:
+      required: true
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checklist
+      options:
+        - label: README and CONTRIBUTING reviewed against shipped behavior
+        - label: .github instructions and templates reviewed against the current workflow
+        - label: Changes to core/contracts, core/templates, or core/defaults are paired with builder/test updates
+        - label: Consumer or vendoring impact documented
+        - label: Validation evidence captured
+        - label: Version and tag confirmed
+        - label: Release notes reviewed

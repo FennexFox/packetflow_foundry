@@ -1,0 +1,69 @@
+name: Bug report
+description: Report a reproducible bug or incorrect behavior in packetflow_foundry.
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this form for confirmed or at least reproducible problems.
+        For open-ended design ideas or capability proposals, use the Feature request form.
+  - type: input
+    id: foundry-version
+    attributes:
+      label: Foundry version or commit
+      placeholder: e.g. main@abc1234, vendored snapshot, or local branch
+    validations:
+      required: true
+  - type: input
+    id: consumer-context
+    attributes:
+      label: Consumer context
+      description: Where was this observed?
+      placeholder: e.g. .codex/vendor/packetflow_foundry in <repo>
+    validations:
+      required: true
+  - type: textarea
+    id: summary
+    attributes:
+      label: Summary
+      description: What is happening, and why is it wrong?
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Vendor or open packetflow_foundry
+        2. Run the relevant builder or workflow
+        3. Observe the incorrect output or behavior
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: Expected behavior
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: Logs / generated output / screenshots
+      description: Paste logs or attach artifacts if available.
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - agents
+        - builders
+        - contracts
+        - defaults
+        - templates
+        - profiles
+        - skills
+        - docs
+        - vendoring
+    validations:
+      required: true
