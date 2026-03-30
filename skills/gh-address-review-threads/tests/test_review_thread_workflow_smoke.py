@@ -14,12 +14,12 @@ for candidate in (str(TEST_DIR), str(SCRIPT_DIR)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-import apply_thread_action_plan as apply_plan  # noqa: E402
-import build_review_packets as build_packets  # noqa: E402
-import validate_thread_action_plan as validate_plan  # noqa: E402
-import write_evaluation_log as eval_log  # noqa: E402
+import apply_thread_action_plan as apply_plan  # type: ignore  # noqa: E402
+import build_review_packets as build_packets  # type: ignore  # noqa: E402
+import validate_thread_action_plan as validate_plan  # type: ignore  # noqa: E402
+import write_evaluation_log as eval_log  # type: ignore  # noqa: E402
 from review_thread_test_support import context_with_threads, review_thread, write_json  # noqa: E402
-from thread_action_contract import build_context_fingerprint  # noqa: E402
+from thread_action_contract import build_context_fingerprint  # type: ignore  # noqa: E402
 
 
 class ReviewThreadWorkflowSmokeTests(unittest.TestCase):

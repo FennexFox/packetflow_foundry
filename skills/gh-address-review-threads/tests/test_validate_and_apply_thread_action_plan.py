@@ -14,10 +14,10 @@ for candidate in (str(TEST_DIR), str(SCRIPT_DIR)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-import apply_thread_action_plan as apply_plan  # noqa: E402
-import validate_thread_action_plan as validate_plan  # noqa: E402
+import apply_thread_action_plan as apply_plan  # type: ignore  # noqa: E402
+import validate_thread_action_plan as validate_plan  # type: ignore  # noqa: E402
 from review_thread_test_support import context_with_threads, marker_conflict, reply_candidate, review_thread, write_json  # noqa: E402
-from thread_action_contract import build_context_fingerprint, validate_thread_action_payload  # noqa: E402
+from thread_action_contract import build_context_fingerprint, validate_thread_action_payload  # type: ignore  # noqa: E402
 
 
 class ValidateAndApplyThreadActionPlanTests(unittest.TestCase):

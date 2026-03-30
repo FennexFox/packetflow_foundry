@@ -14,9 +14,9 @@ for candidate in (str(TEST_DIR), str(SCRIPT_DIR)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-import build_review_packets as packets  # noqa: E402
+import build_review_packets as packets  # type: ignore  # noqa: E402
 from review_thread_test_support import context_with_threads, marker_conflict, review_thread, write_json  # noqa: E402
-from thread_action_contract import build_context_fingerprint  # noqa: E402
+from thread_action_contract import build_context_fingerprint  # type: ignore  # noqa: E402
 
 
 class BuildReviewPacketsTests(unittest.TestCase):

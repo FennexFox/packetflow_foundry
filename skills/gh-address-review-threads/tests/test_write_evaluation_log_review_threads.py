@@ -12,7 +12,7 @@ for candidate in (str(TEST_DIR), str(SCRIPT_DIR)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-import write_evaluation_log as eval_log  # noqa: E402
+import write_evaluation_log as eval_log  # type: ignore  # noqa: E402
 
 
 class WriteEvaluationLogReviewThreadsTests(unittest.TestCase):

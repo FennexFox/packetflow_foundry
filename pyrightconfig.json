@@ -1,0 +1,58 @@
+{
+  "include": [
+    "builders",
+    "core",
+    "skills"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    ".pytest_cache"
+  ],
+  "executionEnvironments": [
+    {
+      "root": "builders/packet-workflow/scripts"
+    },
+    {
+      "root": "builders/packet-workflow/tests",
+      "extraPaths": [
+        "builders/packet-workflow/scripts"
+      ]
+    },
+    {
+      "root": "skills/gh-address-review-threads/scripts"
+    },
+    {
+      "root": "skills/gh-address-review-threads/tests",
+      "extraPaths": [
+        "skills/gh-address-review-threads/scripts"
+      ]
+    },
+    {
+      "root": "skills/gh-fix-pr-writeup/scripts"
+    },
+    {
+      "root": "skills/gh-fix-pr-writeup/tests",
+      "extraPaths": [
+        "skills/gh-fix-pr-writeup/scripts"
+      ]
+    },
+    {
+      "root": "skills/git-split-and-commit/scripts"
+    },
+    {
+      "root": "skills/git-split-and-commit/tests",
+      "extraPaths": [
+        "skills/git-split-and-commit/scripts"
+      ]
+    },
+    {
+      "root": "skills/reword-recent-commits/scripts"
+    },
+    {
+      "root": "skills/reword-recent-commits/tests",
+      "extraPaths": [
+        "skills/reword-recent-commits/scripts"
+      ]
+    }
+  ]
+}

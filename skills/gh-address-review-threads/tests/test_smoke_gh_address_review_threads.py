@@ -15,9 +15,9 @@ for candidate in (str(TEST_DIR), str(SCRIPT_DIR)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-import smoke_gh_address_review_threads as smoke  # noqa: E402
+import smoke_gh_address_review_threads as smoke  # type: ignore  # noqa: E402
 from review_thread_test_support import context_with_threads, review_thread, write_json  # noqa: E402
-from thread_action_contract import build_context_fingerprint  # noqa: E402
+from thread_action_contract import build_context_fingerprint  # type: ignore  # noqa: E402
 
 
 class SmokeGhAddressReviewThreadsTests(unittest.TestCase):

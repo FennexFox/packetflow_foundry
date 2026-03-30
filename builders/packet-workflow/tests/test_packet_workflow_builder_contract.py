@@ -80,6 +80,29 @@ def run_python(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
 
 
 class PacketWorkflowBuilderContractTests(unittest.TestCase):
+    def test_retained_skill_builder_specs_generate_core_contract_and_profile(self) -> None:
+        foundry_root = builder.foundry_root_dir()
+        retained_specs = [
+            foundry_root / "skills" / "gh-address-review-threads" / "builder-spec.json",
+            foundry_root / "skills" / "gh-fix-pr-writeup" / "builder-spec.json",
+            foundry_root / "skills" / "git-split-and-commit" / "builder-spec.json",
+            foundry_root / "skills" / "reword-recent-commits" / "builder-spec.json",
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output_root = Path(tmp)
+            for spec_path in retained_specs:
+                run_python(
+                    SCRIPT_DIR / "init_packet_skill.py",
+                    "--spec",
+                    str(spec_path),
+                    "--output-dir",
+                    str(output_root),
+                )
+                skill_dir = output_root / spec_path.parent.name
+                self.assertTrue((skill_dir / "references" / "core-contract.md").is_file())
+                self.assertTrue((skill_dir / "profiles" / "default" / "profile.json").is_file())
+
     def test_builder_uses_root_core_assets(self) -> None:
         foundry_root = builder.foundry_root_dir()
         self.assertEqual(builder.managed_agents_dir(), foundry_root / "agents")

@@ -11,7 +11,7 @@ for candidate in (str(TEST_DIR), str(SCRIPT_DIR)):
     if candidate not in sys.path:
         sys.path.insert(0, candidate)
 
-import collect_review_threads as collect  # noqa: E402
+import collect_review_threads as collect  # type: ignore  # noqa: E402
 from review_thread_test_support import comment  # noqa: E402
 
 
