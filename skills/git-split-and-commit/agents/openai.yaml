@@ -1,0 +1,4 @@
+interface:
+  display_name: "Git Split And Commit"
+  short_description: "Split working-tree changes into logical commits"
+  default_prompt: "Use $git-split-and-commit to review the current working tree, split it into logical commits, and commit automatically if confidence is high."
