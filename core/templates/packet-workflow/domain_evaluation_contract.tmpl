@@ -1,0 +1,19 @@
+# __SKILL_TITLE__ Evaluation Contract
+
+Use the shared envelope in `references/evaluation-log-contract.md` and keep workflow-specific metrics under `skill_specific.data`.
+
+Recommended domain fields for this scaffold:
+
+- `primary_outcomes`
+- `domain_quality_findings`
+- `domain_safety_findings`
+- `apply_artifacts`
+__PROFILE_EVALUATION_ARTIFACTS__
+
+Expected behavior:
+
+- Add only domain metrics that cannot live cleanly in the shared envelope.
+- Prefer observed counts and booleans over free-form summaries.
+- If the workflow later gains deterministic validators or apply scripts, surface their domain-specific boundary signals here rather than expanding the common schema.
+- Keep the contract aligned with `__ARCHETYPE__` expectations and the packets defined for `__DOMAIN_SLUG__`.
+- Keep runtime contract metadata out of evaluation fields; packet-efficiency metrics belong here only when they are regression or smoke signals rather than live routing inputs.

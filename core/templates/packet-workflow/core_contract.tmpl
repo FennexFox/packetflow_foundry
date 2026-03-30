@@ -1,0 +1,60 @@
+# __SKILL_TITLE__ Core Contract
+
+This file captures the reusable packet-workflow core for the generated `__SKILL_NAME__` scaffold.
+Keep repo-specific paths, review-doc lists, and lint toggles in `__REPO_PROFILE_FILE__`.
+Repo profiles are data-only inputs. Do not place executable hooks, prompt text, or worker-routing behavior in them.
+
+## Core Metadata
+
+- `workflow_family`: `__WORKFLOW_FAMILY__`
+- `archetype`: `__ARCHETYPE__`
+- `orchestrator_profile`: `__ORCHESTRATOR_PROFILE__`
+- `decision_ready_packets`: `__DECISION_READY_PACKETS__`
+- `worker_return_contract`: `__WORKER_RETURN_CONTRACT__`
+- `worker_output_shape`: `__WORKER_OUTPUT_SHAPE__`
+
+## Shared Runtime Surface
+
+- Required packet outputs:
+- `orchestrator.json`
+- `global_packet.json`
+__TASK_PACKET_BULLETS__
+__PROFILE_RUNTIME_ARTIFACTS__
+
+Review mode overrides inherited by default:
+__REVIEW_MODE_OVERRIDES_BULLETS__
+
+Authority order:
+__AUTHORITY_ORDER_BULLETS__
+
+Stop conditions:
+__STOP_CONDITIONS_BULLETS__
+
+## Generic Worker Contract
+
+__GENERIC_ADJUDICATION_SECTION__
+
+__WORKER_FAMILY_SECTION__
+
+## Repo Profile Boundary
+
+- Default generated profile: `__REPO_PROFILE_FILE__`
+- Summary: __REPO_PROFILE_SUMMARY__
+- Default bindings:
+__REPO_PROFILE_BINDINGS_MARKDOWN__
+- Default packet defaults:
+__REPO_PROFILE_PACKET_DEFAULTS_MARKDOWN__
+- Default lint rules:
+__REPO_PROFILE_LINT_RULES_MARKDOWN__
+
+## Runtime vs Evaluation Metadata
+
+- Keep runtime routing, authority, stop conditions, and adjudication support in `orchestrator.json` and `global_packet.json`.
+- Keep packet sizing, byte proxies, and delegation-efficiency metrics in evaluation logs or `packet_metrics.json`, not in the core runtime packets.
+- Keep repo-specific file layout and doc ownership in the repo profile instead of hardcoding them into this core contract.
+- Keep the repo profile declarative. Scripts may consume its data, but the profile itself should not define executable behavior.
+
+## Notes
+
+- Optional local helpers remain non-authoritative even when collected.
+- __CONFIDENCE_LAYERING_NOTE__

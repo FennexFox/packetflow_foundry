@@ -1,0 +1,138 @@
+#!/usr/bin/env python3
+"""Dry-run or apply a validated action file for __SKILL_NAME__."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+from pathlib import Path
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--validation",
+        required=True,
+        help="Validator output JSON with normalized_plan and apply_gate_status.",
+    )
+    parser.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report the apply plan without mutating.",
+    )
+    parser.add_argument(
+        "--result-output",
+        help="Optional machine-readable apply result JSON.",
+    )
+    return parser.parse_args()
+
+
+def load_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def fingerprint_plan(plan: dict) -> str:
+    canonical = json.dumps(plan, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def build_result(
+    validation: dict,
+    *,
+    dry_run: bool,
+    apply_succeeded: bool,
+    stop_reasons: list[str],
+    message: str,
+) -> dict:
+    normalized_plan = validation.get("normalized_plan") or {}
+    return {
+        "skill_name": normalized_plan.get("skill_name"),
+        "context_id": normalized_plan.get("context_id"),
+        "dry_run": dry_run,
+        "apply_succeeded": apply_succeeded,
+        "validation_boundary_enforced": True,
+        "normalized_plan_fingerprint": validation.get("normalized_plan_fingerprint"),
+        "mutation_type": "none",
+        "message": message,
+        "action_count": len(normalized_plan.get("actions", [])),
+        "mutations": [],
+        "primary_artifact": None,
+        "secondary_artifacts": [],
+        "stop_reasons": stop_reasons,
+        "rollback_needed": False,
+        "requires_implementation": True,
+    }
+
+
+def main() -> int:
+    args = parse_args()
+    validation = load_json(Path(args.validation).resolve())
+    normalized_plan = validation.get("normalized_plan")
+    expected_fingerprint = validation.get("normalized_plan_fingerprint")
+    stop_reasons = [str(item) for item in validation.get("stop_reasons", []) if str(item).strip()]
+
+    if not isinstance(normalized_plan, dict):
+        result = build_result(
+            validation,
+            dry_run=args.dry_run,
+            apply_succeeded=False,
+            stop_reasons=sorted(set(stop_reasons + ["validator_mismatch"])),
+            message="Validator output is missing normalized_plan.",
+        )
+        if args.result_output:
+            write_json(Path(args.result_output).resolve(), result)
+        print(json.dumps(result, indent=2))
+        return 1
+
+    actual_fingerprint = fingerprint_plan(normalized_plan)
+    if not expected_fingerprint or actual_fingerprint != expected_fingerprint:
+        result = build_result(
+            validation,
+            dry_run=args.dry_run,
+            apply_succeeded=False,
+            stop_reasons=sorted(set(stop_reasons + ["validator_mismatch"])),
+            message="Validator fingerprint mismatch blocked apply.",
+        )
+        if args.result_output:
+            write_json(Path(args.result_output).resolve(), result)
+        print(json.dumps(result, indent=2))
+        return 1
+
+    if not validation.get("valid") or not validation.get("can_apply"):
+        result = build_result(
+            validation,
+            dry_run=args.dry_run,
+            apply_succeeded=False,
+            stop_reasons=sorted(set(stop_reasons or ["unresolved_stop_reason"])),
+            message="Validation did not clear apply gates.",
+        )
+        if args.result_output:
+            write_json(Path(args.result_output).resolve(), result)
+        print(json.dumps(result, indent=2))
+        return 1
+
+    result = build_result(
+        validation,
+        dry_run=args.dry_run,
+        apply_succeeded=True,
+        stop_reasons=sorted(set(stop_reasons)),
+        message=(
+            "Skeleton apply script confirmed the validator boundary and dry-run parity. "
+            "Replace the placeholder mutation block with domain-specific logic."
+        ),
+    )
+
+    if args.result_output:
+        write_json(Path(args.result_output).resolve(), result)
+    print(json.dumps(result, indent=2))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

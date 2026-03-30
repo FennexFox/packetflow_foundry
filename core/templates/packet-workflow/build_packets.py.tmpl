@@ -1,0 +1,346 @@
+#!/usr/bin/env python3
+"""Build focused packets for __SKILL_NAME__ from collected context."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from pathlib import Path
+
+SPEC_METADATA = __SPEC_METADATA_JSON__
+PACKET_NAMES = __TASK_PACKET_NAMES_JSON__
+USES_BATCH_PACKETS = __USES_BATCH_PACKETS__
+REVIEW_MODE_OVERRIDES = __REVIEW_MODE_OVERRIDES_JSON__
+WORKER_INSTRUCTION_MAP = __WORKER_INSTRUCTION_MAP_JSON__
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--context", required=True, help="Collected context JSON.")
+__LINT_ARG_BLOCK__
+    parser.add_argument("--output-dir", required=True, help="Packet output directory.")
+    parser.add_argument(
+        "--result-output",
+        help="Optional machine-readable build result JSON.",
+    )
+    return parser.parse_args()
+
+
+def load_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def next_mode(mode: str) -> str:
+    order = ["local-only", "targeted-delegation", "broad-delegation"]
+    index = min(order.index(mode) + 1, len(order) - 1)
+    return order[index]
+
+
+def has_override_signal(context: dict, lint: dict) -> bool:
+    merged = {}
+    merged.update(context.get("override_signals", {}))
+    merged.update(lint.get("override_signals", {}))
+    return any(bool(value) for value in merged.values())
+
+
+def compute_review_mode(context: dict, lint: dict) -> tuple[str, bool]:
+    counts = context.get("counts", {})
+    task_packet_count = max(int(counts.get("task_packet_count", 0)), len(PACKET_NAMES))
+    changed_files = int(counts.get("changed_files", task_packet_count))
+    batch_count = int(counts.get("batch_count", 0))
+
+    mode = "local-only"
+    if task_packet_count >= 5 or changed_files > 20 or batch_count >= 3:
+        mode = "broad-delegation"
+    elif task_packet_count >= 3 or batch_count >= 2:
+        mode = "targeted-delegation"
+
+    override = has_override_signal(context, lint)
+    if override:
+        mode = next_mode(mode)
+    return mode, override
+
+
+def recommended_worker_count(review_mode: str) -> int:
+    return {
+        "local-only": 0,
+        "targeted-delegation": 2,
+        "broad-delegation": 4,
+    }[review_mode]
+
+
+def active_worker_family_order() -> list[str]:
+    if SPEC_METADATA["worker_return_contract"] == "classification-oriented":
+        return ["context_findings", "candidate_producers", "verifiers"]
+    return ["context_findings", "verifiers"]
+
+
+def surfaced_optional_workers(recommended_workers: list[dict]) -> list[str]:
+    ordered: list[str] = []
+    for family_name in active_worker_family_order():
+        ordered.extend(SPEC_METADATA["preferred_worker_families"].get(family_name, []))
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for agent_type in ordered:
+        if agent_type not in seen:
+            seen.add(agent_type)
+            deduped.append(agent_type)
+    recommended_agent_types = {worker["agent_type"] for worker in recommended_workers}
+    return [
+        agent_type
+        for agent_type in deduped
+        if agent_type not in recommended_agent_types
+    ]
+
+
+def recommended_workers(review_mode: str) -> list[dict]:
+    if review_mode == "local-only" or not SPEC_METADATA["packet_worker_map"]:
+        return []
+    budget = recommended_worker_count(review_mode)
+    workers: list[dict] = []
+    seen_assignments: set[tuple[str, str]] = set()
+    ordered_packets: list[str] = []
+    if USES_BATCH_PACKETS:
+        ordered_packets.append("batch-packet-01")
+    ordered_packets.extend(PACKET_NAMES)
+    for packet_name in ordered_packets:
+        for agent_type in SPEC_METADATA["packet_worker_map"].get(packet_name, []):
+            assignment = (agent_type, packet_name)
+            if assignment in seen_assignments:
+                continue
+            workers.append(
+                {
+                    "agent_type": agent_type,
+                    "packet": f"{packet_name}.json",
+                    "instruction": WORKER_INSTRUCTION_MAP[agent_type],
+                }
+            )
+            seen_assignments.add(assignment)
+            if len(workers) >= budget:
+                return workers
+    return workers
+
+
+def packet_order() -> list[str]:
+    order = ["global_packet.json"]
+    if SPEC_METADATA.get("shared_local_packet"):
+        order.append(SPEC_METADATA["shared_local_packet"])
+    if USES_BATCH_PACKETS:
+        order.append("batch-packet-01.json")
+    order.extend(f"{packet_name}.json" for packet_name in PACKET_NAMES)
+    return order
+
+
+def orchestrator_payload(
+    context: dict,
+    review_mode: str,
+    override: bool,
+    concrete_workers: list[dict],
+    ordered_packets: list[str],
+) -> dict:
+    payload = {
+        "skill_name": SPEC_METADATA["skill_name"],
+        "workflow_family": SPEC_METADATA["workflow_family"],
+        "archetype": SPEC_METADATA["archetype"],
+        "orchestrator_profile": SPEC_METADATA["orchestrator_profile"],
+        "repo_profile_name": context.get("repo_profile_name"),
+        "repo_profile_path": context.get("repo_profile_path"),
+        "repo_profile_summary": context.get("repo_profile_summary"),
+        "review_mode": review_mode,
+        "recommended_worker_count": recommended_worker_count(review_mode),
+        "recommended_workers": concrete_workers,
+        "optional_workers": surfaced_optional_workers(concrete_workers),
+        "local_responsibilities": [
+            "final adjudication",
+            "final synthesis",
+            "final plan confidence recomputation",
+            "final mutation",
+            "conflict resolution",
+        ],
+        "shared_packet": "global_packet.json",
+        "packet_order": ordered_packets,
+        "review_mode_overrides": REVIEW_MODE_OVERRIDES,
+        "override_applied": override,
+        "preferred_worker_families": SPEC_METADATA["preferred_worker_families"],
+        "packet_worker_map": SPEC_METADATA["packet_worker_map"],
+        "worker_selection_guidance": SPEC_METADATA["worker_selection_guidance"],
+        "decision_ready_packets": SPEC_METADATA["decision_ready_packets"],
+        "worker_return_contract": SPEC_METADATA["worker_return_contract"],
+        "worker_output_shape": SPEC_METADATA["worker_output_shape"],
+        "xhigh_reread_policy": SPEC_METADATA["xhigh_reread_policy"],
+        "candidate_field_bundles": SPEC_METADATA["resolved_candidate_field_bundles"],
+        "worker_footer_fields": SPEC_METADATA["worker_footer_fields"],
+        "reread_reason_values": SPEC_METADATA["reread_reason_values"],
+        "domain_overlay": SPEC_METADATA["domain_overlay"],
+    }
+    if SPEC_METADATA.get("shared_local_packet"):
+        payload["shared_local_packet"] = SPEC_METADATA["shared_local_packet"]
+        payload["common_path_contract"] = SPEC_METADATA["common_path_contract"]
+    return payload
+
+
+def global_packet_payload(context: dict) -> dict:
+    payload = {
+        "skill_name": SPEC_METADATA["skill_name"],
+        "workflow_family": SPEC_METADATA["workflow_family"],
+        "primary_goal": SPEC_METADATA["primary_goal"],
+        "authority_order": SPEC_METADATA["authority_order"],
+        "stop_conditions": SPEC_METADATA["stop_conditions"],
+        "review_mode_overrides": REVIEW_MODE_OVERRIDES,
+        "context_id": context.get("context_id"),
+        "repo_profile_name": context.get("repo_profile_name"),
+        "repo_profile_path": context.get("repo_profile_path"),
+        "repo_profile": context.get("repo_profile"),
+        "optional_local_helper": context.get("optional_local_helper"),
+        "preferred_worker_families": SPEC_METADATA["preferred_worker_families"],
+        "packet_worker_map": SPEC_METADATA["packet_worker_map"],
+        "worker_selection_guidance": SPEC_METADATA["worker_selection_guidance"],
+        "decision_ready_packets": SPEC_METADATA["decision_ready_packets"],
+        "worker_return_contract": SPEC_METADATA["worker_return_contract"],
+        "worker_output_shape": SPEC_METADATA["worker_output_shape"],
+        "xhigh_reread_policy": SPEC_METADATA["xhigh_reread_policy"],
+        "candidate_field_bundles": SPEC_METADATA["resolved_candidate_field_bundles"],
+        "worker_footer_fields": SPEC_METADATA["worker_footer_fields"],
+        "reread_reason_values": SPEC_METADATA["reread_reason_values"],
+        "domain_overlay": SPEC_METADATA["domain_overlay"],
+        "orchestrator_profile": SPEC_METADATA["orchestrator_profile"],
+    }
+    if SPEC_METADATA.get("shared_local_packet"):
+        payload["shared_local_packet"] = SPEC_METADATA["shared_local_packet"]
+    return payload
+
+
+def synthesis_packet_payload(context: dict, review_mode: str) -> dict:
+    return {
+        "packet_id": "synthesis_packet",
+        "packet_kind": "local-synthesis",
+        "context_id": context.get("context_id"),
+        "repo_profile_name": context.get("repo_profile_name"),
+        "review_mode": review_mode,
+        "shared_packet": "global_packet.json",
+        "focused_packets": [f"{packet_name}.json" for packet_name in PACKET_NAMES],
+        "common_path_contract": SPEC_METADATA["common_path_contract"],
+        "drafting_authority_order": SPEC_METADATA["authority_order"],
+        "required_final_checks": [
+            "recompute final plan confidence locally",
+            "treat raw rereads as exceptional rather than compensatory",
+            "stop if packet insufficiency blocks local drafting",
+        ],
+        "todo": "Replace this scaffold packet with the common-path decision set needed for local final drafting.",
+    }
+
+
+def dump_json_bytes(payload: dict) -> int:
+    return len(json.dumps(payload, indent=2, sort_keys=True).encode("utf-8")) + 1
+
+
+def estimate_tokens(byte_count: int) -> int:
+    return max(1, (byte_count + 3) // 4)
+
+
+def packet_metrics_payload(context: dict, lint: dict, packet_payloads: dict[str, dict]) -> dict:
+    packet_sizes = {
+        name: dump_json_bytes(payload)
+        for name, payload in packet_payloads.items()
+    }
+    ordered_sizes = sorted(packet_sizes.values(), reverse=True)
+    worker_facing_packets = {
+        name: size
+        for name, size in packet_sizes.items()
+        if name != "synthesis_packet.json"
+    }
+    worker_facing_bytes = sum(worker_facing_packets.values())
+    local_only_bytes = dump_json_bytes(context)
+    if lint:
+        local_only_bytes += dump_json_bytes(lint)
+    estimated_local_only_tokens = estimate_tokens(local_only_bytes)
+    estimated_packet_tokens = estimate_tokens(worker_facing_bytes)
+    return {
+        "packet_count": len(packet_sizes),
+        "packet_size_bytes": packet_sizes,
+        "largest_packet_bytes": ordered_sizes[0] if ordered_sizes else 0,
+        "largest_two_packets_bytes": sum(ordered_sizes[:2]),
+        "estimated_local_only_tokens": estimated_local_only_tokens,
+        "estimated_packet_tokens": estimated_packet_tokens,
+        "estimated_delegation_savings": max(
+            0, estimated_local_only_tokens - estimated_packet_tokens
+        ),
+    }
+
+
+def main() -> int:
+    args = parse_args()
+    context = load_json(Path(args.context).resolve())
+__LINT_LOAD_BLOCK__
+    output_dir = Path(args.output_dir).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    review_mode, override = compute_review_mode(context, lint)
+    ordered_packets = packet_order()
+    concrete_workers = recommended_workers(review_mode)
+
+    packet_payloads: dict[str, dict] = {
+        "orchestrator.json": orchestrator_payload(
+            context,
+            review_mode,
+            override,
+            concrete_workers,
+            ordered_packets,
+        ),
+        "global_packet.json": global_packet_payload(context),
+    }
+    if SPEC_METADATA.get("shared_local_packet"):
+        packet_payloads[SPEC_METADATA["shared_local_packet"]] = synthesis_packet_payload(
+            context,
+            review_mode,
+        )
+
+    for packet_name in PACKET_NAMES:
+        packet_payloads[f"{packet_name}.json"] = __FOCUSED_PACKET_TEMPLATE__
+
+    if USES_BATCH_PACKETS:
+        packet_payloads["batch-packet-01.json"] = {
+            "packet_id": "batch-packet-01",
+            "packet_kind": "batch",
+            "packet_targets": PACKET_NAMES,
+            "context_id": context.get("context_id"),
+            "todo": "Group related singleton packets here when the workflow benefits from clustering.",
+        }
+
+    for file_name, payload in packet_payloads.items():
+        write_json(output_dir / file_name, payload)
+
+    packet_metrics = None
+    if SPEC_METADATA["orchestrator_profile"] == "packet-heavy-orchestrator":
+        packet_metrics = packet_metrics_payload(context, lint, packet_payloads)
+        write_json(output_dir / "packet_metrics.json", packet_metrics)
+
+    result = {
+        "skill_name": SPEC_METADATA["skill_name"],
+        "workflow_family": SPEC_METADATA["workflow_family"],
+        "orchestrator_profile": SPEC_METADATA["orchestrator_profile"],
+        "repo_profile_name": context.get("repo_profile_name"),
+        "repo_profile_path": context.get("repo_profile_path"),
+        "repo_profile_summary": context.get("repo_profile_summary"),
+        "review_mode": review_mode,
+        "recommended_worker_count": recommended_worker_count(review_mode),
+        "packet_files": ordered_packets,
+    }
+    if SPEC_METADATA.get("shared_local_packet"):
+        result["shared_local_packet"] = SPEC_METADATA["shared_local_packet"]
+        result["common_path_contract"] = SPEC_METADATA["common_path_contract"]
+    if packet_metrics is not None:
+        result["packet_metrics"] = packet_metrics
+
+    if args.result_output:
+        write_json(Path(args.result_output).resolve(), result)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

@@ -1,0 +1,22 @@
+{
+  "name": "packet-heavy-orchestrator",
+  "kind": "foundry-overlay-profile",
+  "summary": "Opt-in reusable overlay for packet-heavy workflows that need the common-path local synthesis pattern.",
+  "extends": [
+    "baseline"
+  ],
+  "packet_workflow": {
+    "orchestrator_profile": "packet-heavy-orchestrator",
+    "common_path_contract": "packet-heavy",
+    "evaluation_sidecars": [
+      "packet_metrics.json"
+    ],
+    "worker_selection_defaults": {
+      "prefer_shared_local_packet": true
+    }
+  },
+  "notes": [
+    "This overlay selects the packet-heavy common path defined by core contracts.",
+    "It does not redefine validator/apply semantics, stop taxonomy, or common-path meaning."
+  ]
+}

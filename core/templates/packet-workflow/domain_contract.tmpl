@@ -1,0 +1,105 @@
+# __SKILL_TITLE__ Contract
+
+This file captures the default domain contract for the generated `__SKILL_NAME__` scaffold.
+
+The generic packet-workflow core lives in `references/__CORE_CONTRACT_FILE__`.
+Repo-specific bindings live in `__REPO_PROFILE_FILE__`.
+Repo profiles are data-only overlays. Keep executable behavior in scripts and contracts, not in profile JSON.
+
+## Builder Metadata
+
+- `workflow_family`: `__WORKFLOW_FAMILY__`
+- `archetype`: `__ARCHETYPE__`
+- `orchestrator_profile`: `__ORCHESTRATOR_PROFILE__`
+- `decision_ready_packets`: `__DECISION_READY_PACKETS__`
+- `worker_return_contract`: `__WORKER_RETURN_CONTRACT__`
+- `worker_output_shape`: `__WORKER_OUTPUT_SHAPE__`
+- trigger phrases:
+__TRIGGER_PHRASES_BULLETS__
+
+## Required Packet Outputs
+
+- `orchestrator.json`
+- `global_packet.json`
+__TASK_PACKET_BULLETS__
+__PROFILE_RUNTIME_ARTIFACTS__
+
+Review mode overrides inherited by default:
+__REVIEW_MODE_OVERRIDES_BULLETS__
+
+Evaluation-only sidecars:
+__PROFILE_EVALUATION_ARTIFACTS__
+
+## Default Repo Profile Scaffold
+
+- Active generated profile: `__REPO_PROFILE_FILE__`
+- Summary: __REPO_PROFILE_SUMMARY__
+- Profile boundary: keep only declarative bindings, globs, review-doc lists, booleans, and notes here.
+- Default bindings:
+__REPO_PROFILE_BINDINGS_MARKDOWN__
+- Default packet defaults:
+__REPO_PROFILE_PACKET_DEFAULTS_MARKDOWN__
+- Default lint rules:
+__REPO_PROFILE_LINT_RULES_MARKDOWN__
+- Profile notes:
+__REPO_PROFILE_NOTES_MARKDOWN__
+
+## Shared Packet Contract
+
+`global_packet.json` should keep:
+- workflow family
+- primary goal
+- authority order
+- stop conditions
+- review mode overrides
+- preferred worker families
+- packet worker map when configured
+- worker selection guidance
+- worker return contract
+- worker output shape
+- xHigh reread policy
+- candidate field bundles when decision-ready packets are enabled
+- worker footer fields when hierarchical worker output is enabled
+- reread reason values when decision-ready packets are enabled
+- domain overlay metadata when configured
+- optional local helper policy when present
+
+Runtime profile note:
+__PROFILE_RUNTIME_NOTE__
+
+Authority order:
+__AUTHORITY_ORDER_BULLETS__
+
+Stop conditions:
+__STOP_CONDITIONS_BULLETS__
+
+## Focused Packet Guidance
+
+__BATCH_PACKET_NOTE__
+- Focused packets should stay narrow enough for one local synthesis step or one `gpt-5.4-mini` worker.
+- Prefer packet names that describe one concern or grouped work item.
+
+__GENERIC_ADJUDICATION_SECTION__
+
+__WORKER_FAMILY_SECTION__
+
+__DOMAIN_OVERLAY_SECTION__
+
+## Plan Guidance
+
+__DOMAIN_CONTRACT_PLAN_NOTE__
+
+__VALIDATE_PLAN_CONTRACT__
+__APPLY_PLAN_CONTRACT__
+
+## Runtime vs Evaluation Metadata
+
+- Keep runtime contract metadata in `orchestrator.json` and `global_packet.json` only when the orchestrator or local drafter needs it to operate safely.
+- Keep packet sizing, byte proxies, delegation-efficiency estimates, and other regression metrics out of runtime packets by default.
+- When `orchestrator_profile=packet-heavy-orchestrator`, write packet-efficiency metrics to `packet_metrics.json` and merge them into evaluation logs instead of expanding `orchestrator.json`.
+
+## Notes
+
+- The generated scripts are placeholders and must be filled with domain-specific logic.
+- Optional local helpers remain non-authoritative even when included in collected context.
+- __CONFIDENCE_LAYERING_NOTE__

@@ -1,0 +1,266 @@
+#!/usr/bin/env python3
+"""Validate a planned action file against collected context for __SKILL_NAME__."""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import json
+from pathlib import Path
+
+
+PLAN_FIELD_POLICY = {
+    "required": [
+        "skill_name",
+        "context_id",
+        "selected_packets",
+        "actions",
+        "stop_reasons",
+    ],
+    "allowed": [
+        "skill_name",
+        "context_id",
+        "selected_packets",
+        "actions",
+        "stop_reasons",
+        "overall_confidence",
+        "review_mode",
+        "notes",
+        "draft_basis",
+    ],
+    "ignored": ["metadata"],
+}
+VALIDATION_ERROR_CODES = {
+    "missing_required_plan_fields": "missing_required_plan_fields",
+    "skill_name_mismatch": "skill_name_mismatch",
+    "context_id_mismatch": "context_id_mismatch",
+    "selected_packets_duplicate": "selected_packets_duplicate",
+    "selected_packets_invalid": "selected_packets_invalid",
+    "actions_invalid": "actions_invalid",
+}
+VALIDATION_WARNING_CODES = {
+    "unknown_plan_fields_ignored": "unknown_plan_fields_ignored",
+    "ignored_plan_fields_removed": "ignored_plan_fields_removed",
+    "overall_confidence_low": "overall_confidence_low",
+}
+CORE_STOP_CATEGORIES = [
+    "stale_context",
+    "ambiguous_routing",
+    "missing_required_evidence",
+    "validator_mismatch",
+    "missing_auth",
+    "unresolved_stop_reason",
+]
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--context", required=True, help="Collected context JSON.")
+    parser.add_argument("--plan", required=True, help="Planned action JSON.")
+    parser.add_argument("--output", required=True, help="Validation output JSON.")
+    return parser.parse_args()
+
+
+def load_json(path: Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8-sig"))
+
+
+def write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def issue(code: str, message: str, **extra: object) -> dict:
+    payload = {"code": code, "message": message}
+    payload.update(extra)
+    return payload
+
+
+def fingerprint_plan(plan: dict) -> str:
+    canonical = json.dumps(plan, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(canonical).hexdigest()
+
+
+def normalize_plan(plan: dict) -> tuple[dict, list[dict], list[dict]]:
+    errors: list[dict] = []
+    warnings: list[dict] = []
+    normalized: dict = {}
+
+    allowed = set(PLAN_FIELD_POLICY["allowed"])
+    required = set(PLAN_FIELD_POLICY["required"])
+    ignored = set(PLAN_FIELD_POLICY["ignored"])
+    plan_keys = set(plan)
+
+    missing = sorted(required - plan_keys)
+    if missing:
+        errors.append(
+            issue(
+                VALIDATION_ERROR_CODES["missing_required_plan_fields"],
+                "Plan is missing required fields.",
+                fields=missing,
+            )
+        )
+
+    ignored_fields = sorted(plan_keys & ignored)
+    if ignored_fields:
+        warnings.append(
+            issue(
+                VALIDATION_WARNING_CODES["ignored_plan_fields_removed"],
+                "Ignored plan fields were removed from the normalized plan.",
+                fields=ignored_fields,
+            )
+        )
+
+    unknown_fields = sorted(plan_keys - allowed - ignored)
+    if unknown_fields:
+        warnings.append(
+            issue(
+                VALIDATION_WARNING_CODES["unknown_plan_fields_ignored"],
+                "Unknown plan fields were ignored during normalization.",
+                fields=unknown_fields,
+            )
+        )
+
+    for key in PLAN_FIELD_POLICY["allowed"]:
+        if key not in plan:
+            continue
+        value = plan[key]
+        if key == "selected_packets":
+            if not isinstance(value, list) or any(
+                not isinstance(item, str) or not item.strip() for item in value
+            ):
+                errors.append(
+                    issue(
+                        VALIDATION_ERROR_CODES["selected_packets_invalid"],
+                        "selected_packets must be an array of non-empty strings.",
+                    )
+                )
+                normalized[key] = []
+            else:
+                normalized[key] = [item.strip() for item in value]
+                if len(normalized[key]) != len(set(normalized[key])):
+                    errors.append(
+                        issue(
+                            VALIDATION_ERROR_CODES["selected_packets_duplicate"],
+                            "selected_packets contains duplicate values.",
+                        )
+                    )
+        elif key == "actions":
+            if not isinstance(value, list):
+                errors.append(
+                    issue(
+                        VALIDATION_ERROR_CODES["actions_invalid"],
+                        "actions must be an array.",
+                    )
+                )
+                normalized[key] = []
+            else:
+                normalized[key] = value
+        elif key == "stop_reasons":
+            if not isinstance(value, list):
+                normalized[key] = []
+            else:
+                normalized[key] = [str(item) for item in value if str(item).strip()]
+        else:
+            normalized[key] = value
+
+    return normalized, errors, warnings
+
+
+def main() -> int:
+    args = parse_args()
+    context = load_json(Path(args.context).resolve())
+    plan = load_json(Path(args.plan).resolve())
+
+    normalized_plan, errors, warnings = normalize_plan(plan)
+    stop_reasons: list[str] = []
+
+    context_skill_name = context.get("skill_name")
+    normalized_skill_name = normalized_plan.get("skill_name")
+    if normalized_skill_name not in (None, context_skill_name):
+        errors.append(
+            issue(
+                VALIDATION_ERROR_CODES["skill_name_mismatch"],
+                "plan.skill_name does not match context.skill_name",
+            )
+        )
+        stop_reasons.append("validator_mismatch")
+
+    context_id = context.get("context_id")
+    plan_context_id = normalized_plan.get("context_id")
+    if context_id and plan_context_id and plan_context_id != context_id:
+        errors.append(
+            issue(
+                VALIDATION_ERROR_CODES["context_id_mismatch"],
+                "plan.context_id does not match context.context_id",
+            )
+        )
+        stop_reasons.append("stale_context")
+
+    confidence = str(normalized_plan.get("overall_confidence") or "").strip().lower()
+    if confidence in {"", "low"}:
+        warnings.append(
+            issue(
+                VALIDATION_WARNING_CODES["overall_confidence_low"],
+                "overall_confidence is missing or low",
+            )
+        )
+        stop_reasons.append("missing_required_evidence")
+
+    valid = not errors
+    blocking_stop_categories = {
+        "stale_context",
+        "missing_required_evidence",
+        "validator_mismatch",
+        "unresolved_stop_reason",
+    }
+    can_apply = valid and not any(
+        reason in blocking_stop_categories for reason in stop_reasons
+    )
+    normalized_fingerprint = fingerprint_plan(normalized_plan)
+
+    payload = {
+        "valid": valid,
+        "can_apply": can_apply,
+        "errors": errors,
+        "warnings": warnings,
+        "stop_reasons": sorted(set(stop_reasons)),
+        "validation_commands": [
+            "Replace skeleton field policy with domain-specific constraints.",
+            "Replace placeholder stop-category coverage with domain-specific gate checks.",
+        ],
+        "normalized_plan": normalized_plan,
+        "normalized_plan_fingerprint": normalized_fingerprint,
+        "apply_gate_status": {
+            "status": "pass" if can_apply else "fail",
+            "applicable_stop_categories": [
+                "stale_context",
+                "missing_required_evidence",
+                "validator_mismatch",
+                "unresolved_stop_reason",
+            ],
+            "covered_stop_categories": sorted(set(stop_reasons)),
+            "uncovered_stop_categories": [
+                category
+                for category in ["ambiguous_routing", "missing_auth", "unresolved_stop_reason"]
+                if category not in stop_reasons
+            ],
+            "not_applicable_stop_categories": [
+                category
+                for category in CORE_STOP_CATEGORIES
+                if category not in {
+                    "stale_context",
+                    "missing_required_evidence",
+                    "validator_mismatch",
+                    "unresolved_stop_reason",
+                }
+            ],
+        },
+        "field_policy": PLAN_FIELD_POLICY,
+    }
+    write_json(Path(args.output).resolve(), payload)
+    return 0 if can_apply else 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

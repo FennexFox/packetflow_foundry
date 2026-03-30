@@ -1,0 +1,86 @@
+# PacketFlow Foundry AGENTS
+
+This `AGENTS.md` governs the `packetflow_foundry` subtree itself.
+It does not try to map or govern an entire consumer project.
+
+## Identity
+
+`packetflow_foundry` is a vendorable shared core for:
+- packet-first workflow orchestration
+- token-efficient packet and subagent patterns
+- reusable contracts, templates, builders, and managed agents
+
+It is not a project-specific monolith.
+Repo-specific profiles, skills, and agents belong in the consumer repo under `.codex/project/`.
+
+## Directory Ownership
+
+- `agents/`
+  - Foundry default managed worker registry.
+  - This is the reusable default set shipped by the foundry, not a claim that every consumer project must use only these agents.
+  - Consumer projects may add `.codex/project/agents/` as additive overrides.
+- `core/`
+  - Authoritative home for cross-project behavior semantics, contracts, templates, and shared defaults.
+- `profiles/`
+  - Reusable foundry overlay profiles only.
+  - `baseline` is the default overlay.
+  - `packet-heavy-orchestrator` is an opt-in upper overlay.
+- `builders/`
+  - Builder logic, builder-specific contracts, generators, and tests that consume `core/`.
+- `skills/`
+  - Thin entrypoints only.
+  - Do not place authoritative contracts, templates, scripts, or tests here.
+
+## Core Versus Profile
+
+Keep in `core/`:
+- validator/apply semantics
+- stop taxonomy meaning
+- common-path contract semantics
+- worker-family and routing semantics
+- packet schema and template semantics
+- shared default authority order and review-mode defaults
+
+Allowed in reusable or project-local profiles:
+- repo-specific or overlay-specific values
+- paths and globs
+- review-doc lists
+- lint and review defaults
+- worker selection defaults and binding metadata
+- notes
+
+Never move into profiles:
+- executable hooks
+- prompt fragments that define behavior
+- packet routing authority
+- validator/apply behavior
+- stop taxonomy meaning
+- token-budget or common-path semantics
+
+See `core/contracts/packet-workflow/profile-boundary-contract.md` for the authoritative boundary.
+
+## Managed Agents
+
+Foundry core owns reusable agent behavior semantics.
+Consumer projects may adjust binding, selection, and routing locally, but should not fork shared semantics for repo-specific convenience.
+
+Use this model when vendored:
+- foundry default managed set: `.codex/vendor/packetflow_foundry/agents/`
+- additive project overrides: `.codex/project/agents/`
+
+## Vendoring Rules
+
+When this repo is used as `.codex/vendor/packetflow_foundry`:
+- do not make repo-specific edits inside the vendor subtree
+- put repo-specific profiles in `.codex/project/profiles/`
+- put repo-specific skills in `.codex/project/skills/`
+- put repo-specific agents in `.codex/project/agents/`
+
+Direct vendor edits are reserved for reusable fixes or reusable capability additions that should be kept upstream in the foundry.
+
+## Change Discipline
+
+- If you change `core/contracts`, `core/templates`, or `core/defaults`, update `builders/` and builder tests in the same change.
+- If you add a new foundry profile, it must be reusable across multiple repos. Otherwise keep it in `.codex/project/profiles/`.
+- Do not reintroduce duplicate authoritative copies of contracts, templates, scripts, or tests under `skills/`.
+- Treat `codex.example.toml` as a repo convention example only, not a Codex platform standard.

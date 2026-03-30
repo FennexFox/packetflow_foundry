@@ -1,0 +1,46 @@
+{
+  "name": "baseline",
+  "kind": "foundry-overlay-profile",
+  "summary": "Default reusable PacketFlow Foundry overlay for standard packet-workflow scaffolds.",
+  "extends": [],
+  "packet_workflow": {
+    "orchestrator_profile": "standard",
+    "review_mode_defaults": {
+      "supported_modes": [
+        "local-only",
+        "targeted-delegation",
+        "broad-delegation"
+      ],
+      "default_override_signals": [
+        "diff churn exceeds a configured threshold",
+        "core runtime, config, or process files span multiple groups",
+        "generated files are present but are not the majority of the change"
+      ]
+    },
+    "lint_defaults": {
+      "require_readme_settings_table": false,
+      "missing_review_docs_are_errors": false
+    },
+    "worker_selection_defaults": {
+      "preferred_worker_families": {
+        "context_findings": [
+          "repo_mapper",
+          "packet_explorer",
+          "docs_verifier"
+        ],
+        "candidate_producers": [
+          "evidence_summarizer",
+          "large_diff_auditor",
+          "log_triager"
+        ],
+        "verifiers": [
+          "docs_verifier"
+        ]
+      }
+    }
+  },
+  "notes": [
+    "This is a reusable overlay, not a repo-specific profile.",
+    "Project-specific paths, docs, and bindings belong in .codex/project/profiles/."
+  ]
+}

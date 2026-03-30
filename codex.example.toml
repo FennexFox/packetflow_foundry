@@ -1,0 +1,25 @@
+# Example only.
+# This file is a repo convention example for PacketFlow Foundry.
+# It is not a Codex platform standard.
+
+[packetflow_foundry]
+foundry_root = ".codex/vendor/packetflow_foundry"
+default_profile = "baseline"
+optional_overlays = []
+builder_entrypoint = ".codex/vendor/packetflow_foundry/builders/packet-workflow/scripts/init_packet_skill.py"
+managed_agents_policy = "foundry default set plus additive project overrides"
+
+[packetflow_foundry.compose]
+profile_dirs = [
+  ".codex/vendor/packetflow_foundry/profiles",
+  ".codex/project/profiles",
+]
+skill_dirs = [
+  ".codex/vendor/packetflow_foundry/skills",
+  ".codex/project/skills",
+]
+agent_dirs = [
+  ".codex/vendor/packetflow_foundry/agents",
+  ".codex/project/agents",
+]
+precedence = "foundry baseline -> optional foundry overlay -> project-local profile -> project-local skill/agent overrides"

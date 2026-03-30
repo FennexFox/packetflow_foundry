@@ -1,0 +1,12 @@
+{
+  "supported_modes": [
+    "local-only",
+    "targeted-delegation",
+    "broad-delegation"
+  ],
+  "default_override_signals": [
+    "diff churn exceeds a configured threshold",
+    "core runtime, config, or process files span multiple groups",
+    "generated files are present but are not the majority of the change"
+  ]
+}

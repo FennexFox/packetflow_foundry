@@ -1,0 +1,110 @@
+#!/usr/bin/env python3
+"""Collect structured workflow context for __SKILL_NAME__."""
+
+from __future__ import annotations
+
+import argparse
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+
+SPEC_METADATA = __SPEC_METADATA_JSON__
+DEFAULT_AUTHORITY_ORDER = __AUTHORITY_ORDER_JSON__
+DEFAULT_STOP_CONDITIONS = __STOP_CONDITIONS_JSON__
+
+
+def parse_args() -> argparse.Namespace:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--repo-root", required=True, help="Repository root to inspect.")
+    parser.add_argument("--output", required=True, help="Output JSON path.")
+    parser.add_argument(
+        "--profile",
+        default=str(default_repo_profile_path()),
+        help="Path to the active repo profile JSON. Relative paths resolve from the skill root.",
+    )
+__HELPER_COLLECT_ARG_BLOCK__
+    return parser.parse_args()
+
+
+def resolve_repo_root(repo_root: str) -> Path:
+    path = Path(repo_root).resolve()
+    if not path.exists():
+        raise SystemExit(f"[ERROR] Missing repo root: {path}")
+    return path
+
+
+def skill_root() -> Path:
+    return Path(__file__).resolve().parents[1]
+
+
+def default_repo_profile_path() -> Path:
+    return skill_root() / "profiles" / SPEC_METADATA["repo_profile"]["name"] / "profile.json"
+
+
+def resolve_profile_path(profile_path: str) -> Path:
+    candidate = Path(profile_path)
+    if not candidate.is_absolute():
+        candidate = (skill_root() / candidate).resolve()
+    else:
+        candidate = candidate.resolve()
+    if not candidate.exists():
+        raise SystemExit(f"[ERROR] Missing repo profile: {candidate}")
+    return candidate
+
+
+def load_repo_profile(path: Path) -> dict:
+    payload = json.loads(path.read_text(encoding="utf-8-sig"))
+    if not isinstance(payload, dict):
+        raise SystemExit("[ERROR] Repo profile must be a JSON object.")
+    return payload
+
+
+__HELPER_COLLECT_FUNCTIONS__
+
+
+def write_json(path: Path, payload: dict) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+
+
+def main() -> int:
+    args = parse_args()
+    repo_root = resolve_repo_root(args.repo_root)
+    profile_path = resolve_profile_path(args.profile)
+    repo_profile = load_repo_profile(profile_path)
+
+    context = {
+        "skill_name": SPEC_METADATA["skill_name"],
+        "workflow_family": SPEC_METADATA["workflow_family"],
+        "archetype": SPEC_METADATA["archetype"],
+        "context_id": f"{SPEC_METADATA['skill_name']}:{datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%SZ')}",
+        "repo_root": repo_root.as_posix(),
+        "collected_at": datetime.now(timezone.utc).isoformat(),
+        "repo_profile_name": repo_profile.get("name"),
+        "repo_profile_path": profile_path.as_posix(),
+        "repo_profile_summary": repo_profile.get("summary"),
+        "repo_profile": repo_profile,
+        "authority_order": DEFAULT_AUTHORITY_ORDER,
+        "stop_conditions": DEFAULT_STOP_CONDITIONS,
+        "counts": {
+            "changed_files": 0,
+            "task_packet_count": len(SPEC_METADATA["task_packet_names"]),
+            "batch_count": 0,
+        },
+        "override_signals": {
+            "high_churn": False,
+            "multi_group_core_files": False,
+            "generated_not_majority": False,
+        },
+        "notes": [
+            f"Loaded repo profile from {profile_path.as_posix()}.",
+            "TODO: replace this skeleton collector with domain-specific structured context gathering."
+        ],
+    }
+__HELPER_COLLECT_CONTEXT_LINE__
+    write_json(Path(args.output).resolve(), context)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

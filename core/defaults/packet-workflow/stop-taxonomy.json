@@ -1,0 +1,10 @@
+{
+  "default_stop_conditions": [
+    "low confidence",
+    "stale snapshot or stale context",
+    "ambiguous packet or ownership match"
+  ],
+  "notes": [
+    "Profiles may tighten thresholds around stop handling but must not redefine these meanings."
+  ]
+}
