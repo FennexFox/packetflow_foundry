@@ -6,8 +6,10 @@ from pathlib import Path
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
+script_dir = str(SCRIPT_DIR)
+while script_dir in sys.path:
+    sys.path.remove(script_dir)
+sys.path.insert(0, script_dir)
 
 sys.modules.pop("write_evaluation_log", None)
 import write_evaluation_log as eval_log  # noqa: E402

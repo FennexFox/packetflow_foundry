@@ -11,8 +11,9 @@ from unittest.mock import patch
 TEST_DIR = Path(__file__).resolve().parent
 SCRIPT_DIR = TEST_DIR.parent / "scripts"
 for candidate in (str(TEST_DIR), str(SCRIPT_DIR)):
-    if candidate not in sys.path:
-        sys.path.insert(0, candidate)
+    while candidate in sys.path:
+        sys.path.remove(candidate)
+    sys.path.insert(0, candidate)
 
 import apply_thread_action_plan as apply_plan  # type: ignore  # noqa: E402
 import build_review_packets as build_packets  # type: ignore  # noqa: E402
