@@ -138,8 +138,9 @@ def normalize_versioning_block(
     return normalized
 
 
-def parse_semver(value: str) -> tuple[int, int, int] | None:
-    parts = value.split(".")
+def parse_semver(value: object) -> tuple[int, int, int] | None:
+    text = str(value or "").strip()
+    parts = text.split(".")
     if len(parts) != 3:
         return None
     if any(not part.isdigit() for part in parts):

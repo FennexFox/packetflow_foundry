@@ -882,6 +882,38 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             self.assertEqual(context["builder_compatibility"]["status"], "missing-profile-versioning")
             self.assertIn("status=missing-profile-versioning", result.stderr)
 
+    def test_generated_collector_warns_but_returns_context_for_non_string_profile_semver(
+        self,
+    ) -> None:
+        spec = builder.derive_spec(sample_spec())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp) / str(spec["skill_name"])
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            builder.generate_files(skill_dir, spec)
+
+            profile_path = skill_dir / "profiles" / "sample-repo" / "profile.json"
+            profile_payload = json.loads(profile_path.read_text(encoding="utf-8"))
+            profile_payload["metadata"]["versioning"]["builder_semver"] = 1
+            profile_path.write_text(
+                json.dumps(profile_payload, indent=2, ensure_ascii=True) + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_python(
+                skill_dir / "scripts" / "collect_builder_tests_context.py",
+                "--repo-root",
+                str(repo_root),
+                "--output",
+                str(Path(tmp) / "context.json"),
+                "--profile",
+                str(profile_path),
+            )
+            context = json.loads((Path(tmp) / "context.json").read_text(encoding="utf-8"))
+            self.assertEqual(context["builder_compatibility"]["status"], "missing-profile-versioning")
+            self.assertIn("status=missing-profile-versioning", result.stderr)
+
     def test_generated_collector_prefers_project_local_skill_profile(self) -> None:
         spec = builder.derive_spec(sample_spec())
 
