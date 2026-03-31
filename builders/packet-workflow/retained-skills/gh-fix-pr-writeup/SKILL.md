@@ -18,6 +18,16 @@ Boundary:
 - Keep default repo bindings and review-doc ownership in `profiles/default/profile.json`.
 - Keep vendored repo overrides data-only in `.codex/project/profiles/`.
 
+## Execution Roots
+
+- Resolve `<skill-dir>` as the directory containing this `SKILL.md`.
+- Resolve `<python-bin>` as a concrete interpreter path before running any helper script.
+- On Windows, prefer a non-`WindowsApps` interpreter from `Get-Command python -All | Where-Object { $_.Source -notlike '*Microsoft\WindowsApps*' } | Select-Object -ExpandProperty Source -First 1`.
+- If that probe returns nothing, scan `%LOCALAPPDATA%\Python\pythoncore-*\python.exe` and `%LOCALAPPDATA%\Programs\Python\Python*\python.exe`, then reuse the first concrete path you find.
+- If you already resolved a concrete interpreter path outside the sandbox, reuse that exact path inside the sandbox instead of calling `py` or bare `python`.
+- Run helper scripts as `<python-bin> -B <skill-dir>/scripts/...`.
+- Stop and report the blocker if you cannot resolve a concrete interpreter path.
+
 ## Workflow
 
 1. Verify GitHub access first.
@@ -25,10 +35,10 @@ Boundary:
 - If authentication fails, stop and tell the user to run `gh auth login`.
 
 2. Collect, lint, and build packets before broad rereads.
-- Run `python scripts/collect_pr_context.py <pr-number> --repo-root <repo-root> --output <context-json>`.
-- Run `python scripts/lint_pr_writeup.py --context <context-json> --output <lint-json>`.
-- Run `python scripts/build_pr_review_packets.py --context <context-json> --lint <lint-json> --output-dir <packet-dir> --result-output <packet-dir>/build-result.json`.
-- Run `python scripts/write_evaluation_log.py init --context <context-json> --orchestrator <packet-dir>/orchestrator.json --lint <lint-json> --output <packet-dir>/eval-log.json`.
+- Run `<python-bin> -B <skill-dir>/scripts/collect_pr_context.py <pr-number> --repo-root <repo-root> --output <context-json>`.
+- Run `<python-bin> -B <skill-dir>/scripts/lint_pr_writeup.py --context <context-json> --output <lint-json>`.
+- Run `<python-bin> -B <skill-dir>/scripts/build_pr_review_packets.py --context <context-json> --lint <lint-json> --output-dir <packet-dir> --result-output <packet-dir>/build-result.json`.
+- Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <context-json> --orchestrator <packet-dir>/orchestrator.json --lint <lint-json> --output <packet-dir>/eval-log.json`.
 - Read `<packet-dir>/orchestrator.json` first.
 - Read `<packet-dir>/rules_packet.json` locally before drafting any replacement title/body.
 - Keep common-path local drafting on `rules_packet.json + synthesis_packet.json + <= 1 focused packet`.
@@ -51,9 +61,9 @@ Boundary:
 - `synthesis_packet.json` is the run-specific decision packet for this PR; it must not duplicate the full rules prose.
 - Draft the final title/body locally even when workers were used.
 - Workers may suggest bullets or evidence, but they must not emit embedded edit code or take over the PR mutation step.
-- Run `python scripts/validate_pr_writeup_edit.py --context <context-json> --title "<title>" --body-file <body-file> [--qa-result <qa-json>] --output <packet-dir>/validation.json` before any mutation.
+- Run `<python-bin> -B <skill-dir>/scripts/validate_pr_writeup_edit.py --context <context-json> --title "<title>" --body-file <body-file> [--qa-result <qa-json>] --output <packet-dir>/validation.json` before any mutation.
 - `validate_pr_writeup_edit.py` re-runs `gh auth status`, compares the live PR snapshot and changed-file list against the collected context, computes `qa_required`, and fails closed on stale context, invalid replacement text, unsupported claims, or missing QA clear when QA is required.
-- Run `python scripts/apply_pr_writeup.py --validation <packet-dir>/validation.json [--dry-run] [--result-output <packet-dir>/apply-result.json>` for the guarded apply step.
+- Run `<python-bin> -B <skill-dir>/scripts/apply_pr_writeup.py --validation <packet-dir>/validation.json [--dry-run] [--result-output <packet-dir>/apply-result.json>` for the guarded apply step.
 - `apply_pr_writeup.py` consumes validator output only, re-checks the live snapshot against the validated snapshot, and fails closed if `qa_required` is still true without QA clear.
 
 5. Judge the title and body conservatively.
@@ -114,8 +124,8 @@ Boundary:
 
 ## Evaluation
 
-- After build, run `python scripts/write_evaluation_log.py phase --log <packet-dir>/eval-log.json --phase build --result <packet-dir>/build-result.json`.
-- After lint, run `python scripts/write_evaluation_log.py phase --log <packet-dir>/eval-log.json --phase lint --result <lint-json>`.
+- After build, run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <packet-dir>/eval-log.json --phase build --result <packet-dir>/build-result.json`.
+- After lint, run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <packet-dir>/eval-log.json --phase lint --result <lint-json>`.
 - After validation, merge `validation.json` with the `validate` phase.
 - After guarded apply or dry-run, merge `apply-result.json` with the `apply` phase.
 - `packet_metrics.json` and build-result metadata should drive token-efficiency and common-path regression tracking.

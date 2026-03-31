@@ -224,6 +224,11 @@ Wrapper rules:
 - wrapper must point operators at the retained kernel
 - wrapper must not carry `builder-spec.json`, profiles, references, scripts, tests, or migration worksheets
 
+Generated operator-doc rules:
+- generated retained `SKILL.md` files must define the execution contract in terms of `<python-bin>` and `<skill-dir>`
+- generated helper invocations must use `<python-bin> -B <skill-dir>/scripts/...`
+- generated docs must not prescribe launcher-specific shims such as bare `python` or `py`
+
 Bump rules:
 - bump `compatibility_epoch` when generated skills or profiles require manual migration
 - do not bump the epoch for docs-only, tests-only, or additive backward-compatible changes

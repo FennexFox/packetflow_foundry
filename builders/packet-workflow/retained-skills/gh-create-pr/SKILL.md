@@ -14,16 +14,26 @@ This skill keeps the mutation path narrow:
 - use packet-heavy local synthesis on `rules + synthesis + <=1 focused packet`
 - never rely on `gh pr create --dry-run`; dry-run stays side-effect-free
 
+## Execution Roots
+
+- Resolve `<skill-dir>` as the directory containing this `SKILL.md`.
+- Resolve `<python-bin>` as a concrete interpreter path before running any helper script.
+- On Windows, prefer a non-`WindowsApps` interpreter from `Get-Command python -All | Where-Object { $_.Source -notlike '*Microsoft\WindowsApps*' } | Select-Object -ExpandProperty Source -First 1`.
+- If that probe returns nothing, scan `%LOCALAPPDATA%\Python\pythoncore-*\python.exe` and `%LOCALAPPDATA%\Programs\Python\Python*\python.exe`, then reuse the first concrete path you find.
+- If you already resolved a concrete interpreter path outside the sandbox, reuse that exact path inside the sandbox instead of calling `py` or bare `python`.
+- Run helper scripts as `<python-bin> -B <skill-dir>/scripts/...`.
+- Stop and report the blocker if you cannot resolve a concrete interpreter path.
+
 ## Workflow
 
 1. Collect context first.
-- Run `python scripts/collect_pr_create_context.py --repo-root <repo-root> [--repo <owner/name>] [--base <branch>] [--head <branch>] [--reviewer <login>] [--assignee <login>] [--label <name>] [--milestone <title>] [--draft] [--no-maintainer-edit] --output <context-json>`.
+- Run `<python-bin> -B <skill-dir>/scripts/collect_pr_create_context.py --repo-root <repo-root> [--repo <owner/name>] [--base <branch>] [--head <branch>] [--reviewer <login>] [--assignee <login>] [--label <name>] [--milestone <title>] [--draft] [--no-maintainer-edit] --output <context-json>`.
 - Collector keeps raw repeated options as entered. Normalization happens later in the validator.
 - Base resolution order is: `--base`, `branch.<current>.gh-merge-base`, remote default branch.
 
 2. Build drafting packets.
-- Run `python scripts/lint_pr_create.py --context <context-json> --output <lint-json>`.
-- Run `python scripts/build_pr_create_packets.py --context <context-json> --lint <lint-json> --output-dir <packet-dir> [--result-output <build-result-json>]`.
+- Run `<python-bin> -B <skill-dir>/scripts/lint_pr_create.py --context <context-json> --output <lint-json>`.
+- Run `<python-bin> -B <skill-dir>/scripts/build_pr_create_packets.py --context <context-json> --lint <lint-json> --output-dir <packet-dir> [--result-output <build-result-json>]`.
 - Read `orchestrator.json` first.
 - Keep the common path on `rules_packet.json`, `synthesis_packet.json`, and at most one focused packet.
 
@@ -33,13 +43,13 @@ This skill keeps the mutation path narrow:
 - If the repo already has a same-head open PR, do not create another one. Hand off to `gh-fix-pr-writeup`.
 
 4. Validate before mutation.
-- Run `python scripts/validate_pr_create.py --context <context-json> --title "<title>" --body-file <body.md> --output <validation-json>`.
+- Run `<python-bin> -B <skill-dir>/scripts/validate_pr_create.py --context <context-json> --title "<title>" --body-file <body.md> --output <validation-json>`.
 - Validator normalizes reviewers, assignees, labels, milestone, and maintainer-edit settings.
 - Validator re-checks auth, head/base state, template selection, changed-files fingerprint, and same-head open PR state.
 - Apply must consume `normalized_create_request` only.
 
 5. Apply or dry-run.
-- Run `python scripts/apply_pr_create.py --validation <validation-json> [--dry-run] [--result-output <apply-json>]`.
+- Run `<python-bin> -B <skill-dir>/scripts/apply_pr_create.py --validation <validation-json> [--dry-run] [--result-output <apply-json>]`.
 - `--dry-run` does not call `gh pr create`.
 - Real apply re-checks the validated snapshot again immediately before creation.
 - Real apply re-fetches the created PR and confirms title/body/base/head/draft/options match the normalized request.

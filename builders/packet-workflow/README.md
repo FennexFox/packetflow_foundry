@@ -25,6 +25,11 @@ Primary entrypoint:
   - generates an authoritative retained kernel under `retained-skills/<skill-name>/`
   - generates a thin discovery wrapper under `../../.agents/skills/<skill-name>/`
 
+Generated operator docs:
+- retained `SKILL.md` files are the operator-facing execution contract for bundled helper scripts
+- generated script invocations must use `<python-bin> -B <skill-dir>/scripts/...`
+- generated docs must not prescribe launcher-specific shims such as bare `python` or `py`
+
 Companion references:
 - `builder-contract.md`
 - `builder-evaluation-contract.md`

@@ -20,14 +20,24 @@ This is a packet-driven repo workflow skill:
 - Keep repo-specific paths, packet review docs, and deterministic lint toggles in the repo profile instead of hardcoding them into the generic core templates.
 - Keep the repo profile data-only: paths, globs, doc lists, booleans, and notes only. Do not add executable hooks, prompt text, or worker-routing logic there.
 
+## Execution Roots
+
+- Resolve `<skill-dir>` as the directory containing this `SKILL.md`.
+- Resolve `<python-bin>` as a concrete interpreter path before running any helper script.
+- On Windows, prefer a non-`WindowsApps` interpreter from `Get-Command python -All | Where-Object { $_.Source -notlike '*Microsoft\WindowsApps*' } | Select-Object -ExpandProperty Source -First 1`.
+- If that probe returns nothing, scan `%LOCALAPPDATA%\Python\pythoncore-*\python.exe` and `%LOCALAPPDATA%\Programs\Python\Python*\python.exe`, then reuse the first concrete path you find.
+- If you already resolved a concrete interpreter path outside the sandbox, reuse that exact path inside the sandbox instead of calling `py` or bare `python`.
+- Run helper scripts as `<python-bin> -B <skill-dir>/scripts/...`.
+- Stop and report the blocker if you cannot resolve a concrete interpreter path.
+
 ## Workflow
 
 1. Collect structured context.
 - Review `references/core-contract.md` before changing shared packet semantics.
 - Review `profiles/default/profile.json` before trusting repo-specific path bindings, review-doc lists, or deterministic lint toggles.
-- Run `python scripts/collect_public_docs_sync_context.py --repo-root <repo-root> --output <context-json>`.
-- Run `python scripts/lint_public_docs_sync.py --context <context-json> --output <lint-json>`.
-- Run `python scripts/build_public_docs_sync_packets.py --context <context-json> --lint <lint-json> --output-dir <packet-dir>`.
+- Run `<python-bin> -B <skill-dir>/scripts/collect_public_docs_sync_context.py --repo-root <repo-root> --output <context-json>`.
+- Run `<python-bin> -B <skill-dir>/scripts/lint_public_docs_sync.py --context <context-json> --output <lint-json>`.
+- Run `<python-bin> -B <skill-dir>/scripts/build_public_docs_sync_packets.py --context <context-json> --lint <lint-json> --output-dir <packet-dir>`.
 - - Optional: add `--result-output <build-result-json>` when you want a machine-readable build summary for smoke runs or evaluation logging.
 - Read `<packet-dir>/orchestrator.json` first.
 - Keep `<packet-dir>/global_packet.json` in view before reading any focused packet.
@@ -81,17 +91,17 @@ This is a packet-driven repo workflow skill:
 - ambiguous packet or ownership match
 
 5. Validate before mutating.
-- Run `python scripts/validate_public_docs_sync.py --context <context-json> --plan <plan-json> --output <validation-json>`.
+- Run `<python-bin> -B <skill-dir>/scripts/validate_public_docs_sync.py --context <context-json> --plan <plan-json> --output <validation-json>`.
 - Stop if validation reports errors, stale context, low-confidence findings, or an apply-gate failure.
 
 6. Apply only after local verification.
-- Run `python scripts/apply_public_docs_sync.py --validation <validation-json>` after the validation output is locally reviewed.
+- Run `<python-bin> -B <skill-dir>/scripts/apply_public_docs_sync.py --validation <validation-json>` after the validation output is locally reviewed.
 - Apply must consume validator-normalized output only; do not wire raw plan JSON directly into the mutation step.
 - If the user asked for `dry-run`, keep the same validation path and stop before any external mutation.
 
 ## Evaluation
 
-- Use `python scripts/write_evaluation_log.py init --context <context-json> --orchestrator <packet-dir>/orchestrator.json --output <packet-dir>/eval-log.json` after packet generation.
+- Use `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <context-json> --orchestrator <packet-dir>/orchestrator.json --output <packet-dir>/eval-log.json` after packet generation.
 - No orchestrator-profile-specific evaluation sidecar is required.
 - Use `phase` updates for deterministic lint, validate, and apply results when those outputs exist.
 - Use `finalize` after the run to merge token usage, actual worker mix, final usability, outputs, and notes.

@@ -225,6 +225,7 @@ def run_python(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
         check=True,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
 
 
@@ -242,6 +243,39 @@ def load_module_from_path(module_name: str, script_path: Path):
         except ValueError:
             pass
     return module
+
+
+EXECUTION_ROOTS_HEADER = "## Execution Roots"
+PYTHON_BIN_SKILL_PREFIX = "<python-bin> -B <skill-dir>/scripts/"
+FORBIDDEN_OPERATOR_DOC_PATTERNS = ("python scripts/", "py -3")
+
+
+def assert_skill_md_execution_contract(
+    testcase: unittest.TestCase, skill_md: str, *, source: Path | str
+) -> None:
+    label = str(source)
+    testcase.assertIn(EXECUTION_ROOTS_HEADER, skill_md, label)
+    testcase.assertIn(PYTHON_BIN_SKILL_PREFIX, skill_md, label)
+    for pattern in FORBIDDEN_OPERATOR_DOC_PATTERNS:
+        testcase.assertNotIn(pattern, skill_md, label)
+
+
+def operator_doc_scan_targets(foundry_root: Path) -> list[Path]:
+    scan_roots = [
+        foundry_root / "builders",
+        foundry_root / "core",
+    ]
+    allowed_suffixes = {".md", ".py", ".tmpl"}
+    excluded_parts = {"__pycache__", ".git", "tests"}
+    targets: list[Path] = []
+    for root in scan_roots:
+        for path in root.rglob("*"):
+            if not path.is_file() or path.suffix not in allowed_suffixes:
+                continue
+            if any(part in excluded_parts for part in path.parts):
+                continue
+            targets.append(path)
+    return targets
 
 
 class PacketWorkflowBuilderContractTests(unittest.TestCase):
@@ -321,6 +355,11 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 self.assertTrue((retained_dir / "references" / "core-contract.md").is_file())
                 self.assertTrue(
                     (retained_dir / "profiles" / "default" / "profile.json").is_file()
+                )
+                assert_skill_md_execution_contract(
+                    self,
+                    (retained_dir / "SKILL.md").read_text(encoding="utf-8"),
+                    source=retained_dir / "SKILL.md",
                 )
                 wrapper_files = sorted(
                     str(path.relative_to(wrapper_dir)).replace("\\", "/")
@@ -701,6 +740,32 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 profile_json["bindings"]["publish_config_path"],
                 "src/Properties/PublishConfiguration.xml",
             )
+            assert_skill_md_execution_contract(self, skill_md, source=skill_dir / "SKILL.md")
+
+    def test_retained_skill_docs_use_python_bin_execution_contract(self) -> None:
+        retained_root = (
+            builder.foundry_root_dir()
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+        )
+        for skill_md_path in sorted(retained_root.glob("*/SKILL.md")):
+            with self.subTest(skill=skill_md_path.parent.name):
+                assert_skill_md_execution_contract(
+                    self,
+                    skill_md_path.read_text(encoding="utf-8"),
+                    source=skill_md_path,
+                )
+
+    def test_repo_operator_docs_do_not_prescribe_python_shims(self) -> None:
+        foundry_root = builder.foundry_root_dir()
+        violations: list[str] = []
+        for path in operator_doc_scan_targets(foundry_root):
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            for pattern in FORBIDDEN_OPERATOR_DOC_PATTERNS:
+                if pattern in text:
+                    violations.append(f"{path}: {pattern}")
+        self.assertEqual(violations, [])
 
     def test_standard_scaffold_uses_validation_only_apply_contract(self) -> None:
         spec = builder.derive_spec(sample_spec())

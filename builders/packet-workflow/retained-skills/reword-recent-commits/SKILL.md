@@ -21,6 +21,16 @@ Boundary:
 
 Read `references/architecture-note.md` before changing the packet/result model or the flat/generic contract.
 
+## Execution Roots
+
+- Resolve `<skill-dir>` as the directory containing this `SKILL.md`.
+- Resolve `<python-bin>` as a concrete interpreter path before running any helper script.
+- On Windows, prefer a non-`WindowsApps` interpreter from `Get-Command python -All | Where-Object { $_.Source -notlike '*Microsoft\WindowsApps*' } | Select-Object -ExpandProperty Source -First 1`.
+- If that probe returns nothing, scan `%LOCALAPPDATA%\Python\pythoncore-*\python.exe` and `%LOCALAPPDATA%\Programs\Python\Python*\python.exe`, then reuse the first concrete path you find.
+- If you already resolved a concrete interpreter path outside the sandbox, reuse that exact path inside the sandbox instead of calling `py` or bare `python`.
+- Run helper scripts as `<python-bin> -B <skill-dir>/scripts/...`.
+- Stop and report the blocker if you cannot resolve a concrete interpreter path.
+
 ## Workflow
 
 1. Collect artifacts before drafting messages.

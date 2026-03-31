@@ -1780,7 +1780,7 @@ def lint_cli_section(spec: dict) -> tuple[str, str, str]:
     if not spec["needs_lint"]:
         return "", "", ""
     step = (
-        f"- Run `python scripts/lint_{spec['domain_slug']}.py --context <context-json> "
+        f"- Run `<python-bin> -B <skill-dir>/scripts/lint_{spec['domain_slug']}.py --context <context-json> "
         "--output <lint-json>`."
     )
     script_line = (
@@ -1799,7 +1799,7 @@ def workflow_tail(spec: dict) -> str:
             "\n".join(
                 [
                     f"{step_number}. Validate before mutating.",
-                    f"- Run `python scripts/validate_{spec['domain_slug']}.py --context <context-json> --plan <plan-json> --output <validation-json>`.",
+                    f"- Run `<python-bin> -B <skill-dir>/scripts/validate_{spec['domain_slug']}.py --context <context-json> --plan <plan-json> --output <validation-json>`.",
                     "- Stop if validation reports errors, stale context, low-confidence findings, or an apply-gate failure.",
                 ]
             )
@@ -1810,7 +1810,7 @@ def workflow_tail(spec: dict) -> str:
             "\n".join(
                 [
                     f"{step_number}. Apply only after local verification.",
-                    f"- Run `python scripts/apply_{spec['domain_slug']}.py --validation <validation-json>` after the validation output is locally reviewed.",
+                    f"- Run `<python-bin> -B <skill-dir>/scripts/apply_{spec['domain_slug']}.py --validation <validation-json>` after the validation output is locally reviewed.",
                     "- Apply must consume validator-normalized output only; do not wire raw plan JSON directly into the mutation step.",
                     "- If the user asked for `dry-run`, keep the same validation path and stop before any external mutation.",
                 ]

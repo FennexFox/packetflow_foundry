@@ -62,9 +62,11 @@ If the run cannot proceed, report the blocker clearly and stop at the appropriat
 
 - Resolve `<skill-dir>` as the directory containing this `SKILL.md`.
 - Resolve `<python-bin>` as a concrete interpreter path before running any helper script.
-- Prefer `py -3 -c "import sys; print(sys.executable)"` to discover `<python-bin>`, then run that exact interpreter with `-B`.
-- If launcher shims are unreliable in automation, use any already-resolved non-shim interpreter path instead of calling bare `python` or repo-relative `scripts/...`.
-- All helper scripts in this skill are anchored to `<skill-dir>/scripts/...`, not to the repository working directory.
+- On Windows, prefer a non-`WindowsApps` interpreter from `Get-Command python -All | Where-Object { $_.Source -notlike '*Microsoft\WindowsApps*' } | Select-Object -ExpandProperty Source -First 1`.
+- If that probe returns nothing, scan `%LOCALAPPDATA%\Python\pythoncore-*\python.exe` and `%LOCALAPPDATA%\Programs\Python\Python*\python.exe`, then reuse the first concrete path you find.
+- If you already resolved a concrete interpreter path outside the sandbox, reuse that exact path inside the sandbox instead of calling `py` or bare `python`.
+- Run helper scripts as `<python-bin> -B <skill-dir>/scripts/...`.
+- Stop and report the blocker if you cannot resolve a concrete interpreter path.
 
 ## Workflow
 
@@ -74,7 +76,7 @@ If the run cannot proceed, report the blocker clearly and stop at the appropriat
 - Do not substitute weaker local-only guesses when remote GitHub evidence is required for the reporting window.
 
 2. Collect structured context before broad reading.
-- Prefer `<python-bin> -B` for verification and smoke commands, or set `PYTHONDONTWRITEBYTECODE=1` when discovery forces a plain `python` launch.
+- Prefer `<python-bin> -B` for verification and smoke commands and reuse the resolved concrete interpreter path for every helper script.
 - Run `<python-bin> -B <skill-dir>/scripts/collect_weekly_update_context.py --repo-root <repo-root> --output <context-json> [--profile <profile-json>]`.
 - Run `<python-bin> -B <skill-dir>/scripts/lint_weekly_update.py --context <context-json> --output <lint-json>`.
 - Run `<python-bin> -B <skill-dir>/scripts/build_weekly_update_packets.py --context <context-json> --lint <lint-json> --output-dir <packet-dir> --result-output <build-result-json>`.
