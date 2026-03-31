@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
@@ -124,6 +125,13 @@ def write_skill_fixture(
 
 
 class PacketWorkflowVersioningTests(unittest.TestCase):
+    def test_cli_defaults_use_canonical_retained_skills_root(self) -> None:
+        expected = str(versioning.canonical_retained_skills_root())
+        with mock.patch.object(sys, "argv", ["check_skill_versions.py"]):
+            self.assertEqual(check_versions.parse_args().skills_root, expected)
+        with mock.patch.object(sys, "argv", ["stamp_skill_versions.py"]):
+            self.assertEqual(stamp_versions.parse_args().skills_root, expected)
+
     def test_evaluate_skill_dir_reports_current(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             skill_dir = write_skill_fixture(

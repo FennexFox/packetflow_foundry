@@ -30,13 +30,15 @@ Use this skill only for repo packet workflows that follow `collect -> optional l
 - Choose `orchestrator_profile=standard` by default and use `packet-heavy-orchestrator` only when the workflow needs the packet-heavy common path from `../../../core/contracts/packet-workflow/common-path-contract.md`.
 
 3. Generate the scaffold deterministically.
-- Run `python ../../../builders/packet-workflow/scripts/init_packet_skill.py --spec <builder-spec.json> --output-dir <skills-root>`.
+- Run `python ../../../builders/packet-workflow/scripts/init_packet_skill.py --spec <builder-spec.json> --output-dir <foundry-root>`.
 - The generator consumes templates from `../../../core/templates/packet-workflow/` and defaults from `../../../core/defaults/packet-workflow/`.
+- The generator writes the authoritative retained kernel to `../../../builders/packet-workflow/retained-skills/<skill-name>/`.
+- The generator writes the thin discovery wrapper to `../../../.agents/skills/<skill-name>/`.
 - Generated skills should wire evaluation logging to an explicit temp or packet path such as `<packet-dir>/eval-log.json`.
 
 4. Validate the generated skill immediately.
-- Run `python <codex-home>/skills/.system/skill-creator/scripts/quick_validate.py <generated-skill-dir>`.
-- Run `python -m py_compile <generated-skill-dir>/scripts/*.py` for every generated script.
+- Run `python <codex-home>/skills/.system/skill-creator/scripts/quick_validate.py ../../../.agents/skills/<skill-name>`.
+- Run `python -m py_compile ../../../builders/packet-workflow/retained-skills/<skill-name>/scripts/*.py` for every generated retained script.
 
 ## Guardrails
 
@@ -45,6 +47,7 @@ Use this skill only for repo packet workflows that follow `collect -> optional l
 - Keep repo profiles data-only end to end; executable behavior stays in scripts and core contracts.
 - Treat `worker_selection_guidance` as explanatory metadata only; `packet_worker_map` is the routing authority when present.
 - Prefer foundry baseline behavior first, then optional foundry overlay, then project-local profile overrides outside this repo.
+- Do not place authoritative builder specs, profiles, references, scripts, tests, or migration worksheets back under `.agents/skills/`.
 
 ## Output
 

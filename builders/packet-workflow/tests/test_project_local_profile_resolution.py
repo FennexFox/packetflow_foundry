@@ -8,14 +8,14 @@ from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[3]
 SKILL_SCRIPT_DIRS = [
-    REPO_ROOT / ".agents" / "skills" / "draft-release-copy" / "scripts",
-    REPO_ROOT / ".agents" / "skills" / "gh-address-review-threads" / "scripts",
-    REPO_ROOT / ".agents" / "skills" / "gh-create-pr" / "scripts",
-    REPO_ROOT / ".agents" / "skills" / "gh-fix-pr-writeup" / "scripts",
-    REPO_ROOT / ".agents" / "skills" / "git-split-and-commit" / "scripts",
-    REPO_ROOT / ".agents" / "skills" / "public-docs-sync" / "scripts",
-    REPO_ROOT / ".agents" / "skills" / "reword-recent-commits" / "scripts",
-    REPO_ROOT / ".agents" / "skills" / "weekly-update" / "scripts",
+    REPO_ROOT / "builders" / "packet-workflow" / "retained-skills" / "draft-release-copy" / "scripts",
+    REPO_ROOT / "builders" / "packet-workflow" / "retained-skills" / "gh-address-review-threads" / "scripts",
+    REPO_ROOT / "builders" / "packet-workflow" / "retained-skills" / "gh-create-pr" / "scripts",
+    REPO_ROOT / "builders" / "packet-workflow" / "retained-skills" / "gh-fix-pr-writeup" / "scripts",
+    REPO_ROOT / "builders" / "packet-workflow" / "retained-skills" / "git-split-and-commit" / "scripts",
+    REPO_ROOT / "builders" / "packet-workflow" / "retained-skills" / "public-docs-sync" / "scripts",
+    REPO_ROOT / "builders" / "packet-workflow" / "retained-skills" / "reword-recent-commits" / "scripts",
+    REPO_ROOT / "builders" / "packet-workflow" / "retained-skills" / "weekly-update" / "scripts",
 ]
 for script_dir in SKILL_SCRIPT_DIRS:
     if str(script_dir) not in sys.path:

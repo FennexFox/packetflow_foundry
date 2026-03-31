@@ -89,8 +89,20 @@ def load_repo_profile(path: Path) -> dict:
     return payload
 
 
-def canonical_builder_version_path() -> Path:
-    return skill_root().parents[2] / "builders" / "packet-workflow" / "version.json"
+def canonical_builder_version_path() -> Path | None:
+    seen: set[Path] = set()
+    for base in skill_root().parents:
+        for candidate in (
+            base / "builders" / "packet-workflow" / "version.json",
+            base / ".codex" / "vendor" / "packetflow_foundry" / "builders" / "packet-workflow" / "version.json",
+        ):
+            resolved = candidate.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            if resolved.is_file():
+                return resolved
+    return None
 
 
 def normalize_versioning_block(
@@ -150,7 +162,7 @@ def compare_semver(left: str, right: str) -> int:
 def load_current_builder_versioning() -> tuple[dict, list[str]]:
     warnings: list[str] = []
     version_path = canonical_builder_version_path()
-    if version_path.is_file():
+    if version_path is not None and version_path.is_file():
         payload = json.loads(version_path.read_text(encoding="utf-8-sig"))
         normalized = normalize_versioning_block(
             payload,

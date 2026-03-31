@@ -6,7 +6,7 @@ Use `packetflow_foundry` as a vendor subtree at `.codex/vendor/packetflow_foundr
 
 Compose in this order:
 
-`foundry baseline -> optional foundry overlay -> project-local profile -> root .agents/skills override surface`
+`foundry baseline -> optional foundry overlay -> project-local profile -> root .agents/skills wrapper/override surface`
 
 Meaning:
 - start from `profiles/baseline/profile.json`
@@ -15,7 +15,8 @@ Meaning:
   - keep repo-wide defaults in `.codex/project/profiles/default/profile.json`
   - keep skill-specific overrides in `.codex/project/profiles/<skill-name>/profile.json`
 - expose repo-scoped skills from repo-root `.agents/skills/`
-- bridge reusable foundry skills from `.codex/vendor/packetflow_foundry/.agents/skills/` into the root discovery surface
+- bridge reusable foundry thin wrappers from `.codex/vendor/packetflow_foundry/.agents/skills/` into the root discovery surface
+- keep authoritative retained kernels in `.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/`
 
 ## Recommended Consumer Layout
 
@@ -44,7 +45,8 @@ Bootstrap notes:
 - `.codex/project/profiles/default/profile.json` is a project-local scaffold, not a reusable foundry overlay
 - skill-specific project-local overrides belong in `.codex/project/profiles/<skill-name>/profile.json`
 - repo-root `.agents/skills/` is the canonical consumer skill location
-- vendored foundry skills are bridged into root `.agents/skills/` unless a root entry already exists
+- vendored foundry thin wrappers are bridged into root `.agents/skills/` unless a root entry already exists
+- bridged wrappers resolve authoritative retained kernels from `.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/`
 - legacy `.codex/project/skills/` is deprecated and bridged only for migration
 - if any tracked non-`AGENTS.md` bootstrap output already exists, the helper aborts without writing files
 - if symlink creation fails, the helper aborts with environment guidance instead of copying skills
@@ -56,7 +58,8 @@ Keep these in the foundry vendor subtree:
 - reusable overlay profiles
 - reusable builder logic
 - reusable default managed agent registry
-- reusable foundry skill entrypoints under `.codex/vendor/packetflow_foundry/.agents/skills/`
+- reusable foundry thin skill entrypoints under `.codex/vendor/packetflow_foundry/.agents/skills/`
+- reusable foundry retained kernels under `.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/`
 
 ## What Stays Outside The Vendor
 

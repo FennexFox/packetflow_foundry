@@ -33,6 +33,14 @@ def core_defaults_dir() -> Path:
     return foundry_root_dir() / "core" / "defaults" / "packet-workflow"
 
 
+def retained_skills_root(root_dir: Path) -> Path:
+    return root_dir / "builders" / "packet-workflow" / "retained-skills"
+
+
+def wrapper_skills_root(root_dir: Path) -> Path:
+    return root_dir / ".agents" / "skills"
+
+
 def load_json_document(path: Path) -> object:
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
@@ -253,7 +261,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         required=True,
-        help="Root directory that will receive the generated skill folder",
+        help=(
+            "Repository-like root directory that will receive both "
+            "`builders/packet-workflow/retained-skills/<skill>` and "
+            "`.agents/skills/<skill>`."
+        ),
     )
     parser.add_argument(
         "--managed-agents-dir",
@@ -2400,6 +2412,12 @@ def build_render_context(spec: dict) -> dict[str, str]:
         "DESCRIPTION": spec["description"],
         "SHORT_DESCRIPTION": short_description(spec["primary_goal"]),
         "DEFAULT_PROMPT": spec["primary_goal"],
+        "RETAINED_SKILL_DIR": (
+            f"../../../builders/packet-workflow/retained-skills/{spec['skill_name']}"
+        ),
+        "RETAINED_SKILL_MD": (
+            f"../../../builders/packet-workflow/retained-skills/{spec['skill_name']}/SKILL.md"
+        ),
         "DOMAIN_SLUG": spec["domain_slug"],
         "WORKFLOW_FAMILY": spec["workflow_family"],
         "PRIMARY_GOAL": spec["primary_goal"],
@@ -2506,7 +2524,7 @@ def write_text(path: Path, content: str) -> None:
     path.write_text(content.rstrip() + "\n", encoding="utf-8", newline="\n")
 
 
-def generate_files(skill_dir: Path, spec: dict) -> list[Path]:
+def generate_retained_files(skill_dir: Path, spec: dict) -> list[Path]:
     context = build_render_context(spec)
     generated: list[Path] = []
 
@@ -2538,6 +2556,43 @@ def generate_files(skill_dir: Path, spec: dict) -> list[Path]:
     return generated
 
 
+def generate_wrapper_files(wrapper_dir: Path, spec: dict) -> list[Path]:
+    context = build_render_context(spec)
+    generated: list[Path] = []
+    outputs = {
+        "SKILL.md": "skill_wrapper_md.tmpl",
+        "agents/openai.yaml": "openai_yaml.tmpl",
+    }
+    for relative_path, template_name in outputs.items():
+        destination = wrapper_dir / relative_path
+        write_text(destination, render(template_name, context))
+        generated.append(destination)
+    return generated
+
+
+def generate_files(skill_dir: Path, spec: dict) -> list[Path]:
+    return generate_retained_files(skill_dir, spec)
+
+
+def ensure_target_is_empty(path: Path, *, label: str) -> None:
+    if path.exists() and any(path.iterdir()):
+        raise ValueError(f"Refusing to overwrite non-empty {label}: {path}")
+
+
+def generate_skill_layout(
+    output_root: Path, spec: dict
+) -> tuple[Path, list[Path], Path, list[Path]]:
+    retained_dir = retained_skills_root(output_root) / str(spec["skill_name"])
+    wrapper_dir = wrapper_skills_root(output_root) / str(spec["skill_name"])
+    ensure_target_is_empty(retained_dir, label="retained skill directory")
+    ensure_target_is_empty(wrapper_dir, label="wrapper skill directory")
+    retained_dir.mkdir(parents=True, exist_ok=True)
+    wrapper_dir.mkdir(parents=True, exist_ok=True)
+    retained_files = generate_retained_files(retained_dir, spec)
+    wrapper_files = generate_wrapper_files(wrapper_dir, spec)
+    return retained_dir, retained_files, wrapper_dir, wrapper_files
+
+
 def main() -> int:
     args = parse_args()
     spec_path = Path(args.spec).resolve()
@@ -2546,21 +2601,19 @@ def main() -> int:
     try:
         validate_managed_agent_registry(args.managed_agents_dir)
         spec = derive_spec(load_spec(spec_path))
+        retained_dir, retained_files, wrapper_dir, wrapper_files = generate_skill_layout(
+            output_dir, spec
+        )
     except ValueError as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1
 
-    skill_dir = output_dir / spec["skill_name"]
-    if skill_dir.exists() and any(skill_dir.iterdir()):
-        print(f"[ERROR] Refusing to overwrite non-empty skill directory: {skill_dir}")
-        return 1
-
-    skill_dir.mkdir(parents=True, exist_ok=True)
-    generated = generate_files(skill_dir, spec)
-
-    print(f"[OK] Generated {spec['skill_name']} at {skill_dir}")
-    for path in generated:
-        print(f" - {path.relative_to(skill_dir)}")
+    print(f"[OK] Generated retained {spec['skill_name']} kernel at {retained_dir}")
+    for path in retained_files:
+        print(f" - retained {path.relative_to(retained_dir)}")
+    print(f"[OK] Generated thin wrapper for {spec['skill_name']} at {wrapper_dir}")
+    for path in wrapper_files:
+        print(f" - wrapper {path.relative_to(wrapper_dir)}")
     return 0
 
 

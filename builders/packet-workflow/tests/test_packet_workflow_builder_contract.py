@@ -248,14 +248,54 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
     def test_retained_skill_builder_specs_generate_core_contract_and_profile(self) -> None:
         foundry_root = builder.foundry_root_dir()
         retained_specs = [
-            foundry_root / ".agents" / "skills" / "draft-release-copy" / "builder-spec.json",
-            foundry_root / ".agents" / "skills" / "gh-create-pr" / "builder-spec.json",
-            foundry_root / ".agents" / "skills" / "gh-address-review-threads" / "builder-spec.json",
-            foundry_root / ".agents" / "skills" / "gh-fix-pr-writeup" / "builder-spec.json",
-            foundry_root / ".agents" / "skills" / "git-split-and-commit" / "builder-spec.json",
-            foundry_root / ".agents" / "skills" / "public-docs-sync" / "builder-spec.json",
-            foundry_root / ".agents" / "skills" / "reword-recent-commits" / "builder-spec.json",
-            foundry_root / ".agents" / "skills" / "weekly-update" / "builder-spec.json",
+            foundry_root
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+            / "draft-release-copy"
+            / "builder-spec.json",
+            foundry_root
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+            / "gh-create-pr"
+            / "builder-spec.json",
+            foundry_root
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+            / "gh-address-review-threads"
+            / "builder-spec.json",
+            foundry_root
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+            / "gh-fix-pr-writeup"
+            / "builder-spec.json",
+            foundry_root
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+            / "git-split-and-commit"
+            / "builder-spec.json",
+            foundry_root
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+            / "public-docs-sync"
+            / "builder-spec.json",
+            foundry_root
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+            / "reword-recent-commits"
+            / "builder-spec.json",
+            foundry_root
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+            / "weekly-update"
+            / "builder-spec.json",
         ]
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -270,9 +310,24 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                     "--managed-agents-dir",
                     str(FIXTURE_AGENTS_DIR),
                 )
-                skill_dir = output_root / spec_path.parent.name
-                self.assertTrue((skill_dir / "references" / "core-contract.md").is_file())
-                self.assertTrue((skill_dir / "profiles" / "default" / "profile.json").is_file())
+                retained_dir = (
+                    output_root
+                    / "builders"
+                    / "packet-workflow"
+                    / "retained-skills"
+                    / spec_path.parent.name
+                )
+                wrapper_dir = output_root / ".agents" / "skills" / spec_path.parent.name
+                self.assertTrue((retained_dir / "references" / "core-contract.md").is_file())
+                self.assertTrue(
+                    (retained_dir / "profiles" / "default" / "profile.json").is_file()
+                )
+                wrapper_files = sorted(
+                    str(path.relative_to(wrapper_dir)).replace("\\", "/")
+                    for path in wrapper_dir.rglob("*")
+                    if path.is_file()
+                )
+                self.assertEqual(wrapper_files, ["SKILL.md", "agents/openai.yaml"])
 
     def test_builder_uses_root_core_assets(self) -> None:
         foundry_root = builder.foundry_root_dir()
@@ -304,13 +359,15 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
         )
 
     def test_skill_subtree_stays_thin(self) -> None:
-        skill_dir = builder.foundry_root_dir() / ".agents" / "skills" / "packet-workflow-skill-builder"
-        files = sorted(
-            str(path.relative_to(skill_dir)).replace("\\", "/")
-            for path in skill_dir.rglob("*")
-            if path.is_file()
-        )
-        self.assertEqual(files, ["SKILL.md", "agents/openai.yaml"])
+        skills_root = builder.foundry_root_dir() / ".agents" / "skills"
+        for skill_dir in sorted(path for path in skills_root.iterdir() if path.is_dir()):
+            with self.subTest(skill=skill_dir.name):
+                files = sorted(
+                    str(path.relative_to(skill_dir)).replace("\\", "/")
+                    for path in skill_dir.rglob("*")
+                    if path.is_file()
+                )
+                self.assertEqual(files, ["SKILL.md", "agents/openai.yaml"])
 
     def test_managed_agent_registry_contains_packet_explorer(self) -> None:
         self.assertIn("packet_explorer", builder.KNOWN_WORKER_AGENT_TYPES)

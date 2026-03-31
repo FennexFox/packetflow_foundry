@@ -27,6 +27,9 @@ Repo-specific profiles belong in `.codex/project/profiles/`, repo-specific skill
   - `packet-heavy-orchestrator` is an opt-in upper overlay.
 - `builders/`
   - Builder logic, builder-specific contracts, generators, and tests that consume `core/`.
+- `builders/packet-workflow/retained-skills/`
+  - Authoritative retained skill kernels.
+  - Owns reusable builder specs, profiles, references, scripts, tests, and migration worksheets for foundry packet workflows.
 - `.agents/skills/`
   - Thin skill entrypoints only.
   - Do not place authoritative contracts, templates, scripts, or tests here.
@@ -66,7 +69,8 @@ Consumer projects may adjust binding, selection, and routing locally, but should
 
 Use this model when vendored:
 - foundry default managed set: `.codex/vendor/packetflow_foundry/agents/`
-- foundry reusable skill source: `.codex/vendor/packetflow_foundry/.agents/skills/`
+- foundry thin skill wrapper surface: `.codex/vendor/packetflow_foundry/.agents/skills/`
+- foundry authoritative retained skill source: `.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/`
 - consumer-local skill discovery surface: `.agents/skills/`
 - additive project overrides: `.codex/project/agents/`
 

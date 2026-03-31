@@ -2,6 +2,11 @@
 
 Use this file when drafting `builder-spec.json` for `scripts/init_packet_skill.py`.
 
+Boundary note:
+- the thin-entrypoint intent for `.agents/skills/` predates the retained-kernel split
+- earlier drift happened because the original generator and tests still emitted bundled skills under `.agents/skills/`
+- the current contract is enforced by generation output and tests: retained kernels live under `retained-skills/`, wrappers live under `.agents/skills/`
+
 Authoritative ownership:
 - shared contracts, templates, and default semantics live under [`../../core/`](../../core/)
 - this builder consumes those assets and is not their authoritative owner
@@ -206,6 +211,19 @@ Generated runtime metadata:
 - `profiles/<name>/profile.json` gets `metadata.versioning`
 - runtime collectors should record builder compatibility and warn when the active skill or profile is not current
 
+## Output Layout
+
+`scripts/init_packet_skill.py --output-dir <repo-root>` generates two coordinated trees:
+- authoritative retained kernel:
+  - `builders/packet-workflow/retained-skills/<skill-name>/`
+- thin discovery wrapper:
+  - `.agents/skills/<skill-name>/`
+
+Wrapper rules:
+- wrapper subtree may contain only `SKILL.md` and `agents/openai.yaml`
+- wrapper must point operators at the retained kernel
+- wrapper must not carry `builder-spec.json`, profiles, references, scripts, tests, or migration worksheets
+
 Bump rules:
 - bump `compatibility_epoch` when generated skills or profiles require manual migration
 - do not bump the epoch for docs-only, tests-only, or additive backward-compatible changes
@@ -389,7 +407,7 @@ Generated mutating scaffolds should inherit these defaults:
 
 ## Generated Files
 
-Every generated skill includes:
+Every generated retained kernel includes:
 - `SKILL.md`
 - `agents/openai.yaml`
 - `references/core-contract.md`
@@ -406,6 +424,10 @@ Optional generated files:
 - `scripts/lint_<domain_slug>.py`
 - `scripts/validate_<domain_slug>.py`
 - `scripts/apply_<domain_slug>.py`
+
+Every generated wrapper includes:
+- `SKILL.md`
+- `agents/openai.yaml`
 
 ## Generated Packet Conventions
 

@@ -15,15 +15,17 @@ SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
 PACKET_WORKFLOW_SCRIPT_DIR = Path(__file__).resolve().parents[2] / "packet-workflow" / "scripts"
 REWORD_SCRIPT_DIR = (
     Path(__file__).resolve().parents[3]
-    / ".agents"
-    / "skills"
+    / "builders"
+    / "packet-workflow"
+    / "retained-skills"
     / "reword-recent-commits"
     / "scripts"
 )
 GIT_SPLIT_SCRIPT_DIR = (
     Path(__file__).resolve().parents[3]
-    / ".agents"
-    / "skills"
+    / "builders"
+    / "packet-workflow"
+    / "retained-skills"
     / "git-split-and-commit"
     / "scripts"
 )
@@ -126,6 +128,21 @@ class ConsumerBootstrapTests(unittest.TestCase):
     def test_init_creates_codex_scaffold_without_root_agents(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = create_consumer_repo(Path(tmp), vendor_skill_names=["vendor-skill"])
+            vendor_skill_dir = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".agents"
+                / "skills"
+                / "vendor-skill"
+            )
+            vendor_wrapper_files = sorted(
+                str(path.relative_to(vendor_skill_dir)).replace("\\", "/")
+                for path in vendor_skill_dir.rglob("*")
+                if path.is_file()
+            )
+            self.assertEqual(vendor_wrapper_files, ["SKILL.md", "agents/openai.yaml"])
 
             code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
 
@@ -142,6 +159,11 @@ class ConsumerBootstrapTests(unittest.TestCase):
             codex_agents = (repo / ".codex" / "AGENTS.md").read_text(encoding="utf-8")
             self.assertIn(bootstrap.BOOTSTRAP_MARKER_START, codex_agents)
             self.assertIn(".agents/skills/", codex_agents)
+            self.assertIn("thin discovery-wrapper surface", codex_agents)
+            self.assertIn(
+                ".codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/",
+                codex_agents,
+            )
             self.assertIn(
                 ".codex/project/profiles/default/profile.json",
                 codex_agents,

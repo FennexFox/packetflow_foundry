@@ -16,8 +16,8 @@
       "root": "builders/consumer-bootstrap/tests",
       "extraPaths": [
         "builders/consumer-bootstrap/scripts",
-        ".agents/skills/reword-recent-commits/scripts",
-        ".agents/skills/git-split-and-commit/scripts"
+        "builders/packet-workflow/retained-skills/reword-recent-commits/scripts",
+        "builders/packet-workflow/retained-skills/git-split-and-commit/scripts"
       ]
     },
     {
@@ -30,39 +30,75 @@
       ]
     },
     {
-      "root": ".agents/skills/gh-address-review-threads/scripts"
+      "root": "builders/packet-workflow/retained-skills/draft-release-copy/scripts"
     },
     {
-      "root": ".agents/skills/gh-address-review-threads/tests",
+      "root": "builders/packet-workflow/retained-skills/draft-release-copy/tests",
       "extraPaths": [
-        ".agents/skills/gh-address-review-threads/scripts"
+        "builders/packet-workflow/retained-skills/draft-release-copy/scripts"
       ]
     },
     {
-      "root": ".agents/skills/gh-fix-pr-writeup/scripts"
+      "root": "builders/packet-workflow/retained-skills/gh-address-review-threads/scripts"
     },
     {
-      "root": ".agents/skills/gh-fix-pr-writeup/tests",
+      "root": "builders/packet-workflow/retained-skills/gh-address-review-threads/tests",
       "extraPaths": [
-        ".agents/skills/gh-fix-pr-writeup/scripts"
+        "builders/packet-workflow/retained-skills/gh-address-review-threads/scripts"
       ]
     },
     {
-      "root": ".agents/skills/git-split-and-commit/scripts"
+      "root": "builders/packet-workflow/retained-skills/gh-create-pr/scripts"
     },
     {
-      "root": ".agents/skills/git-split-and-commit/tests",
+      "root": "builders/packet-workflow/retained-skills/gh-create-pr/tests",
       "extraPaths": [
-        ".agents/skills/git-split-and-commit/scripts"
+        "builders/packet-workflow/retained-skills/gh-create-pr/scripts"
       ]
     },
     {
-      "root": ".agents/skills/reword-recent-commits/scripts"
+      "root": "builders/packet-workflow/retained-skills/gh-fix-pr-writeup/scripts"
     },
     {
-      "root": ".agents/skills/reword-recent-commits/tests",
+      "root": "builders/packet-workflow/retained-skills/gh-fix-pr-writeup/tests",
       "extraPaths": [
-        ".agents/skills/reword-recent-commits/scripts"
+        "builders/packet-workflow/retained-skills/gh-fix-pr-writeup/scripts"
+      ]
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/git-split-and-commit/scripts"
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/git-split-and-commit/tests",
+      "extraPaths": [
+        "builders/packet-workflow/retained-skills/git-split-and-commit/scripts"
+      ]
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/public-docs-sync/scripts"
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/public-docs-sync/tests",
+      "extraPaths": [
+        "builders/packet-workflow/retained-skills/public-docs-sync/scripts"
+      ]
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/reword-recent-commits/scripts"
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/reword-recent-commits/tests",
+      "extraPaths": [
+        "builders/packet-workflow/retained-skills/reword-recent-commits/scripts"
+      ]
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/weekly-update/scripts"
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/weekly-update/tests",
+      "extraPaths": [
+        "builders/packet-workflow/retained-skills/weekly-update/scripts"
       ]
     }
   ]

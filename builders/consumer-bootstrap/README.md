@@ -16,6 +16,7 @@ Behavior:
 - creates `.codex/project/agents/.gitkeep`
 - ensures repo-root `.agents/skills/` exists as the consumer discovery surface
 - creates directory-symlink bridges from repo-root `.agents/skills/<skill-name>` to `.codex/vendor/packetflow_foundry/.agents/skills/<skill-name>`
+- bridges thin wrappers only; authoritative retained kernels stay under `.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/<skill-name>`
 - skips bridge creation when a root `.agents/skills/<skill-name>` entry already exists
 - bridges legacy `.codex/project/skills/<skill-name>` only as a migration shim and emits a deprecation notice
 - creates or appends `.codex/AGENTS.md`

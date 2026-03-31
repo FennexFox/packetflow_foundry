@@ -9,7 +9,7 @@
   </LongDescription>
   <ModVersion Value="0.1.0" />
   <ChangeLog>
-    - Ship retained repo workflow skills under repo-root .agents/skills.
+    - Restore wrapper-only repo-root .agents/skills and keep authoritative retained kernels under builders/packet-workflow/retained-skills.
     - Add consumer bootstrap and packet-workflow versioning metadata.
     - Capture repo-local release gating around packet-efficiency and token-savings drift.
   </ChangeLog>

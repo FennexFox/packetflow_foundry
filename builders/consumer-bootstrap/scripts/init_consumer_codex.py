@@ -88,6 +88,11 @@ def render_agents_block() -> str:
                 "- Project-local overlays: `.codex/project/profiles/`, "
                 "`.agents/skills/`, `.codex/project/agents/`"
             ),
+            (
+                "- `.agents/skills/` is a thin discovery-wrapper surface. "
+                "Reusable retained kernels stay under "
+                "`.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/`."
+            ),
             "- Do not edit `.codex/vendor/packetflow_foundry` for local needs.",
             (
                 "- `.codex/project/profiles/default/profile.json` is a "

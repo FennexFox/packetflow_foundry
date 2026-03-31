@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from packet_workflow_versioning import (
+    canonical_retained_skills_root,
     evaluate_skill_dir,
     load_builder_versioning,
     retained_skill_dirs,
@@ -19,7 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--skills-root",
-        default=str(Path(__file__).resolve().parents[3] / ".agents" / "skills"),
+        default=str(canonical_retained_skills_root()),
         help="Directory containing retained skill folders.",
     )
     parser.add_argument(

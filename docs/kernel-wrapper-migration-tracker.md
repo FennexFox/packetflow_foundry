@@ -8,6 +8,18 @@ decomposed into:
 - profile-only data
 - cannot-migrate items
 
+## Foundry Boundary
+
+Current foundry ownership:
+- authoritative retained kernels live under `builders/packet-workflow/retained-skills/`
+- thin discovery wrappers live under `.agents/skills/`
+- wrappers may contain only `SKILL.md` and `agents/openai.yaml`
+
+Drift origin:
+- thin-entrypoint intent existed in repo prose from bootstrap
+- the original generator and retained-skill tests still treated `.agents/skills/` as a bundled output root
+- this migration closes that gap by moving authoritative retained assets and enforcing wrapper thinness in generator output and tests
+
 ## Status Key
 
 - `source-import`: restored legacy copy is still the working source

@@ -7,7 +7,7 @@
 - Canonical builder version metadata lives in `version.json`.
 - Machine-readable authority order:
   1. `builders/packet-workflow/version.json`
-  2. `.agents/skills/<skill>/builder-spec.json` `builder_versioning`
+  2. `builders/packet-workflow/retained-skills/<skill>/builder-spec.json` `builder_versioning`
   3. active `profiles/<name>/profile.json` `metadata.versioning`
 
 ## Version Fields

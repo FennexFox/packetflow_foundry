@@ -36,6 +36,10 @@ def canonical_builder_version_path() -> Path:
     return foundry_root_dir() / "builders" / "packet-workflow" / "version.json"
 
 
+def canonical_retained_skills_root() -> Path:
+    return foundry_root_dir() / "builders" / "packet-workflow" / "retained-skills"
+
+
 def load_json_document(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
