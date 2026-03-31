@@ -137,6 +137,12 @@ def resolve_repo_binding(repo_root: Path, raw_value: str | None, label: str) -> 
     return text, resolved
 
 
+def require_repo_binding_file(path: Path, repo_relative: str, label: str) -> None:
+    if path.is_file():
+        return
+    raise RuntimeError(f"repo profile binding `{label}` points to a missing file: {repo_relative}")
+
+
 def validate_local_helper_path(repo_root: Path, helper_path: str) -> tuple[str, Path]:
     candidate = Path(helper_path)
     if candidate.is_absolute():
@@ -772,6 +778,19 @@ def main() -> int:
             bindings.get("settings_source_path"),
             "bindings.settings_source_path",
         )
+        for repo_relative, path, label in (
+            (publish_repo_relative, publish_path, "bindings.publish_config_path"),
+            (readme_repo_relative, readme_path, "bindings.primary_readme_path"),
+            (maintaining_repo_relative, maintaining_path, "extra.release_copy.maintaining_path"),
+            (
+                checklist_repo_relative,
+                checklist_path,
+                "extra.release_copy.release_checklist_template_path",
+            ),
+            (workflow_repo_relative, workflow_path, "extra.release_copy.release_workflow_path"),
+            (settings_repo_relative, setting_path, "bindings.settings_source_path"),
+        ):
+            require_repo_binding_file(path, repo_relative, label)
         issue_defaults = (
             release_extra.get("issue_defaults")
             if isinstance(release_extra.get("issue_defaults"), dict)
