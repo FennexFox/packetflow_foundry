@@ -278,7 +278,18 @@ def write_json(path: Path, payload: dict[str, Any]) -> None:
 
 
 def run_command(args: list[str], cwd: Path, *, check: bool = True) -> str:
-    result = subprocess.run(args, cwd=cwd, capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
+    try:
+        result = subprocess.run(
+            args,
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"{args[0]} not found") from exc
     if check and result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or f"{args[0]} failed"
         raise RuntimeError(detail)

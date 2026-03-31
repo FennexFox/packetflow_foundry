@@ -17,6 +17,12 @@ from review_thread_test_support import comment  # noqa: E402
 
 
 class CollectReviewThreadsTests(unittest.TestCase):
+    def test_ensure_gh_auth_wraps_missing_gh_binary(self) -> None:
+        with mock.patch.object(collect.subprocess, "run", side_effect=FileNotFoundError("gh")):
+            with self.assertRaises(RuntimeError) as exc_info:
+                collect.ensure_gh_auth(Path("."))
+        self.assertEqual(str(exc_info.exception), "gh auth status failed; run `gh auth login` first")
+
     def test_load_changed_files_uses_diff_output_when_available(self) -> None:
         with mock.patch.object(
             collect,

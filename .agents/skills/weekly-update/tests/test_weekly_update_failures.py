@@ -43,6 +43,12 @@ class WeeklyUpdateFailurePathTests(unittest.TestCase):
                 wl.collect_context(repo_root=str(repo_path), now_utc="2026-03-27T12:00:00Z")
         mocked_repo_metadata.assert_not_called()
 
+    def test_verify_gh_auth_stops_cleanly_when_gh_is_missing(self) -> None:
+        with patch.object(wl.subprocess, "run", side_effect=FileNotFoundError("gh")):
+            with self.assertRaises(SystemExit) as exc_info:
+                wl.verify_gh_auth(Path("C:/repo"))
+        self.assertIn("gh auth is invalid", str(exc_info.exception))
+
     def test_quiet_window_uses_local_only_review_mode(self) -> None:
         quiet_context = dict(self.context)
         quiet_context["releases"] = []

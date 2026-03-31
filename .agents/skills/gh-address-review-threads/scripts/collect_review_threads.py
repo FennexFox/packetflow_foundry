@@ -165,13 +165,16 @@ def decode_text(data: bytes) -> str:
 
 
 def run_command(args: list[str], cwd: Path, stdin_text: str | None = None) -> str:
-    result = subprocess.run(
-        args,
-        cwd=str(cwd),
-        input=(stdin_text.encode("utf-8") if stdin_text is not None else None),
-        capture_output=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            args,
+            cwd=str(cwd),
+            input=(stdin_text.encode("utf-8") if stdin_text is not None else None),
+            capture_output=True,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"{args[0]} not found") from exc
     if result.returncode != 0:
         stderr = decode_text(result.stderr).strip()
         stdout = decode_text(result.stdout).strip()
