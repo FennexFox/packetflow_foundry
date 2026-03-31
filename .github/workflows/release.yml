@@ -1,0 +1,90 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out tag
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Validate tag matches builder version
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          expected_tag="$(python3 - <<'PY'
+          import json
+          from pathlib import Path
+
+          payload = json.loads(Path("builders/packet-workflow/version.json").read_text(encoding="utf-8"))
+          print(f"v{payload['builder_semver']}")
+          PY
+          )"
+
+          if [[ "${GITHUB_REF_NAME}" != "${expected_tag}" ]]; then
+            echo "::error::Ref ${GITHUB_REF_NAME} does not match builders/packet-workflow/version.json (${expected_tag})."
+            exit 1
+          fi
+
+      - name: Build source archives
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF_NAME}"
+          archive_root="packetflow_foundry-${tag}"
+          mkdir -p dist
+
+          git archive \
+            --format=tar.gz \
+            --prefix="${archive_root}/" \
+            --output="dist/${archive_root}.tar.gz" \
+            "${tag}"
+
+          git archive \
+            --format=zip \
+            --prefix="${archive_root}/" \
+            --output="dist/${archive_root}.zip" \
+            "${tag}"
+
+          (
+            cd dist
+            sha256sum "${archive_root}.tar.gz" "${archive_root}.zip" > SHA256SUMS.txt
+          )
+
+      - name: Create or update GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          tag="${GITHUB_REF_NAME}"
+          title="packetflow_foundry ${tag}"
+          assets=(dist/*)
+
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            gh release upload "${tag}" "${assets[@]}" --clobber
+          else
+            gh release create \
+              "${tag}" \
+              "${assets[@]}" \
+              --title "${title}" \
+              --generate-notes \
+              --verify-tag
+          fi

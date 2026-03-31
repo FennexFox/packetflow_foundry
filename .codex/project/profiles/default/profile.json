@@ -1,0 +1,61 @@
+{
+  "kind": "project-local-profile",
+  "name": "default",
+  "profile_path": ".codex/project/profiles/default/profile.json",
+  "summary": "Project-local scaffold for packetflow_foundry release-review policy and repo-specific notes.",
+  "repo_match": {
+    "root_markers": [
+      ".git",
+      "README.md"
+    ],
+    "remote_patterns": []
+  },
+  "bindings": {
+    "primary_readme_path": "README.md",
+    "settings_source_path": null,
+    "publish_config_path": null
+  },
+  "packet_defaults": {
+    "review_docs": {},
+    "source_path_globs": {}
+  },
+  "lint_rules": {
+    "require_readme_settings_table": false,
+    "missing_review_docs_are_errors": false
+  },
+  "extra": {
+    "release_copy": {
+      "release_goal": "Keep release scope anchored on packet-first orchestration that uses 5.4-mini subagents to reduce token usage.",
+      "classification_labels": [
+        "direct savings",
+        "measurement-enabling",
+        "structural-only"
+      ],
+      "measurement_metrics": [
+        "estimated_packet_tokens",
+        "estimated_delegation_savings",
+        "raw_reread_count",
+        "common_path_sufficient"
+      ],
+      "direct_savings_examples": [
+        "packet compaction",
+        "raw reread reduction",
+        "delegation scope reduction",
+        "local scripted preprocessing"
+      ],
+      "rules": {
+        "require_release_item_classification": true,
+        "require_structural_only_justification": true,
+        "require_measurement_metrics": true,
+        "require_direct_savings_path": true,
+        "retained_skill_direct_savings_requires_efficiency_path_or_metric_target": true
+      }
+    }
+  },
+  "notes": [
+    "This file is a project-local scaffold profile for one repository.",
+    "It is not a reusable foundry overlay and should stay outside reusable skill defaults.",
+    "Keep this profile data-only: add repo-specific bindings, review docs, booleans, and notes here.",
+    "Packetflow Foundry release review should block drift away from the packet-efficiency goal by classifying release items as direct savings, measurement-enabling, or structural-only."
+  ]
+}

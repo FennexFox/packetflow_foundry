@@ -18,6 +18,19 @@ body:
     validations:
       required: true
   - type: textarea
+    id: release_gating
+    attributes:
+      label: Release gating
+      description: Classify each shipped item against the packet-efficiency goal before approving the release.
+      placeholder: |
+        - <item>: direct savings | measurement-enabling | structural-only
+          - direct savings path: packet compaction / raw reread reduction / delegation scope reduction / local scripted preprocessing
+          - target metric(s): estimated_packet_tokens / estimated_delegation_savings / raw_reread_count / common_path_sufficient
+          - structural-only release justification: ...
+        - Retained skill additions count as direct savings only when they add a concrete packet-efficiency path or a measurable reduction target.
+    validations:
+      required: true
+  - type: textarea
     id: compatibility
     attributes:
       label: Consumer impact / compatibility notes
@@ -49,6 +62,11 @@ body:
     attributes:
       label: Checklist
       options:
+        - label: Each release item is labeled as direct savings, measurement-enabling, or structural-only
+        - label: Structural-only items are deferred or include a brief release justification
+        - label: Measurement-enabling items name the target metric(s) they improve or make more trustworthy
+        - label: Direct-savings items name the concrete savings path
+        - label: Retained skills are only labeled direct savings when they add a concrete efficiency path or measurable reduction target
         - label: README and CONTRIBUTING reviewed against shipped behavior
         - label: .github instructions and templates reviewed against the current workflow
         - label: Changes to core/contracts, core/templates, or core/defaults are paired with builder/test updates
