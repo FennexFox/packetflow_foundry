@@ -14,6 +14,12 @@ import tomllib
 from collections.abc import Mapping
 from pathlib import Path
 
+from packet_workflow_versioning import (
+    compare_builder_semver,
+    load_builder_versioning,
+    normalize_versioning_block,
+)
+
 
 def foundry_root_dir() -> Path:
     return Path(__file__).resolve().parents[3]
@@ -75,6 +81,7 @@ SUPPORTED_REVIEW_MODES = load_string_list_default(
 DEFAULT_REVIEW_MODE_OVERRIDES = load_string_list_default(
     "review-modes.json", key="default_override_signals"
 )
+CURRENT_BUILDER_VERSIONING = load_builder_versioning()
 DEFAULT_REPO_PROFILE = {
     "name": "default",
     "summary": (
@@ -650,6 +657,7 @@ def normalize_repo_profile(
     *,
     task_packet_names: list[str],
     uses_batch_packets: bool,
+    builder_versioning: dict[str, object],
 ) -> dict:
     if value is None:
         profile = copy.deepcopy(DEFAULT_REPO_PROFILE)
@@ -829,6 +837,16 @@ def normalize_repo_profile(
 
     profile["name"] = normalize_profile_name(profile["name"])
     profile["profile_path"] = f"profiles/{profile['name']}/profile.json"
+    profile["metadata"] = {
+        "versioning": {
+            "builder_family": builder_versioning["builder_family"],
+            "builder_semver": builder_versioning["builder_semver"],
+            "compatibility_epoch": builder_versioning["compatibility_epoch"],
+            "repo_profile_schema_version": builder_versioning[
+                "repo_profile_schema_version"
+            ],
+        }
+    }
     return profile
 
 
@@ -1115,6 +1133,42 @@ def derive_spec(raw: dict) -> dict:
     if missing:
         raise ValueError(f"Missing required fields: {', '.join(missing)}")
 
+    builder_versioning = normalize_versioning_block(
+        raw.get("builder_versioning"),
+        require_builder_spec_schema_version=True,
+    )
+    if builder_versioning is None:
+        raise ValueError("builder_versioning is required and must be a valid object")
+    if builder_versioning["builder_family"] != CURRENT_BUILDER_VERSIONING["builder_family"]:
+        raise ValueError(
+            "builder_versioning.builder_family must match the current builder family"
+        )
+    if builder_versioning["compatibility_epoch"] != CURRENT_BUILDER_VERSIONING["compatibility_epoch"]:
+        raise ValueError(
+            "builder_versioning.compatibility_epoch must match the current builder compatibility epoch"
+        )
+    if (
+        builder_versioning["builder_spec_schema_version"]
+        != CURRENT_BUILDER_VERSIONING["builder_spec_schema_version"]
+    ):
+        raise ValueError(
+            "builder_versioning.builder_spec_schema_version must match the current builder spec schema version"
+        )
+    if (
+        builder_versioning["repo_profile_schema_version"]
+        != CURRENT_BUILDER_VERSIONING["repo_profile_schema_version"]
+    ):
+        raise ValueError(
+            "builder_versioning.repo_profile_schema_version must match the current repo profile schema version"
+        )
+    if compare_builder_semver(
+        builder_versioning["builder_semver"],
+        CURRENT_BUILDER_VERSIONING["builder_semver"],
+    ) > 0:
+        raise ValueError(
+            "builder_versioning.builder_semver cannot be ahead of the current builder"
+        )
+
     archetype = raw["archetype"]
     if archetype not in ARCHETYPE_DEFAULTS:
         raise ValueError(
@@ -1306,6 +1360,7 @@ def derive_spec(raw: dict) -> dict:
         raw.get("repo_profile"),
         task_packet_names=task_packet_names,
         uses_batch_packets=uses_batch_packets,
+        builder_versioning=builder_versioning,
     )
 
     if worker_output_shape == "hierarchical" and not candidate_field_bundles:
@@ -1329,6 +1384,7 @@ def derive_spec(raw: dict) -> dict:
         "workflow_family": ensure_non_empty_string(
             raw["workflow_family"], "workflow_family"
         ),
+        "builder_versioning": builder_versioning,
         "archetype": archetype,
         "primary_goal": ensure_non_empty_string(raw["primary_goal"], "primary_goal"),
         "trigger_phrases": trigger_phrases,
@@ -2326,6 +2382,7 @@ def build_render_context(spec: dict) -> dict[str, str]:
         "preferred_worker_families": spec["preferred_worker_families"],
         "packet_worker_map": spec["packet_worker_map"],
         "worker_selection_guidance": spec["worker_selection_guidance"],
+        "builder_versioning": spec["builder_versioning"],
         "repo_profile": spec["repo_profile"],
         "domain_overlay": spec["domain_overlay"],
         "candidate_template": spec["candidate_template"],

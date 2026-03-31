@@ -23,7 +23,7 @@ def foundry_root_dir(script_path: Path) -> Path:
 
 
 def builder_skill_root(script_path: Path) -> Path:
-    return foundry_root_dir(script_path) / "skills" / "packet-workflow-skill-builder"
+    return foundry_root_dir(script_path) / ".agents" / "skills" / "packet-workflow-skill-builder"
 
 
 def load_json(path: Path) -> Any:
@@ -989,3 +989,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+

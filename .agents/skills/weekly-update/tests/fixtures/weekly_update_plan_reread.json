@@ -1,0 +1,30 @@
+{
+  "context_id": "weekly-update:20260327T120000Z",
+  "context_fingerprint": "fixture-context-fingerprint",
+  "reporting_window": {
+    "start_utc": "2026-03-20T23:59:59Z",
+    "end_utc": "2026-03-27T12:00:00Z"
+  },
+  "selected_packets": [
+    "mapping_packet",
+    "changes_packet",
+    "incidents_packet",
+    "risks_packet"
+  ],
+  "overall_confidence": "medium",
+  "stop_reasons": [
+    "raw reread exception unresolved"
+  ],
+  "allow_marker_update": false,
+  "sections": {
+    "PRs": [],
+    "Rollouts": [],
+    "Incidents": [],
+    "Reviews": [],
+    "Blockers / Risks": [],
+    "Evidence reviewed": []
+  },
+  "unresolved_raw_reread_candidate_ids": [
+    "fixture-reread-candidate"
+  ]
+}

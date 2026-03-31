@@ -18,8 +18,13 @@ if str(SCRIPT_DIR) not in sys.path:
 import init_packet_skill as builder
 
 
+def current_builder_versioning() -> dict[str, object]:
+    return dict(builder.CURRENT_BUILDER_VERSIONING)
+
+
 def sample_spec() -> dict[str, object]:
     return {
+        "builder_versioning": current_builder_versioning(),
         "skill_name": "packet-explorer-smoke",
         "description": "Verify packet explorer support in generated packet workflow skills.",
         "domain_slug": "builder-tests",
@@ -78,6 +83,7 @@ def sample_spec() -> dict[str, object]:
 
 def weekly_update_like_spec() -> dict[str, object]:
     return {
+        "builder_versioning": current_builder_versioning(),
         "skill_name": "weekly-update-like-smoke",
         "description": (
             "Verify weekly-update-like retained hierarchical packet workflow support."
@@ -225,13 +231,13 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
     def test_retained_skill_builder_specs_generate_core_contract_and_profile(self) -> None:
         foundry_root = builder.foundry_root_dir()
         retained_specs = [
-            foundry_root / "skills" / "draft-release-copy" / "builder-spec.json",
-            foundry_root / "skills" / "gh-address-review-threads" / "builder-spec.json",
-            foundry_root / "skills" / "gh-fix-pr-writeup" / "builder-spec.json",
-            foundry_root / "skills" / "git-split-and-commit" / "builder-spec.json",
-            foundry_root / "skills" / "public-docs-sync" / "builder-spec.json",
-            foundry_root / "skills" / "reword-recent-commits" / "builder-spec.json",
-            foundry_root / "skills" / "weekly-update" / "builder-spec.json",
+            foundry_root / ".agents" / "skills" / "draft-release-copy" / "builder-spec.json",
+            foundry_root / ".agents" / "skills" / "gh-address-review-threads" / "builder-spec.json",
+            foundry_root / ".agents" / "skills" / "gh-fix-pr-writeup" / "builder-spec.json",
+            foundry_root / ".agents" / "skills" / "git-split-and-commit" / "builder-spec.json",
+            foundry_root / ".agents" / "skills" / "public-docs-sync" / "builder-spec.json",
+            foundry_root / ".agents" / "skills" / "reword-recent-commits" / "builder-spec.json",
+            foundry_root / ".agents" / "skills" / "weekly-update" / "builder-spec.json",
         ]
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -268,9 +274,17 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             builder.DEFAULT_REVIEW_MODE_OVERRIDES,
             review_mode_defaults["default_override_signals"],
         )
+        self.assertEqual(
+            builder.CURRENT_BUILDER_VERSIONING,
+            json.loads(
+                (foundry_root / "builders" / "packet-workflow" / "version.json").read_text(
+                    encoding="utf-8"
+                )
+            ),
+        )
 
     def test_skill_subtree_stays_thin(self) -> None:
-        skill_dir = builder.foundry_root_dir() / "skills" / "packet-workflow-skill-builder"
+        skill_dir = builder.foundry_root_dir() / ".agents" / "skills" / "packet-workflow-skill-builder"
         files = sorted(
             str(path.relative_to(skill_dir)).replace("\\", "/")
             for path in skill_dir.rglob("*")
@@ -374,6 +388,18 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             spec["repo_profile"]["profile_path"],
             "profiles/sample-repo/profile.json",
         )
+        self.assertEqual(spec["builder_versioning"], current_builder_versioning())
+        self.assertEqual(
+            spec["repo_profile"]["metadata"]["versioning"],
+            {
+                "builder_family": current_builder_versioning()["builder_family"],
+                "builder_semver": current_builder_versioning()["builder_semver"],
+                "compatibility_epoch": current_builder_versioning()["compatibility_epoch"],
+                "repo_profile_schema_version": current_builder_versioning()[
+                    "repo_profile_schema_version"
+                ],
+            },
+        )
         self.assertEqual(
             spec["repo_profile"]["bindings"]["settings_source_path"],
             "src/Settings.cs",
@@ -390,6 +416,14 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
         bad_spec = sample_spec()
         bad_spec["orchestrator_profile"] = "everything"
         with self.assertRaisesRegex(ValueError, "orchestrator_profile must be one of"):
+            builder.derive_spec(bad_spec)
+
+    def test_missing_builder_versioning_is_rejected(self) -> None:
+        bad_spec = sample_spec()
+        bad_spec.pop("builder_versioning")
+        with self.assertRaisesRegex(
+            ValueError, "builder_versioning is required and must be a valid object"
+        ):
             builder.derive_spec(bad_spec)
 
     def test_repo_profile_rejects_unknown_packet_defaults(self) -> None:
@@ -466,6 +500,7 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             )
 
             self.assertEqual(context["repo_profile_name"], "default")
+            self.assertEqual(context["builder_compatibility"]["status"], "current")
             self.assertEqual(orchestrator["repo_profile_name"], "default")
             self.assertTrue(orchestrator["decision_ready_packets"])
             self.assertEqual(
@@ -580,6 +615,10 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             self.assertIn('display_name: "Packet Explorer Smoke"', agents_yaml)
             self.assertEqual(profile_json["name"], "sample-repo")
             self.assertEqual(
+                profile_json["metadata"]["versioning"]["builder_semver"],
+                current_builder_versioning()["builder_semver"],
+            )
+            self.assertEqual(
                 profile_json["bindings"]["publish_config_path"],
                 "src/Properties/PublishConfiguration.xml",
             )
@@ -623,6 +662,11 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             self.assertEqual(
                 context["repo_profile"]["bindings"]["primary_readme_path"],
                 "README.md",
+            )
+            self.assertEqual(context["builder_compatibility"]["status"], "current")
+            self.assertEqual(
+                context["builder_compatibility"]["current_builder_semver"],
+                current_builder_versioning()["builder_semver"],
             )
             run_python(
                 scripts_dir / "build_builder_tests_packets.py",
@@ -698,6 +742,36 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             apply_result = json.loads(apply_result_path.read_text(encoding="utf-8"))
             self.assertTrue(apply_result["validation_boundary_enforced"])
             self.assertTrue(apply_result["dry_run"])
+
+    def test_generated_collector_warns_but_returns_context_for_stale_profile(self) -> None:
+        spec = builder.derive_spec(sample_spec())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp) / str(spec["skill_name"])
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            builder.generate_files(skill_dir, spec)
+
+            profile_path = skill_dir / "profiles" / "sample-repo" / "profile.json"
+            profile_payload = json.loads(profile_path.read_text(encoding="utf-8"))
+            profile_payload["metadata"]["versioning"]["repo_profile_schema_version"] = 0
+            profile_path.write_text(
+                json.dumps(profile_payload, indent=2, ensure_ascii=True) + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_python(
+                skill_dir / "scripts" / "collect_builder_tests_context.py",
+                "--repo-root",
+                str(repo_root),
+                "--output",
+                str(Path(tmp) / "context.json"),
+                "--profile",
+                str(profile_path),
+            )
+            context = json.loads((Path(tmp) / "context.json").read_text(encoding="utf-8"))
+            self.assertEqual(context["builder_compatibility"]["status"], "stale-profile")
+            self.assertIn("status=stale-profile", result.stderr)
 
     def test_packet_heavy_profile_emits_synthesis_and_metrics_sidecar(self) -> None:
         raw_spec = sample_spec()
@@ -791,3 +865,5 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+

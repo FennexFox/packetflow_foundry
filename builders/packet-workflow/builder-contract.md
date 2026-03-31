@@ -13,10 +13,21 @@ This builder separates:
 - a default repo-profile scaffold for repo-specific path bindings, packet review docs, and lint toggles
 - optional domain overlays that rename or specialize semantics without changing the shared structure
 
-Repo profiles are intentionally data-only. Keep only declarative bindings, globs, doc lists, booleans, and notes there. Do not treat `profile.json` as a place for executable hooks, prompt fragments, or worker-routing behavior.
+Repo profiles are intentionally data-only. Keep only declarative bindings, globs, doc lists, booleans, notes, and generated compatibility metadata there. Do not treat `profile.json` as a place for executable hooks, prompt fragments, or worker-routing behavior.
 
 ## Required Fields
 
+- `builder_versioning`
+  - Object copied from `version.json` when the skill is current.
+  - Required keys:
+    - `builder_family`
+    - `builder_semver`
+    - `compatibility_epoch`
+    - `builder_spec_schema_version`
+    - `repo_profile_schema_version`
+  - Generation rejects missing or invalid version blocks.
+  - Semver-only drift is allowed.
+  - Epoch or schema mismatch requires manual migration instead of silent auto-bump.
 - `skill_name`
   - Hyphen-case skill folder name and SKILL frontmatter name.
 - `description`
@@ -148,6 +159,7 @@ Repo profiles are intentionally data-only. Keep only declarative bindings, globs
   - Optional default repo-profile scaffold for generated skills.
   - Generated at `profiles/<name>/profile.json`.
   - Keep it data-only end to end.
+  - `metadata.versioning` is generated automatically and is not authored through this field.
   - Supported keys:
     - `name`
     - `summary`
@@ -178,6 +190,26 @@ Repo profiles are intentionally data-only. Keep only declarative bindings, globs
     - keep repo-specific file layout and packet ownership out of the generic core
     - keep repo-specific configuration declarative so the generated scripts own executable behavior
     - let future repo ports add or replace profile folders without rewriting the core contract or templates
+
+## Builder Versioning
+
+Canonical current builder metadata lives in `version.json`.
+
+Compatibility expectations:
+- `compatibility_epoch` must match for generation to proceed
+- `builder_spec_schema_version` must match for generation to proceed
+- `repo_profile_schema_version` must match for generation to proceed
+- `builder_semver` may trail current builder semver when the skill is still structurally compatible
+
+Generated runtime metadata:
+- `builder_versioning` is copied into generated `SPEC_METADATA`
+- `profiles/<name>/profile.json` gets `metadata.versioning`
+- runtime collectors should record builder compatibility and warn when the active skill or profile is not current
+
+Bump rules:
+- bump `compatibility_epoch` when generated skills or profiles require manual migration
+- do not bump the epoch for docs-only, tests-only, or additive backward-compatible changes
+- use `versioning-policy.md` for the authoritative bump and migration-record rules
 
 ## Known Worker Agent Types
 

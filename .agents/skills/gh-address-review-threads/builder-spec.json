@@ -1,0 +1,83 @@
+{
+  "skill_name": "gh-address-review-threads",
+  "description": "Inspect unresolved GitHub PR review threads on the open pull request for the current branch, decide whether to accept, reject, defer, or defer outdated threads, post acknowledgement and completion replies with gh CLI, apply accepted fixes, and resolve completed threads. Use when Codex needs to read open PR review threads, summarize the planned direction or rejection, perform the work, then post a completion reply and resolve the finished threads.",
+  "domain_slug": "review_threads",
+  "workflow_family": "github-review",
+  "archetype": "audit-and-apply",
+  "primary_goal": "handle unresolved GitHub PR review threads with packetized analysis, guarded replies, and validator-normalized apply actions",
+  "trigger_phrases": [
+    "address review threads",
+    "handle unresolved PR review comments",
+    "reply to unresolved review threads",
+    "resolve accepted review threads"
+  ],
+  "task_packet_names": [
+    "thread"
+  ],
+  "uses_batch_packets": true,
+  "orchestrator_profile": "standard",
+  "needs_validate": true,
+  "needs_apply": true,
+  "decision_ready_packets": false,
+  "worker_return_contract": "generic",
+  "worker_output_shape": "flat",
+  "packet_worker_map": {
+    "batch-packet-01": [
+      "packet_explorer"
+    ],
+    "thread": [
+      "packet_explorer"
+    ]
+  },
+  "repo_profile": {
+    "name": "default",
+    "summary": "Default reusable profile scaffold for GitHub review-thread workflows. Replace with project-local review-docs, path bindings, and ownership hints when vendored.",
+    "repo_match": {
+      "root_markers": [
+        ".git",
+        "README.md"
+      ],
+      "remote_patterns": []
+    },
+    "bindings": {
+      "primary_readme_path": "README.md",
+      "settings_source_path": null,
+      "publish_config_path": null
+    },
+    "packet_defaults": {
+      "review_docs": {
+        "batch-packet-01": [
+          ".github/pull_request_template.md",
+          "CONTRIBUTING.md"
+        ],
+        "thread": [
+          ".github/pull_request_template.md",
+          "CONTRIBUTING.md"
+        ]
+      },
+      "source_path_globs": {
+        "batch-packet-01": [
+          "**/*"
+        ],
+        "thread": [
+          "**/*"
+        ]
+      }
+    },
+    "lint_rules": {
+      "require_readme_settings_table": false,
+      "missing_review_docs_are_errors": false
+    },
+    "notes": [
+      "Keep repo-specific PR guidance and review-doc ownership in project-local profiles when vendored.",
+      "Do not encode reply policy, packet routing authority, or validator/apply behavior in this profile."
+    ]
+  },
+  "builder_versioning": {
+    "builder_family": "packet-workflow",
+    "builder_semver": "0.1.0",
+    "compatibility_epoch": 1,
+    "builder_spec_schema_version": 1,
+    "repo_profile_schema_version": 1
+  }
+}

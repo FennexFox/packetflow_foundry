@@ -1,0 +1,4 @@
+interface:
+  display_name: "Public Docs Sync"
+  short_description: "audit public docs with scoped packet analysis and..."
+  default_prompt: "audit public docs with scoped packet analysis and validator-normalized deterministic sync actions"
