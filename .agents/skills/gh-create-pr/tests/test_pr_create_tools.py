@@ -80,6 +80,14 @@ def init_repo(repo_root: Path, origin_root: Path) -> None:
 
 
 class PrCreateToolsTests(unittest.TestCase):
+    def test_infer_repo_slug_accepts_dotted_repo_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            run_git(repo_root, ["init", "-b", "main"])
+            run_git(repo_root, ["remote", "add", "origin", "git@github.com:owner/my.repo.git"])
+
+            self.assertEqual(tools.infer_repo_slug(repo_root), "owner/my.repo")
+
     def test_build_context_resolves_defaults_from_branch_and_profiled_repo_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

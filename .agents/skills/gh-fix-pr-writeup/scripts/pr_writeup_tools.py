@@ -205,12 +205,49 @@ def load_pr_metadata(pr_number: int, repo_root: Path, repo_slug: str | None) -> 
     return json.loads(run_command(args, cwd=repo_root))
 
 
+def parse_changed_files_output(output: str) -> list[str]:
+    return [line.strip() for line in output.splitlines() if line.strip()]
+
+
+def is_diff_too_large_error(exc: subprocess.CalledProcessError) -> bool:
+    detail = "\n".join(
+        part
+        for part in (
+            str(exc),
+            (exc.stderr or "").strip(),
+            (exc.output or "").strip(),
+        )
+        if part
+    )
+    return "PullRequest.diff too_large" in detail or "maximum number of lines" in detail
+
+
+def load_pr_changed_files_via_api(pr_number: int, repo_root: Path, repo_slug: str) -> list[str]:
+    output = run_command(
+        [
+            "gh",
+            "api",
+            f"repos/{repo_slug}/pulls/{pr_number}/files",
+            "--paginate",
+            "--jq",
+            ".[].filename",
+        ],
+        cwd=repo_root,
+    )
+    return parse_changed_files_output(output)
+
+
 def load_pr_changed_files(pr_number: int, repo_root: Path, repo_slug: str | None) -> list[str]:
     args = ["gh", "pr", "diff", str(pr_number), "--name-only"]
     if repo_slug:
         args.extend(["--repo", repo_slug])
-    output = run_command(args, cwd=repo_root)
-    return [line.strip() for line in output.splitlines() if line.strip()]
+    try:
+        output = run_command(args, cwd=repo_root)
+    except subprocess.CalledProcessError as exc:
+        if not repo_slug or not is_diff_too_large_error(exc):
+            raise
+        return load_pr_changed_files_via_api(pr_number, repo_root, repo_slug)
+    return parse_changed_files_output(output)
 
 
 def load_local_diff_stat(repo_root: Path, base_ref: str | None, head_ref: str | None) -> str | None:

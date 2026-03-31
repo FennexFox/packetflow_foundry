@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import subprocess
 import sys
 import unittest
 from pathlib import Path
@@ -81,6 +82,38 @@ class PrWriteupToolsTests(unittest.TestCase):
         self.assertEqual(
             tools.first_heading_block(markdown, "## PR Title"),
             "## PR Title\n- Use a conventional title.",
+        )
+
+    def test_load_pr_changed_files_falls_back_to_api_when_diff_is_too_large(self) -> None:
+        with mock.patch.object(
+            tools,
+            "run_command",
+            side_effect=[
+                subprocess.CalledProcessError(
+                    1,
+                    ["gh", "pr", "diff", "7", "--name-only", "--repo", "owner/repo"],
+                    stderr=(
+                        "could not find pull request diff: HTTP 406: Sorry, the diff exceeded "
+                        "the maximum number of lines (20000)\nPullRequest.diff too_large"
+                    ),
+                ),
+                "src/foo.py\nsrc/bar.py\n",
+            ],
+        ) as run_command:
+            result = tools.load_pr_changed_files(7, Path("C:/repo"), "owner/repo")
+
+        self.assertEqual(result, ["src/foo.py", "src/bar.py"])
+        self.assertEqual(run_command.call_count, 2)
+        self.assertEqual(
+            run_command.call_args_list[1].args[0],
+            [
+                "gh",
+                "api",
+                "repos/owner/repo/pulls/7/files",
+                "--paginate",
+                "--jq",
+                ".[].filename",
+            ],
         )
 
 
