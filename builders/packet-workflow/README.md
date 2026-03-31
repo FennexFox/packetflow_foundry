@@ -25,3 +25,16 @@ Companion references:
 - `builder-contract.md`
 - `builder-evaluation-contract.md`
 - `../../core/contracts/packet-workflow/pattern-catalog.md`
+
+Supported retained pattern:
+- weekly-update-like retained skills stay in this builder family
+- use `decision_ready_packets=true`,
+  `worker_return_contract=classification-oriented`, and
+  `worker_output_shape=hierarchical`
+- keep repo-specific weekly-update conventions in
+  `repo_profile.extra.weekly_update`
+
+Guarded invalid combinations:
+- explicit `candidate_field_bundles` with `worker_return_contract=generic`
+- `classification-oriented` without `decision_ready_packets=true`
+- explicit `worker_footer_fields` without decision-ready hierarchical output

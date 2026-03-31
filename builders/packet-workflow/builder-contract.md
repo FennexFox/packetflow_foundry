@@ -79,6 +79,8 @@ Repo profiles are intentionally data-only. Keep only declarative bindings, globs
   - Default:
     - `classification-oriented` when `decision_ready_packets=true`
     - otherwise `generic`
+  - Guard:
+    - `classification-oriented` requires `decision_ready_packets=true`
 - `worker_output_shape`
   - Enum:
     - `flat`
@@ -98,8 +100,13 @@ Repo profiles are intentionally data-only. Keep only declarative bindings, globs
     - `description`
     - `required`
     - `fields`
+  - Guard:
+    - explicit `candidate_field_bundles` require `worker_return_contract=classification-oriented`
 - `worker_footer_fields`
   - Ordered array of footer field names for hierarchical worker output.
+  - Guard:
+    - explicit `worker_footer_fields` require `decision_ready_packets=true`
+    - explicit `worker_footer_fields` require `worker_output_shape=hierarchical`
 - `reread_reason_values`
   - Ordered array of allowed reread reasons.
 - `required_candidate_fields`
@@ -157,6 +164,15 @@ Repo profiles are intentionally data-only. Keep only declarative bindings, globs
     - `lint_rules`
       - `require_readme_settings_table`
       - `missing_review_docs_are_errors`
+    - `extra`
+      - arbitrary data-only JSON for skill-specific profile fields that do not
+        fit the baseline bindings/packet-defaults/lint-rules scaffold
+      - values must remain declarative data only
+      - do not use this for executable hooks, prompt fragments, routing
+        authority, or validator/apply behavior
+      - example:
+        - keep repo-specific weekly-update conventions in
+          `repo_profile.extra.weekly_update`
     - `notes`
   - Default intent:
     - keep repo-specific file layout and packet ownership out of the generic core
@@ -197,6 +213,18 @@ Recommended pairing:
 - `decision_ready_packets=true`
 - `worker_return_contract=classification-oriented`
 - `worker_output_shape=hierarchical`
+
+Retained weekly-update-like pattern:
+- use this same pairing for retained hierarchical adjudication workflows
+- keep repo-specific review markers, release-title conventions, and similar
+  data-only overrides in `repo_profile.extra.weekly_update`
+- do not create a new builder family when the workflow still fits this shape
+
+Forbidden retained-shape combinations:
+- `candidate_field_bundles` with `worker_return_contract=generic`
+- `worker_footer_fields` without `decision_ready_packets=true`
+- `worker_footer_fields` with `worker_output_shape=flat`
+- `domain_overlay` with `worker_return_contract=generic`
 
 Shared structure:
 - `candidates[]`

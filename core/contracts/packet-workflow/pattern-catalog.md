@@ -123,6 +123,13 @@ Shared reread discipline:
   - `schema_mismatch`
   - `insufficient_excerpt_quality`
 
+Required retained-shape guards:
+- do not combine `classification-oriented` with `decision_ready_packets=false`
+- do not declare explicit `candidate_field_bundles` for `generic` worker return
+  contracts
+- do not declare explicit `worker_footer_fields` outside decision-ready
+  hierarchical flows
+
 ## Worker Family Pattern
 
 Use named worker families when the workflow benefits from reusable specialists without collapsing every workflow into one downstream-specific contract.
@@ -194,6 +201,9 @@ It specializes the shared structure by:
   - `risks_packet -> evidence_summarizer`
 - marking one proposal value as reference-only
 - defining final section inclusion rules for its reporting output
+- keeping repo-specific review markers, release-title patterns, and similar
+  conventions in `repo_profile.extra.weekly_update` rather than in a separate
+  builder family
 
 That same structure can support other adjudication-heavy workflows such as:
 - release gating

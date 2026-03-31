@@ -98,6 +98,7 @@ DEFAULT_REPO_PROFILE = {
         "require_readme_settings_table": False,
         "missing_review_docs_are_errors": False,
     },
+    "extra": {},
     "notes": [
         "Populate repo-specific doc paths, code bindings, and packet ownership rules here.",
         "Keep the repo profile data-only: store declarative paths, globs, doc lists, booleans, and notes only.",
@@ -465,6 +466,26 @@ def normalize_bundle_overrides(value: object, field_name: str) -> dict[str, dict
     return overrides
 
 
+def normalize_json_data(value: object, field_name: str) -> object:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, list):
+        return [
+            normalize_json_data(item, f"{field_name}[{index}]")
+            for index, item in enumerate(value)
+        ]
+    if isinstance(value, dict):
+        normalized: dict[str, object] = {}
+        for key, item in value.items():
+            if not isinstance(key, str) or not key.strip():
+                raise ValueError(f"{field_name} keys must be non-empty strings")
+            normalized[key] = normalize_json_data(item, f"{field_name}.{key}")
+        return normalized
+    raise ValueError(
+        f"{field_name} must contain only JSON-serializable data-only values"
+    )
+
+
 def normalize_domain_overlay(value: object) -> dict:
     if value is None:
         return {
@@ -642,6 +663,7 @@ def normalize_repo_profile(
             "bindings",
             "packet_defaults",
             "lint_rules",
+            "extra",
             "notes",
         }
         unexpected = sorted(set(value) - allowed_top_level)
@@ -793,6 +815,12 @@ def normalize_repo_profile(
                     raise ValueError(f"repo_profile.lint_rules.{key} must be a boolean")
                 normalized_lint_rules[key] = lint_value
             profile["lint_rules"] = normalized_lint_rules
+
+        if "extra" in value:
+            extra = value["extra"]
+            if not isinstance(extra, dict):
+                raise ValueError("repo_profile.extra must be an object")
+            profile["extra"] = normalize_json_data(extra, "repo_profile.extra")
 
         if "notes" in value:
             profile["notes"] = ensure_string_list(
@@ -1177,6 +1205,14 @@ def derive_spec(raw: dict) -> dict:
             "worker_output_shape=hierarchical requires "
             "worker_return_contract=classification-oriented"
         )
+    if (
+        worker_return_contract == "classification-oriented"
+        and not decision_ready_packets
+    ):
+        raise ValueError(
+            "worker_return_contract=classification-oriented requires "
+            "decision_ready_packets=true"
+        )
 
     xhigh_reread_policy = raw.get(
         "xhigh_reread_policy", DEFAULT_XHIGH_REREAD_POLICY
@@ -1211,6 +1247,14 @@ def derive_spec(raw: dict) -> dict:
         candidate_field_bundles = normalize_candidate_bundles(
             candidate_field_bundles_raw, "candidate_field_bundles", allow_empty=True
         )
+    if (
+        candidate_field_bundles_raw is not None
+        and worker_return_contract != "classification-oriented"
+    ):
+        raise ValueError(
+            "candidate_field_bundles requires "
+            "worker_return_contract=classification-oriented"
+        )
 
     worker_footer_fields_raw = raw.get("worker_footer_fields")
     if worker_footer_fields_raw is None:
@@ -1222,6 +1266,14 @@ def derive_spec(raw: dict) -> dict:
     else:
         worker_footer_fields = ensure_string_list(
             worker_footer_fields_raw, "worker_footer_fields", allow_empty=True
+        )
+    if worker_footer_fields_raw is not None and not decision_ready_packets:
+        raise ValueError(
+            "worker_footer_fields requires decision_ready_packets=true"
+        )
+    if worker_footer_fields_raw is not None and worker_output_shape != "hierarchical":
+        raise ValueError(
+            "worker_footer_fields requires worker_output_shape=hierarchical"
         )
 
     reread_reason_values_raw = raw.get("reread_reason_values")

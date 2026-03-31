@@ -63,8 +63,150 @@ def sample_spec() -> dict[str, object]:
                 "require_readme_settings_table": True,
                 "missing_review_docs_are_errors": True,
             },
+            "extra": {
+                "release_copy": {
+                    "maintaining_path": "MAINTAINING.md",
+                    "release_workflow_path": ".github/workflows/release.yml",
+                }
+            },
             "notes": [
                 "Replace sample packet defaults before using this scaffold in production.",
+            ],
+        },
+    }
+
+
+def weekly_update_like_spec() -> dict[str, object]:
+    return {
+        "skill_name": "weekly-update-like-smoke",
+        "description": (
+            "Verify weekly-update-like retained hierarchical packet workflow support."
+        ),
+        "domain_slug": "weekly_update_like",
+        "workflow_family": "repo-audit",
+        "archetype": "plan-validate-apply",
+        "primary_goal": (
+            "prepare a validated weekly operational summary from decision-ready packets"
+        ),
+        "trigger_phrases": ["build weekly update"],
+        "task_packet_names": [
+            "mapping_packet",
+            "changes_packet",
+            "incidents_packet",
+            "risks_packet",
+        ],
+        "orchestrator_profile": "standard",
+        "decision_ready_packets": True,
+        "worker_return_contract": "classification-oriented",
+        "worker_output_shape": "hierarchical",
+        "candidate_field_bundles": [
+            {
+                "name": "identity",
+                "description": "Stable candidate identity and source information.",
+                "required": True,
+                "fields": ["candidate_id", "source_type", "source_id", "title"],
+            },
+            {
+                "name": "proposal",
+                "description": "Proposal-grade summary and classification rationale.",
+                "required": True,
+                "fields": [
+                    "summary",
+                    "proposed_classification",
+                    "classification_rationale",
+                ],
+            },
+            {
+                "name": "evidence",
+                "description": "Decision-ready citations and reread control.",
+                "required": True,
+                "fields": ["source_refs", "confidence", "raw_reread_reason"],
+            },
+        ],
+        "worker_footer_fields": [
+            "packet_ids",
+            "candidate_ids",
+            "primary_outcome",
+            "overall_confidence",
+            "coverage_gaps",
+            "overall_risk",
+        ],
+        "reread_reason_values": [
+            "conflicting_signals",
+            "insufficient_excerpt_quality",
+        ],
+        "packet_worker_map": {
+            "mapping_packet": ["repo_mapper"],
+            "changes_packet": ["large_diff_auditor"],
+            "incidents_packet": ["log_triager"],
+            "risks_packet": ["evidence_summarizer"],
+        },
+        "domain_overlay": {
+            "proposal_enum_values": [
+                "actual_incident",
+                "blocker_or_risk",
+                "artifact_only",
+                "ignore",
+            ],
+            "reference_only_candidate_values": ["artifact_only"],
+            "output_inclusion_rules": {
+                "standalone": ["actual_incident", "blocker_or_risk"],
+                "reference_only": ["artifact_only"],
+                "excluded": ["ignore"],
+            },
+        },
+        "repo_profile": {
+            "name": "default",
+            "summary": (
+                "Default reusable profile scaffold for weekly-update workflows. "
+                "Replace review docs, path hints, and repo conventions in "
+                "project-local profiles when vendored."
+            ),
+            "repo_match": {
+                "root_markers": [".git", "README.md"],
+                "remote_patterns": [],
+            },
+            "bindings": {
+                "primary_readme_path": "README.md",
+                "settings_source_path": None,
+                "publish_config_path": None,
+            },
+            "packet_defaults": {
+                "review_docs": {
+                    "mapping_packet": ["README.md", "CONTRIBUTING.md"],
+                    "changes_packet": ["README.md", "CONTRIBUTING.md"],
+                    "incidents_packet": ["README.md", "CONTRIBUTING.md"],
+                    "risks_packet": ["README.md", "CONTRIBUTING.md"],
+                },
+                "source_path_globs": {
+                    "mapping_packet": ["**/*"],
+                    "changes_packet": ["**/*"],
+                    "incidents_packet": ["**/*"],
+                    "risks_packet": ["**/*"],
+                },
+            },
+            "lint_rules": {
+                "require_readme_settings_table": False,
+                "missing_review_docs_are_errors": False,
+            },
+            "extra": {
+                "weekly_update": {
+                    "state": {"namespace": "weekly-update"},
+                    "review_markers": {
+                        "acknowledged": ["phase=ack"],
+                        "resolved": ["phase=complete"],
+                    },
+                    "release_issue": {
+                        "title_regex": r"^\[Release\]\s*(?P<tag>v[0-9A-Za-z._-]+)",
+                    },
+                    "priority_markers": {
+                        "regex": r"\[(?:P[0-3]|medium|high|low)\]",
+                    },
+                }
+            },
+            "notes": [
+                "Keep repo-specific weekly-update conventions in project-local "
+                "profile data when vendored.",
             ],
         },
     }
@@ -83,10 +225,13 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
     def test_retained_skill_builder_specs_generate_core_contract_and_profile(self) -> None:
         foundry_root = builder.foundry_root_dir()
         retained_specs = [
+            foundry_root / "skills" / "draft-release-copy" / "builder-spec.json",
             foundry_root / "skills" / "gh-address-review-threads" / "builder-spec.json",
             foundry_root / "skills" / "gh-fix-pr-writeup" / "builder-spec.json",
             foundry_root / "skills" / "git-split-and-commit" / "builder-spec.json",
+            foundry_root / "skills" / "public-docs-sync" / "builder-spec.json",
             foundry_root / "skills" / "reword-recent-commits" / "builder-spec.json",
+            foundry_root / "skills" / "weekly-update" / "builder-spec.json",
         ]
 
         with tempfile.TemporaryDirectory() as tmp:
@@ -233,6 +378,10 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             spec["repo_profile"]["bindings"]["settings_source_path"],
             "src/Settings.cs",
         )
+        self.assertEqual(
+            spec["repo_profile"]["extra"]["release_copy"]["maintaining_path"],
+            "MAINTAINING.md",
+        )
         self.assertTrue(
             spec["repo_profile"]["lint_rules"]["missing_review_docs_are_errors"]
         )
@@ -262,6 +411,139 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
         bad_spec["needs_validate"] = False
         with self.assertRaisesRegex(
             ValueError, "needs_apply=true requires needs_validate=true"
+        ):
+            builder.derive_spec(bad_spec)
+
+    def test_weekly_update_like_retained_shape_generates_hierarchical_packets(self) -> None:
+        spec = builder.derive_spec(weekly_update_like_spec())
+
+        self.assertEqual(spec["archetype"], "plan-validate-apply")
+        self.assertTrue(spec["decision_ready_packets"])
+        self.assertEqual(spec["worker_return_contract"], "classification-oriented")
+        self.assertEqual(spec["worker_output_shape"], "hierarchical")
+        self.assertEqual(
+            spec["repo_profile"]["extra"]["weekly_update"]["state"]["namespace"],
+            "weekly-update",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp) / str(spec["skill_name"])
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            builder.generate_files(skill_dir, spec)
+
+            scripts_dir = skill_dir / "scripts"
+            for script in scripts_dir.glob("*.py"):
+                py_compile.compile(str(script), doraise=True)
+
+            context_path = Path(tmp) / "context.json"
+            packets_dir = Path(tmp) / "packets"
+            build_result_path = Path(tmp) / "build-result.json"
+
+            run_python(
+                scripts_dir / "collect_weekly_update_like_context.py",
+                "--repo-root",
+                str(repo_root),
+                "--output",
+                str(context_path),
+            )
+            run_python(
+                scripts_dir / "build_weekly_update_like_packets.py",
+                "--context",
+                str(context_path),
+                "--output-dir",
+                str(packets_dir),
+                "--result-output",
+                str(build_result_path),
+            )
+
+            context = json.loads(context_path.read_text(encoding="utf-8"))
+            orchestrator = json.loads(
+                (packets_dir / "orchestrator.json").read_text(encoding="utf-8")
+            )
+            global_packet = json.loads(
+                (packets_dir / "global_packet.json").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(context["repo_profile_name"], "default")
+            self.assertEqual(orchestrator["repo_profile_name"], "default")
+            self.assertTrue(orchestrator["decision_ready_packets"])
+            self.assertEqual(
+                orchestrator["worker_return_contract"], "classification-oriented"
+            )
+            self.assertEqual(orchestrator["worker_output_shape"], "hierarchical")
+            self.assertEqual(
+                global_packet["domain_overlay"]["proposal_enum_values"],
+                ["actual_incident", "blocker_or_risk", "artifact_only", "ignore"],
+            )
+            self.assertEqual(
+                global_packet["repo_profile"]["extra"]["weekly_update"]["state"][
+                    "namespace"
+                ],
+                "weekly-update",
+            )
+
+    def test_candidate_field_bundles_require_classification_oriented(self) -> None:
+        bad_spec = sample_spec()
+        bad_spec["candidate_field_bundles"] = [
+            {
+                "name": "candidate",
+                "description": "Candidate data.",
+                "required": True,
+                "fields": ["summary"],
+            }
+        ]
+        with self.assertRaisesRegex(
+            ValueError,
+            "candidate_field_bundles requires worker_return_contract=classification-oriented",
+        ):
+            builder.derive_spec(bad_spec)
+
+    def test_classification_oriented_requires_decision_ready_packets(self) -> None:
+        bad_spec = sample_spec()
+        bad_spec["worker_return_contract"] = "classification-oriented"
+        with self.assertRaisesRegex(
+            ValueError,
+            "worker_return_contract=classification-oriented requires decision_ready_packets=true",
+        ):
+            builder.derive_spec(bad_spec)
+
+    def test_worker_footer_fields_require_decision_ready_packets(self) -> None:
+        bad_spec = sample_spec()
+        bad_spec["worker_footer_fields"] = ["packet_ids", "primary_outcome"]
+        with self.assertRaisesRegex(
+            ValueError,
+            "worker_footer_fields requires decision_ready_packets=true",
+        ):
+            builder.derive_spec(bad_spec)
+
+    def test_worker_footer_fields_require_hierarchical_output(self) -> None:
+        bad_spec = weekly_update_like_spec()
+        bad_spec["worker_output_shape"] = "flat"
+        with self.assertRaisesRegex(
+            ValueError,
+            "worker_footer_fields requires worker_output_shape=hierarchical",
+        ):
+            builder.derive_spec(bad_spec)
+
+    def test_domain_overlay_requires_classification_oriented(self) -> None:
+        bad_spec = sample_spec()
+        bad_spec["domain_overlay"] = {
+            "proposal_enum_values": ["accept", "reject"],
+            "output_inclusion_rules": {"standalone": ["accept"], "excluded": ["reject"]},
+        }
+        with self.assertRaisesRegex(
+            ValueError,
+            "domain_overlay requires worker_return_contract=classification-oriented",
+        ):
+            builder.derive_spec(bad_spec)
+
+    def test_hierarchical_output_requires_usable_candidate_bundles(self) -> None:
+        bad_spec = weekly_update_like_spec()
+        bad_spec["candidate_field_bundles"] = []
+        with self.assertRaisesRegex(
+            ValueError,
+            "worker_output_shape=hierarchical requires candidate_field_bundles or required_candidate_fields",
         ):
             builder.derive_spec(bad_spec)
 
