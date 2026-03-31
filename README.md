@@ -26,6 +26,7 @@ packetflow_foundry/
     baseline/
     packet-heavy-orchestrator/
   builders/
+    consumer-bootstrap/
     packet-workflow/
   skills/
     packet-workflow-skill-builder/
@@ -52,6 +53,9 @@ packetflow_foundry/
 - `builders/packet-workflow/`
   - Builder logic, builder contract, helper scripts, and tests.
   - This builder consumes `core/`; it does not own shared semantics.
+- `builders/consumer-bootstrap/`
+  - Consumer-repo bootstrap helper for initializing the minimum project-local `.codex/` overlay after vendoring.
+  - This builder is append-only for `AGENTS.md` handling and otherwise keeps an all-or-nothing conflict policy.
 - `skills/packet-workflow-skill-builder/`
   - Thin skill entrypoint only.
   - Authoritative contracts, templates, scripts, and tests must not live here.
@@ -92,6 +96,18 @@ Rules:
 - put repo-specific profile data in `.codex/project/profiles/`
 - put repo-specific skills and agents in `.codex/project/`
 - do not make repo-specific edits in the vendor subtree
+
+Bootstrap the local overlay after vendoring:
+
+```text
+git subtree add --prefix=.codex/vendor/packetflow_foundry packetflow_foundry master --squash
+python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py
+```
+
+Bootstrap behavior:
+- root `AGENTS.md` and `.codex/AGENTS.md` are append-only targets
+- `.codex/project/profiles/default/profile.json` is a project-local scaffold, not a reusable foundry overlay
+- if any non-`AGENTS.md` bootstrap output already exists, the helper aborts without writing files
 
 See [docs/vendoring.md](./docs/vendoring.md) for the full model.
 

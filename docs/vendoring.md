@@ -28,6 +28,18 @@ project-root/
       agents/
 ```
 
+Bootstrap the local overlay after vendoring:
+
+```text
+git subtree add --prefix=.codex/vendor/packetflow_foundry packetflow_foundry master --squash
+python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py
+```
+
+Bootstrap notes:
+- root `AGENTS.md` and `.codex/AGENTS.md` are append-only targets
+- `.codex/project/profiles/default/profile.json` is a project-local scaffold, not a reusable foundry overlay
+- if any non-`AGENTS.md` bootstrap output already exists, the helper aborts without writing files
+
 ## What Stays In The Vendor
 
 Keep these in the foundry vendor subtree:

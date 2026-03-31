@@ -10,6 +10,17 @@
   ],
   "executionEnvironments": [
     {
+      "root": "builders/consumer-bootstrap/scripts"
+    },
+    {
+      "root": "builders/consumer-bootstrap/tests",
+      "extraPaths": [
+        "builders/consumer-bootstrap/scripts",
+        "skills/reword-recent-commits/scripts",
+        "skills/git-split-and-commit/scripts"
+      ]
+    },
+    {
       "root": "builders/packet-workflow/scripts"
     },
     {
