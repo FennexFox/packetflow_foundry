@@ -129,7 +129,15 @@ def main() -> int:
             apply_gate_status=contract.stop_status(),
         )
 
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".md", delete=False) as temp_file:
+    temp_root = repo_root / ".codex" / "tmp" / "packet-workflow" / "gh-fix-pr-writeup"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        suffix=".md",
+        dir=temp_root,
+        delete=False,
+    ) as temp_file:
         temp_file.write(body)
         temp_path = Path(temp_file.name)
     try:

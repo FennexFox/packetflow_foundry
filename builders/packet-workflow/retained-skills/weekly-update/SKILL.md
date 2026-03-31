@@ -67,6 +67,9 @@ If the run cannot proceed, report the blocker clearly and stop at the appropriat
 - If you already resolved a concrete interpreter path outside the sandbox, reuse that exact path inside the sandbox instead of calling `py` or bare `python`.
 - Run helper scripts as `<python-bin> -B <skill-dir>/scripts/...`.
 - Stop and report the blocker if you cannot resolve a concrete interpreter path.
+- Resolve `<runtime-root>` to `<repo-root>/.codex/tmp/packet-workflow/weekly-update/<run-id>/` and keep `.codex/tmp/` gitignored.
+- Set `<packet-dir>` to `<runtime-root>/packets`.
+- Set `<eval-log-json>` to `~/.codex/tmp/evaluation_logs/weekly-update/<run-id>.json` by default. If the sandbox blocks that path, use `<repo-root>/.codex/tmp/evaluation_logs/weekly-update/<run-id>.json` as an explicit override and keep `.codex/tmp/` gitignored.
 
 ## Workflow
 
@@ -159,11 +162,12 @@ If the run cannot proceed, report the blocker clearly and stop at the appropriat
 
 ## Evaluation
 
-- Use `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <context-json> --orchestrator <packet-dir>/orchestrator.json --output <packet-dir>/eval-log.json` after packet generation.
-- Use `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <eval-log.json> --phase build --result <build-result-json>` after packet build.
+- Use `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <context-json> --orchestrator <packet-dir>/orchestrator.json --output <eval-log-json>` after packet generation.
+- Use `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <eval-log-json> --phase build --result <build-result-json>` after packet build.
 - Use phase updates for deterministic validate and apply results when those outputs exist.
 - Keep token-efficiency counters in `packet_metrics.json` and the evaluation log only; do not treat them as runtime routing metadata.
 - Finalize the evaluation log after the run with worker usage, packet usage, confidence, marker-update status, and any stop reasons.
+- Keep the evaluation log at the contract-default outside-repo path unless you intentionally need the gitignored `.codex/tmp/` fallback.
 - Read `references/evaluation-log-contract.md` for the shared envelope and `references/weekly-update-evaluation-contract.md` for workflow-specific fields.
 
 ## Output

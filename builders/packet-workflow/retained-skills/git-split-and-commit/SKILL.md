@@ -30,6 +30,9 @@ Read `references/architecture-rationale.md` before changing packet metadata, del
 - If you already resolved a concrete interpreter path outside the sandbox, reuse that exact path inside the sandbox instead of calling `py` or bare `python`.
 - Run helper scripts as `<python-bin> -B <skill-dir>/scripts/...`.
 - Stop and report the blocker if you cannot resolve a concrete interpreter path.
+- Resolve `<runtime-root>` to `<repo-root>/.codex/tmp/packet-workflow/git-split-and-commit/<run-id>/` and keep `.codex/tmp/` gitignored.
+- Set `<packet-dir>` to `<runtime-root>/packets`.
+- Set `<eval-log-json>` to `~/.codex/tmp/evaluation_logs/git-split-and-commit/<run-id>.json` by default. If the sandbox blocks that path, use `<repo-root>/.codex/tmp/evaluation_logs/git-split-and-commit/<run-id>.json` as an explicit override and keep `.codex/tmp/` gitignored.
 
 ## Workflow
 
@@ -38,7 +41,7 @@ Read `references/architecture-rationale.md` before changing packet metadata, del
 - Run `<python-bin> -B <skill-dir>/scripts/collect_commit_rules.py --repo <repo-root> --output <rules-json>`.
 - Run `<python-bin> -B <skill-dir>/scripts/collect_worktree_context.py --repo <repo-root> --output <worktree-json>`.
 - Run `<python-bin> -B <skill-dir>/scripts/build_commit_packets.py --rules <rules-json> --worktree <worktree-json> --output-dir <packet-dir> --result-output <build-result-json>`.
-- Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <worktree-json> --orchestrator <packet-dir>/orchestrator.json --output <packet-dir>/eval-log.json`.
+- Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <worktree-json> --orchestrator <packet-dir>/orchestrator.json --output <eval-log-json>`.
 - Merge the build result with `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --phase build --result <build-result-json> --log <eval-log-json>`.
 - Read `<packet-dir>/orchestrator.json` first.
 - Keep `<packet-dir>/global_packet.json` in view before reading any focused packet.
@@ -114,9 +117,10 @@ Read `references/architecture-rationale.md` before changing packet metadata, del
 
 ## Evaluation
 
-- Use `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <worktree-json> --orchestrator <packet-dir>/orchestrator.json --output <packet-dir>/eval-log.json` after packet generation.
+- Use `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <worktree-json> --orchestrator <packet-dir>/orchestrator.json --output <eval-log-json>` after packet generation.
 - Merge deterministic phase results with `phase` after validation or apply.
 - Finalize the evaluation log after the run with worker usage, packet usage, confidence, validation status, and any stop reasons.
+- Keep the evaluation log at the contract-default outside-repo path unless you intentionally need the gitignored `.codex/tmp/` fallback.
 - Read `references/evaluation-log-contract.md` for the shared envelope and `references/git-split-and-commit-evaluation-contract.md` for commit-planning-specific fields.
 
 ## Maintenance Notes

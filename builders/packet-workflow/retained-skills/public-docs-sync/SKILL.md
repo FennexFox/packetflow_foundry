@@ -29,6 +29,9 @@ This is a packet-driven repo workflow skill:
 - If you already resolved a concrete interpreter path outside the sandbox, reuse that exact path inside the sandbox instead of calling `py` or bare `python`.
 - Run helper scripts as `<python-bin> -B <skill-dir>/scripts/...`.
 - Stop and report the blocker if you cannot resolve a concrete interpreter path.
+- Resolve `<runtime-root>` to `<repo-root>/.codex/tmp/packet-workflow/public-docs-sync/<run-id>/` and keep `.codex/tmp/` gitignored.
+- Set `<packet-dir>` to `<runtime-root>/packets`.
+- Set `<eval-log-json>` to `~/.codex/tmp/evaluation_logs/public-docs-sync/<run-id>.json` by default. If the sandbox blocks that path, use `<repo-root>/.codex/tmp/evaluation_logs/public-docs-sync/<run-id>.json` as an explicit override and keep `.codex/tmp/` gitignored.
 
 ## Workflow
 
@@ -101,11 +104,12 @@ This is a packet-driven repo workflow skill:
 
 ## Evaluation
 
-- Use `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <context-json> --orchestrator <packet-dir>/orchestrator.json --output <packet-dir>/eval-log.json` after packet generation.
+- Use `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <context-json> --orchestrator <packet-dir>/orchestrator.json --output <eval-log-json>` after packet generation.
 - No orchestrator-profile-specific evaluation sidecar is required.
 - Use `phase` updates for deterministic lint, validate, and apply results when those outputs exist.
 - Use `finalize` after the run to merge token usage, actual worker mix, final usability, outputs, and notes.
-- Keep the evaluation log alongside the packet artifacts unless you have a clear reason to write it elsewhere.
+- Keep the evaluation log at the contract-default outside-repo path unless you intentionally need the gitignored `.codex/tmp/` fallback.
+- Keep packet artifacts and other helper temp files under the fixed gitignored `.codex/tmp/packet-workflow/` root.
 - Read `references/evaluation-log-contract.md` for the shared envelope and `references/public_docs_sync-evaluation-contract.md` for workflow-specific fields.
 
 ## Scripts

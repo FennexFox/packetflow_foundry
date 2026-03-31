@@ -7,6 +7,7 @@ from reword_test_support import commit_file, make_repo
 
 import collect_commit_rules  # type: ignore  # noqa: E402
 import collect_recent_commits  # type: ignore  # noqa: E402
+import reword_runtime_paths  # type: ignore  # noqa: E402
 from reword_plan_contract import branch_state, detect_operation, validate_reword_plan_payload  # noqa: E402
 
 
@@ -143,6 +144,30 @@ class ValidateRewordPlanTests(unittest.TestCase):
         error_codes = {item["code"] for item in payload["errors"]}
         self.assertIn("missing_new_message", error_codes)
         self.assertIn("invalid_subject_format", error_codes)
+
+    def test_repo_codex_tmp_artifact_root_does_not_mark_worktree_dirty(self) -> None:
+        _temp_dir, repo, rules, plan = self.make_context()
+        raw_plan = copy.deepcopy(plan)
+        raw_plan["commits"][0]["new_message"] = "fix(core): rewrite first"
+        raw_plan["commits"][1]["new_message"] = "fix(parser): rewrite second"
+        artifact_path = (
+            reword_runtime_paths.resolve_runtime_namespace_root(repo)
+            / "test-run"
+            / "message-template.json"
+        )
+        artifact_path.parent.mkdir(parents=True, exist_ok=True)
+        artifact_path.write_text("artifact\n", encoding="utf-8")
+
+        payload = validate_reword_plan_payload(
+            plan,
+            rules,
+            raw_plan,
+            repo_state=branch_state(repo),
+            active_operation=detect_operation(repo),
+        )
+
+        self.assertTrue(payload["valid"])
+        self.assertNotIn("dirty_worktree", payload["stop_reasons"])
 
 
 if __name__ == "__main__":

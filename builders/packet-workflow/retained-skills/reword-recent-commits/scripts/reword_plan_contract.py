@@ -83,6 +83,7 @@ PACKET_METRIC_FIELDS = [
 XHIGH_REREAD_POLICY = (
     "Packet-first local adjudication is required on the common path; raw rereads are only allowed for explicit exception reasons."
 )
+RUNTIME_STATUS_IGNORE_PREFIXES = (".codex/tmp/",)
 
 
 def _stringify(value: Any) -> str:
@@ -91,6 +92,22 @@ def _stringify(value: Any) -> str:
 
 def _normalize_path(value: Any) -> str:
     return _stringify(value).replace("\\", "/")
+
+
+def _status_line_paths(line: str) -> list[str]:
+    payload = line[3:].strip()
+    if not payload:
+        return []
+    parts = payload.split(" -> ") if " -> " in payload else [payload]
+    return [_normalize_path(part.strip().strip('"')) for part in parts if part.strip()]
+
+
+def _is_runtime_status_line(line: str) -> bool:
+    paths = _status_line_paths(line)
+    return bool(paths) and all(
+        any(path.startswith(prefix) for prefix in RUNTIME_STATUS_IGNORE_PREFIXES)
+        for path in paths
+    )
 
 
 def _normalize_string_list(value: Any, *, sort_values: bool = False) -> list[str]:
@@ -409,7 +426,7 @@ def detect_operation(repo_root: Path) -> str | None:
 
 def branch_state(repo_root: Path) -> dict[str, Any]:
     branch = run_git(repo_root, ["branch", "--show-current"]).strip()
-    status_porcelain = run_git(repo_root, ["status", "--porcelain"], check=False)
+    status_porcelain = run_git(repo_root, ["status", "--porcelain", "--untracked-files=all"], check=False)
     status_branch = run_git(repo_root, ["status", "--short", "--branch"], check=False)
     upstream = run_git(
         repo_root,
@@ -425,10 +442,15 @@ def branch_state(repo_root: Path) -> dict[str, Any]:
             if len(parts) == 2:
                 behind = int(parts[0])
                 ahead = int(parts[1])
+    dirty_lines = [
+        line
+        for line in status_porcelain.splitlines()
+        if line.strip() and not _is_runtime_status_line(line)
+    ]
     return {
         "branch": branch,
         "status_branch_line": status_branch.splitlines()[0] if status_branch.splitlines() else "",
-        "working_tree_dirty": bool(status_porcelain.strip()),
+        "working_tree_dirty": bool(dirty_lines),
         "upstream_branch": upstream or None,
         "ahead_count": ahead,
         "behind_count": behind,

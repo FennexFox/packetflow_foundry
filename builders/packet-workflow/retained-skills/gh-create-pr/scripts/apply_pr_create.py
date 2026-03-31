@@ -212,7 +212,15 @@ def main() -> int:
             current_duplicate_check_summary=fresh_snapshot.get("duplicate_check_summary"),
         )
 
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".md", delete=False) as temp_file:
+    temp_root = repo_root / ".codex" / "tmp" / "packet-workflow" / "gh-create-pr"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        suffix=".md",
+        dir=temp_root,
+        delete=False,
+    ) as temp_file:
         temp_file.write(str(request.get("body") or "").rstrip() + "\n")
         temp_path = Path(temp_file.name)
     try:

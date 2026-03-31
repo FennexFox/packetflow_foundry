@@ -33,16 +33,15 @@ Read `references/architecture-note.md` before changing the packet/result model o
 
 ## Workflow
 
-1. Collect artifacts before drafting messages.
-- Run `<python-bin> -B <skill-dir>/scripts/collect_commit_rules.py --repo <repo-root> --output <rules-json>`.
-- Run `<python-bin> -B <skill-dir>/scripts/collect_recent_commits.py --count <n> --repo <repo-root> --rules <rules-json> --output <plan-json>`.
-- Run `<python-bin> -B <skill-dir>/scripts/build_reword_packets.py --rules <rules-json> --plan <plan-json> --output-dir <packet-dir> --result-output <build-result-json>`.
-- Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <plan-json> --orchestrator <packet-dir>/orchestrator.json --output <packet-dir>/eval-log.json`.
-- Merge the build result with `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --phase build --result <build-result-json> --log <eval-log-json>`.
-- Draft a raw plan by filling `commits[*].new_message` in a copy of `<plan-json>`.
-- Run `<python-bin> -B <skill-dir>/scripts/validate_reword_plan.py --rules <rules-json> --context <plan-json> --plan <raw-plan-json> --output <validated-json>`.
-- Read `<packet-dir>/orchestrator.json` first.
-- Keep `<packet-dir>/global_packet.json` in view before reading any focused packet.
+1. Use the single driver for the normal path.
+- Run `<python-bin> -B <skill-dir>/scripts/reword_recent_commits.py --repo <repo-root> --count <n> --prepare-only`.
+- Edit the emitted `message-template.json` by filling `commits[*].new_message`.
+- Run `<python-bin> -B <skill-dir>/scripts/reword_recent_commits.py --repo <repo-root> --count <n> --messages-file <message-template-json>`.
+- Add `--apply` only after confirmation. Without `--apply`, the driver validates and runs `apply_reword_plan.py --dry-run`.
+- Use `--temp-root <path>` when `git worktree add` needs a known-writable parent path. Resolution order is `--temp-root`, then `REWORD_RECENT_COMMITS_TEMP_ROOT`, then `~/.codex/tmp/packet-workflow/reword-recent-commits/temp/<repo-name>`.
+- Artifacts default to `<repo-root>/.codex/tmp/packet-workflow/reword-recent-commits/<run-id>`, and the workflow excludes the managed `.codex/tmp/` prefix from dirty-worktree checks.
+- Read `<artifact-root>/packets/orchestrator.json` first.
+- Keep `<artifact-root>/packets/global_packet.json` in view before reading any focused packet.
 - Read `rules_packet.json` locally before drafting, then keep `rules_packet.json + one commit packet at a time` as the common path.
 - Re-check `rules_packet.json` immediately before confirming the final replacement messages.
 
@@ -66,7 +65,7 @@ Read `references/architecture-note.md` before changing the packet/result model o
 4. Keep the critical path local.
 - Draft the replacement messages yourself, in oldest-to-newest order.
 - Show the proposed messages to the user and confirm immediately before rewriting history.
-- Run `apply_reword_plan.py` only after confirmation and only with the validated envelope.
+- Run `reword_recent_commits.py --messages-file ... --apply` only after confirmation.
 - Validate the result with `git log -n <n> --format=fuller` and `git status --short --branch`.
 - Stop before applying if the branch tip moved, a merge commit appears in scope, `base_commit` is null, the worktree is dirty, or another git operation is already in progress.
 
@@ -93,6 +92,10 @@ Read `references/architecture-note.md` before changing the packet/result model o
 
 ## Scripts
 
+- `scripts/reword_recent_commits.py`
+  - Normal entrypoint for prepare, validate, dry-run apply, real apply, and evaluation-log finalization.
+- `scripts/reword_runtime_paths.py`
+  - Resolve the fixed repo-local `.codex/tmp/packet-workflow/reword-recent-commits/` artifact root and replay temp-root parent path.
 - `scripts/collect_commit_rules.py`
   - Collect canonical commit-message rules, repo defaults, recent scope vocabulary, and source paths.
 - `scripts/collect_recent_commits.py`
@@ -108,13 +111,21 @@ Read `references/architecture-note.md` before changing the packet/result model o
 - `scripts/reword_plan_contract.py`
   - Shared source of truth for fingerprints, builder metadata, reread reasons, packet metrics, validation codes, stop categories, and normalized rewrite ordering.
 - `scripts/smoke_reword_recent_commits.py`
-  - Run the temp-repo smoke path for collect -> build -> eval build -> validate -> apply `--dry-run` -> eval apply and print a compact JSON summary.
+  - Run the temp-repo smoke path through the single driver and print a compact JSON summary.
+
+## Debugging And Manual Recovery
+
+- If the driver flow blocks, fall back to the low-level scripts in order: `collect_commit_rules.py`, `collect_recent_commits.py`, `build_reword_packets.py`, `validate_reword_plan.py`, `apply_reword_plan.py`, and `write_evaluation_log.py`.
+- Keep `message-template.json` shape fixed:
+  - root keys: `context_fingerprint`, `branch`, `head_commit`, `commits`
+  - commit keys: `index`, `hash`, `current_subject`, `new_message`
+- Ignore any extra keys when using `--messages-file`; only `new_message` is consumed from the user-edited commit entries.
 
 ## Evaluation
 
-- Use `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <plan-json> --orchestrator <packet-dir>/orchestrator.json --output <packet-dir>/eval-log.json` after packet generation.
-- Merge deterministic build, validation, and apply results with `phase`.
-- Finalize the evaluation log after the run with worker usage, packet usage, confidence, branch-update status, and any stop reasons.
+- The driver initializes the evaluation log after packet generation, merges build/validation/apply phase results, and finalizes the run.
+- Use `--final-observations <json>` to merge extra finalize payload fields when needed.
+- Low-level debugging still uses `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init|phase|finalize ...`.
 - Read `references/evaluation-log-contract.md` for the shared envelope, `references/reword-recent-commits-contract.md` for the rewrite-plan contract, and `references/reword-recent-commits-evaluation-contract.md` for rewrite-specific fields.
 
 ## Maintenance Notes

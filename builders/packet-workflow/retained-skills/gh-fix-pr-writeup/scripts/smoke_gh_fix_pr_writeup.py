@@ -175,7 +175,9 @@ def install_gh_stub(target_dir: Path, repo_slug: str) -> Path:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory() as tmp_dir_name:
+    temp_root = Path.cwd() / ".codex" / "tmp" / "packet-workflow" / "gh-fix-pr-writeup"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=temp_root, prefix="smoke-") as tmp_dir_name:
         tmp_dir = Path(tmp_dir_name)
         repo_root = tmp_dir / "repo"
         repo_root.mkdir()

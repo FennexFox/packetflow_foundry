@@ -27,6 +27,9 @@ Boundary:
 - If you already resolved a concrete interpreter path outside the sandbox, reuse that exact path inside the sandbox instead of calling `py` or bare `python`.
 - Run helper scripts as `<python-bin> -B <skill-dir>/scripts/...`.
 - Stop and report the blocker if you cannot resolve a concrete interpreter path.
+- Resolve `<runtime-root>` to `<repo-root>/.codex/tmp/packet-workflow/gh-fix-pr-writeup/<run-id>/` and keep `.codex/tmp/` gitignored.
+- Set `<packet-dir>` to `<runtime-root>/packets`.
+- Set `<eval-log-json>` to `~/.codex/tmp/evaluation_logs/gh-fix-pr-writeup/<run-id>.json` by default. If the sandbox blocks that path, use `<repo-root>/.codex/tmp/evaluation_logs/gh-fix-pr-writeup/<run-id>.json` as an explicit override and keep `.codex/tmp/` gitignored.
 
 ## Workflow
 
@@ -38,7 +41,7 @@ Boundary:
 - Run `<python-bin> -B <skill-dir>/scripts/collect_pr_context.py <pr-number> --repo-root <repo-root> --output <context-json>`.
 - Run `<python-bin> -B <skill-dir>/scripts/lint_pr_writeup.py --context <context-json> --output <lint-json>`.
 - Run `<python-bin> -B <skill-dir>/scripts/build_pr_review_packets.py --context <context-json> --lint <lint-json> --output-dir <packet-dir> --result-output <packet-dir>/build-result.json`.
-- Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <context-json> --orchestrator <packet-dir>/orchestrator.json --lint <lint-json> --output <packet-dir>/eval-log.json`.
+- Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <context-json> --orchestrator <packet-dir>/orchestrator.json --lint <lint-json> --output <eval-log-json>`.
 - Read `<packet-dir>/orchestrator.json` first.
 - Read `<packet-dir>/rules_packet.json` locally before drafting any replacement title/body.
 - Keep common-path local drafting on `rules_packet.json + synthesis_packet.json + <= 1 focused packet`.
@@ -124,12 +127,13 @@ Boundary:
 
 ## Evaluation
 
-- After build, run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <packet-dir>/eval-log.json --phase build --result <packet-dir>/build-result.json`.
-- After lint, run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <packet-dir>/eval-log.json --phase lint --result <lint-json>`.
+- After build, run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <eval-log-json> --phase build --result <packet-dir>/build-result.json`.
+- After lint, run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <eval-log-json> --phase lint --result <lint-json>`.
 - After validation, merge `validation.json` with the `validate` phase.
 - After guarded apply or dry-run, merge `apply-result.json` with the `apply` phase.
 - `packet_metrics.json` and build-result metadata should drive token-efficiency and common-path regression tracking.
 - Runtime packets must stay lean and must not embed packet-size or token counters.
+- Keep the evaluation log at the contract-default outside-repo path unless you intentionally need the gitignored `.codex/tmp/` fallback.
 
 ## Output
 

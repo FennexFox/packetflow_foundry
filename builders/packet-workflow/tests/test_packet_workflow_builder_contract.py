@@ -727,6 +727,15 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             self.assertIn(".codex/project/profiles/packet-explorer-smoke/profile.json", skill_md)
             self.assertIn("references/core-contract.md", skill_md)
             self.assertIn("data-only", skill_md)
+            self.assertIn(
+                ".codex/tmp/packet-workflow/packet-explorer-smoke/<run-id>/",
+                skill_md,
+            )
+            self.assertIn(
+                "~/.codex/tmp/evaluation_logs/packet-explorer-smoke/<run-id>.json",
+                skill_md,
+            )
+            self.assertIn(".codex/tmp/", skill_md)
             self.assertIn("profiles/sample-repo/profile.json", core_contract)
             self.assertIn(".codex/project/profiles/packet-explorer-smoke/profile.json", core_contract)
             self.assertIn("data-only", core_contract)

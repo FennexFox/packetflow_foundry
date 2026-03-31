@@ -119,7 +119,9 @@ def main() -> int:
 
     smoke_result: dict[str, Any]
 
-    with tempfile.TemporaryDirectory() as temp_dir_name:
+    temp_root = Path.cwd() / ".codex" / "tmp" / "packet-workflow" / "weekly-update"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=temp_root, prefix="smoke-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
         context_path = temp_dir / "context.json"
         lint_path = temp_dir / "lint.json"

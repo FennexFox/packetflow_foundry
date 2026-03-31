@@ -8,11 +8,15 @@ import json
 import os
 import shutil
 import subprocess
-import sys
-import tempfile
 from pathlib import Path
 from typing import Any
 
+from reword_runtime_paths import (
+    TEMP_ROOT_ENV_VAR,
+    create_temp_runtime_dir,
+    ensure_repo_codex_tmp_excluded,
+    resolve_temp_root,
+)
 from reword_plan_contract import (
     branch_state,
     detect_operation,
@@ -44,6 +48,15 @@ def git_result(
         check=False,
         env=env,
     )
+
+
+def replay_temp_root_error(message: str, *, temp_root_parent: Path, temp_root: Path | None = None) -> str:
+    details = [message.strip() or "replay failed"]
+    if temp_root is not None:
+        details.append(f"selected temp root: {temp_root}")
+    details.append(f"temp root parent: {temp_root_parent}")
+    details.append("retry with --temp-root <writable-parent-path>")
+    return ". ".join(details)
 
 
 def runtime_warnings(repo_state: dict[str, Any]) -> list[dict[str, Any]]:
@@ -131,6 +144,9 @@ def build_base_payload(
         "cleanup_succeeded": None,
         "leftover_paths": [],
         "ref_updated": False,
+        "temp_root_parent": None,
+        "temp_root_source": None,
+        "selected_temp_root": None,
     }
 
 
@@ -163,29 +179,65 @@ def rewrite_commits(
     repo_root: Path,
     context: dict[str, Any],
     actions: list[dict[str, Any]],
-) -> tuple[bool, str | None, list[str], bool, bool, list[str], str | None]:
+    *,
+    cli_temp_root: Path | None,
+) -> dict[str, Any]:
     branch = str(context.get("branch") or "").strip()
     base_commit = str(context.get("base_commit") or "").strip()
     head_commit = str(context.get("head_commit") or "").strip()
     commits_by_hash = commit_lookup(context)
+    ensure_repo_codex_tmp_excluded(repo_root)
+    temp_root_parent, temp_root_source = resolve_temp_root(repo_root, cli_temp_root=cli_temp_root)
 
-    temp_root = Path(tempfile.mkdtemp(prefix="reword-recent-commits-"))
-    worktree_path = temp_root / "worktree"
-    message_path = temp_root / "message.txt"
     new_hashes: list[str] = []
-    new_head: str | None = None
-    replay_error: str | None = None
-    ref_updated = False
+    outcome: dict[str, Any] = {
+        "ok": False,
+        "new_head": None,
+        "applied_commit_hashes": new_hashes,
+        "ref_updated": False,
+        "cleanup_succeeded": None,
+        "leftover_paths": [],
+        "error_message": None,
+        "temp_root_parent": str(temp_root_parent),
+        "temp_root_source": temp_root_source,
+        "selected_temp_root": None,
+    }
+
+    temp_root: Path | None = None
+    worktree_path = Path()
 
     try:
-        run_git(repo_root, ["worktree", "add", "--detach", str(worktree_path), base_commit])
+        temp_root = create_temp_runtime_dir(temp_root_parent)
+        outcome["selected_temp_root"] = str(temp_root)
+        worktree_path = temp_root / "worktree"
+        message_path = temp_root / "message.txt"
+
+        worktree_add = git_result(repo_root, ["worktree", "add", "--detach", str(worktree_path), base_commit])
+        if worktree_add.returncode != 0:
+            cleanup_succeeded, leftover_paths = cleanup_artifacts(repo_root, temp_root, worktree_path)
+            outcome["cleanup_succeeded"] = cleanup_succeeded
+            outcome["leftover_paths"] = leftover_paths
+            outcome["error_message"] = replay_temp_root_error(
+                (worktree_add.stderr or worktree_add.stdout).strip() or "git worktree add failed",
+                temp_root_parent=temp_root_parent,
+                temp_root=temp_root,
+            )
+            return outcome
+
         for action in actions:
             commit_hash = str(action["hash"])
             source_commit = commits_by_hash[commit_hash]
             cherry_pick = git_result(worktree_path, ["cherry-pick", "--no-commit", commit_hash])
             if cherry_pick.returncode != 0:
-                replay_error = (cherry_pick.stderr or cherry_pick.stdout).strip() or "cherry-pick failed"
-                return False, None, new_hashes, ref_updated, *cleanup_artifacts(repo_root, temp_root, worktree_path), replay_error
+                cleanup_succeeded, leftover_paths = cleanup_artifacts(repo_root, temp_root, worktree_path)
+                outcome["cleanup_succeeded"] = cleanup_succeeded
+                outcome["leftover_paths"] = leftover_paths
+                outcome["error_message"] = replay_temp_root_error(
+                    (cherry_pick.stderr or cherry_pick.stdout).strip() or "cherry-pick failed",
+                    temp_root_parent=temp_root_parent,
+                    temp_root=temp_root,
+                )
+                return outcome
 
             message = str(action["new_message"]).strip("\n") + "\n"
             message_path.write_text(message, encoding="utf-8")
@@ -199,19 +251,43 @@ def rewrite_commits(
                 env=env,
             )
             if commit_result.returncode != 0:
-                replay_error = (commit_result.stderr or commit_result.stdout).strip() or "commit failed"
-                return False, None, new_hashes, ref_updated, *cleanup_artifacts(repo_root, temp_root, worktree_path), replay_error
+                cleanup_succeeded, leftover_paths = cleanup_artifacts(repo_root, temp_root, worktree_path)
+                outcome["cleanup_succeeded"] = cleanup_succeeded
+                outcome["leftover_paths"] = leftover_paths
+                outcome["error_message"] = replay_temp_root_error(
+                    (commit_result.stderr or commit_result.stdout).strip() or "commit failed",
+                    temp_root_parent=temp_root_parent,
+                    temp_root=temp_root,
+                )
+                return outcome
             new_hashes.append(run_git(worktree_path, ["rev-parse", "HEAD"]).strip())
 
-        new_head = run_git(worktree_path, ["rev-parse", "HEAD"]).strip()
-        run_git(repo_root, ["update-ref", f"refs/heads/{branch}", new_head, head_commit])
-        ref_updated = True
+        outcome["new_head"] = run_git(worktree_path, ["rev-parse", "HEAD"]).strip()
+        run_git(repo_root, ["update-ref", f"refs/heads/{branch}", str(outcome["new_head"]), head_commit])
+        outcome["ref_updated"] = True
         cleanup_succeeded, leftover_paths = cleanup_artifacts(repo_root, temp_root, worktree_path)
-        return True, new_head, new_hashes, ref_updated, cleanup_succeeded, leftover_paths, None
+        outcome["ok"] = True
+        outcome["cleanup_succeeded"] = cleanup_succeeded
+        outcome["leftover_paths"] = leftover_paths
+        return outcome
     except Exception as exc:
-        replay_error = str(exc)
+        if temp_root is None:
+            outcome["cleanup_succeeded"] = False
+            outcome["leftover_paths"] = []
+            outcome["error_message"] = replay_temp_root_error(
+                str(exc),
+                temp_root_parent=temp_root_parent,
+            )
+            return outcome
         cleanup_succeeded, leftover_paths = cleanup_artifacts(repo_root, temp_root, worktree_path)
-        return False, new_head, new_hashes, ref_updated, cleanup_succeeded, leftover_paths, replay_error
+        outcome["cleanup_succeeded"] = cleanup_succeeded
+        outcome["leftover_paths"] = leftover_paths
+        outcome["error_message"] = replay_temp_root_error(
+            str(exc),
+            temp_root_parent=temp_root_parent,
+            temp_root=temp_root,
+        )
+        return outcome
 
 
 def parse_args() -> argparse.Namespace:
@@ -220,6 +296,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--plan", type=Path, required=True, help="Path to validated envelope from validate_reword_plan.py")
     parser.add_argument("--dry-run", action="store_true", help="Validate runtime safety and print planned operations without mutating refs")
     parser.add_argument("--result-output", type=Path, help="Optional path to write the JSON result payload.")
+    parser.add_argument("--temp-root", type=Path, help="Optional parent directory for the replay temp worktree.")
     return parser.parse_args()
 
 
@@ -256,30 +333,34 @@ def main() -> int:
             print(json.dumps(payload, indent=2, ensure_ascii=True))
             return 0
 
-        ok, new_head, new_hashes, ref_updated, cleanup_succeeded, leftover_paths, replay_error = rewrite_commits(
+        rewrite_result = rewrite_commits(
             repo_root,
             context,
             list(validated["normalized_rewrite_actions"]),
+            cli_temp_root=args.temp_root,
         )
-        payload["cleanup_attempted"] = True
-        payload["cleanup_succeeded"] = cleanup_succeeded
-        payload["leftover_paths"] = leftover_paths
-        payload["ref_updated"] = ref_updated
+        payload["cleanup_attempted"] = rewrite_result["selected_temp_root"] is not None
+        payload["cleanup_succeeded"] = rewrite_result["cleanup_succeeded"]
+        payload["leftover_paths"] = rewrite_result["leftover_paths"]
+        payload["ref_updated"] = bool(rewrite_result["ref_updated"])
+        payload["temp_root_parent"] = rewrite_result["temp_root_parent"]
+        payload["temp_root_source"] = rewrite_result["temp_root_source"]
+        payload["selected_temp_root"] = rewrite_result["selected_temp_root"]
 
-        if ok:
+        if rewrite_result["ok"]:
             payload["status"] = "ok"
             payload["apply_succeeded"] = True
-            payload["new_head"] = new_head
-            payload["applied_commit_hashes"] = new_hashes
-            payload["counters"]["commits_rewritten"] = len(new_hashes)
+            payload["new_head"] = rewrite_result["new_head"]
+            payload["applied_commit_hashes"] = rewrite_result["applied_commit_hashes"]
+            payload["counters"]["commits_rewritten"] = len(rewrite_result["applied_commit_hashes"])
             exit_code = 0
         else:
             payload["status"] = "failed"
             payload["apply_succeeded"] = False
             payload["stop_reasons"] = ["replay_failed"]
-            payload["error_message"] = replay_error
-            payload["applied_commit_hashes"] = new_hashes
-            payload["counters"]["commits_rewritten"] = len(new_hashes)
+            payload["error_message"] = rewrite_result["error_message"]
+            payload["applied_commit_hashes"] = rewrite_result["applied_commit_hashes"]
+            payload["counters"]["commits_rewritten"] = len(rewrite_result["applied_commit_hashes"])
 
         write_json_output(args.result_output, payload)
         print(json.dumps(payload, indent=2, ensure_ascii=True))

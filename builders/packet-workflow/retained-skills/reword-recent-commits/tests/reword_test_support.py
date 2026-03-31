@@ -19,6 +19,8 @@ AMBIGUOUS_MODULES = (
     "collect_commit_rules",
     "collect_recent_commits",
     "reword_plan_contract",
+    "reword_recent_commits",
+    "reword_runtime_paths",
     "validate_reword_plan",
     "write_evaluation_log",
 )

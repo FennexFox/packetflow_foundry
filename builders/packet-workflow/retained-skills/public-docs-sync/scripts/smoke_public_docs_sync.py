@@ -211,7 +211,9 @@ def build_plan(context: dict, lint: dict) -> dict:
 
 
 def main() -> int:
-    with tempfile.TemporaryDirectory() as tmp_dir:
+    temp_root = Path.cwd() / ".codex" / "tmp" / "packet-workflow" / "public-docs-sync"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=temp_root, prefix="smoke-") as tmp_dir:
         root = Path(tmp_dir)
         repo_root = root / "repo"
         repo_root.mkdir()

@@ -27,6 +27,9 @@ Boundary:
 - If you already resolved a concrete interpreter path outside the sandbox, reuse that exact path inside the sandbox instead of calling `py` or bare `python`.
 - Run helper scripts as `<python-bin> -B <skill-dir>/scripts/...`.
 - Stop and report the blocker if you cannot resolve a concrete interpreter path.
+- Resolve `<runtime-root>` to `<repo-root>/.codex/tmp/packet-workflow/gh-address-review-threads/<run-id>/` and keep `.codex/tmp/` gitignored.
+- Set `<packet-dir>` to `<runtime-root>/packets`.
+- Set `<eval-log-json>` to `~/.codex/tmp/evaluation_logs/gh-address-review-threads/<run-id>.json` by default. If the sandbox blocks that path, use `<repo-root>/.codex/tmp/evaluation_logs/gh-address-review-threads/<run-id>.json` as an explicit override and keep `.codex/tmp/` gitignored.
 
 ## Workflow
 
@@ -37,8 +40,8 @@ Boundary:
 - Run `<python-bin> -B <skill-dir>/scripts/build_review_packets.py --context <context-json> --repo-root <repo-root> --output-dir <packet-dir> --result-output <packet-dir>/build-result.json`.
 - Draft a raw thread-actions plan locally.
 - Run `<python-bin> -B <skill-dir>/scripts/validate_thread_action_plan.py --context <context-json> --plan <raw-plan-json> --phase <ack|complete> --output <validated-plan-json>`.
-- Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <context-json> --orchestrator <packet-dir>/orchestrator.json --output <packet-dir>/eval-log.json`.
-- Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <packet-dir>/eval-log.json --phase build --result <packet-dir>/build-result.json`.
+- Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <context-json> --orchestrator <packet-dir>/orchestrator.json --output <eval-log-json>`.
+- Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <eval-log-json> --phase build --result <packet-dir>/build-result.json`.
 - Read `<packet-dir>/orchestrator.json` first.
 - Keep `<packet-dir>/global_packet.json` in view before reading any thread packet.
 - Before deciding a thread, read that packet's `discussion`, `existing_self_reply`, `reply_candidates`, `validation_candidates`, and `ownership_summary` or `shared_fix_surface`.
@@ -132,10 +135,10 @@ Boundary:
 
 - Use the packet directory for machine-readable action results such as `<packet-dir>/ack-result.json` and `<packet-dir>/complete-result.json`.
 - Treat `<packet-dir>/packet_metrics.json` as evaluation-only. Do not use token-efficiency counters as runtime routing input.
-- After drafting a raw phase plan, prefer `<python-bin> -B <skill-dir>/scripts/validate_thread_action_plan.py ... --output <packet-dir>/ack-validated.json` or `... --output <packet-dir>/complete-validated.json`, then merge with `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <packet-dir>/eval-log.json --phase validate --result <validated-json>`.
-- After `ack` or `complete`, prefer `<python-bin> -B <skill-dir>/scripts/apply_thread_action_plan.py ... --plan <validated-json> --result-output <packet-dir>/ack-result.json` or `... --plan <validated-json> --result-output <packet-dir>/complete-result.json`, then merge each result with `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <packet-dir>/eval-log.json --phase apply --result <result-json>`.
-- After the overall run, write `<packet-dir>/final-eval.json` with worker usage, token data when available, final usability, outputs, and notes, then run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py finalize --log <packet-dir>/eval-log.json --final <packet-dir>/final-eval.json`.
-- Prefer the explicit `<packet-dir>/eval-log.json` path so the log stays writable inside sandboxed packet workflows.
+- After drafting a raw phase plan, prefer `<python-bin> -B <skill-dir>/scripts/validate_thread_action_plan.py ... --output <packet-dir>/ack-validated.json` or `... --output <packet-dir>/complete-validated.json`, then merge with `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <eval-log-json> --phase validate --result <validated-json>`.
+- After `ack` or `complete`, prefer `<python-bin> -B <skill-dir>/scripts/apply_thread_action_plan.py ... --plan <validated-json> --result-output <packet-dir>/ack-result.json` or `... --plan <validated-json> --result-output <packet-dir>/complete-result.json`, then merge each result with `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <eval-log-json> --phase apply --result <result-json>`.
+- After the overall run, write `<packet-dir>/final-eval.json` with worker usage, token data when available, final usability, outputs, and notes, then run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py finalize --log <eval-log-json> --final <packet-dir>/final-eval.json`.
+- Prefer the contract-default `<eval-log-json>` outside the repo. Keep packets and helper temp files under the fixed gitignored runtime root from `## Execution Roots`.
 - Read `references/evaluation-log-contract.md` for the shared envelope and `references/gh-address-review-threads-evaluation-contract.md` for thread-specific fields.
 - Read `references/architecture-note.md` for the rationale behind the current flat/generic contract and the criteria for revisiting hierarchy.
 - Use `<python-bin> -B <skill-dir>/scripts/smoke_gh_address_review_threads.py --repo-root <repo-root>` for an operator-facing dry-run smoke on the current branch PR.

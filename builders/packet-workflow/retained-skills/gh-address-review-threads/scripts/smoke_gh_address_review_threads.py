@@ -455,8 +455,10 @@ def run_smoke_workflow(*, repo_root: Path, context_path: Path, temp_dir: Path) -
 
 def main() -> int:
     args = parse_args()
+    temp_root = Path.cwd() / ".codex" / "tmp" / "packet-workflow" / "gh-address-review-threads"
+    temp_root.mkdir(parents=True, exist_ok=True)
     if args.synthetic:
-        with tempfile.TemporaryDirectory() as temp_dir_name:
+        with tempfile.TemporaryDirectory(dir=temp_root, prefix="smoke-synthetic-") as temp_dir_name:
             temp_dir = Path(temp_dir_name)
             repo_root, context_path = build_synthetic_context(temp_dir)
             print(json.dumps(run_smoke_workflow(repo_root=repo_root, context_path=context_path, temp_dir=temp_dir), indent=2, ensure_ascii=True))
@@ -507,7 +509,7 @@ def main() -> int:
         )
         return 0
 
-    with tempfile.TemporaryDirectory() as temp_dir_name:
+    with tempfile.TemporaryDirectory(dir=temp_root, prefix="smoke-live-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
         context_path = temp_dir / "context.json"
         run_script(

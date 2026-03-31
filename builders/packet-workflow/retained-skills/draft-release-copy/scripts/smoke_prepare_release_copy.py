@@ -281,7 +281,9 @@ def build_smoke_summary(status: str, reason: str | None, repo_root: Path, next_a
 def main() -> int:
     smoke_output: dict[str, Any]
 
-    with tempfile.TemporaryDirectory() as temp_dir_name:
+    temp_root = Path.cwd() / ".codex" / "tmp" / "packet-workflow" / "draft-release-copy"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.TemporaryDirectory(dir=temp_root, prefix="smoke-") as temp_dir_name:
         temp_dir = Path(temp_dir_name)
         repo_root = temp_dir / "repo"
         repo_root.mkdir()

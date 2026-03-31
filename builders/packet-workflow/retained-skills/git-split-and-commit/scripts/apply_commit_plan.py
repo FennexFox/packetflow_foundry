@@ -233,7 +233,16 @@ def run_targeted_checks(repo_root: Path, commands: list[str]) -> None:
 
 
 def apply_cached_patch(repo_root: Path, patch_text: str) -> None:
-    with tempfile.NamedTemporaryFile("w", encoding="utf-8", newline="\n", suffix=".patch", delete=False) as handle:
+    temp_root = repo_root / ".codex" / "tmp" / "packet-workflow" / "git-split-and-commit"
+    temp_root.mkdir(parents=True, exist_ok=True)
+    with tempfile.NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        newline="\n",
+        suffix=".patch",
+        dir=temp_root,
+        delete=False,
+    ) as handle:
         patch_path = Path(handle.name)
         handle.write(patch_text)
     try:
@@ -528,7 +537,14 @@ def apply_validated_plan(worktree: dict[str, Any], validation_payload: dict[str,
                     created_hashes=created_hashes,
                 )
             message = build_commit_message(commit)
-            with tempfile.NamedTemporaryFile("w", encoding="utf-8", delete=False) as handle:
+            temp_root = repo_root / ".codex" / "tmp" / "packet-workflow" / "git-split-and-commit"
+            temp_root.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                dir=temp_root,
+                delete=False,
+            ) as handle:
                 message_path = Path(handle.name)
                 handle.write(message)
             try:

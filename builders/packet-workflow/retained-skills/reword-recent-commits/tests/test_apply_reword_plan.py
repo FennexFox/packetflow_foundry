@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import copy
 import io
+import os
 import sys
 import tempfile
 import unittest
@@ -64,7 +65,15 @@ class ApplyRewordPlanTests(unittest.TestCase):
         self.assertTrue(validated["valid"])
         return temp_dir, repo, context, validated
 
-    def run_apply(self, context: dict, validated: dict, *, dry_run: bool) -> tuple[int, dict]:
+    def run_apply(
+        self,
+        context: dict,
+        validated: dict,
+        *,
+        dry_run: bool,
+        temp_root: Path | None = None,
+        env: dict[str, str] | None = None,
+    ) -> tuple[int, dict]:
         tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(tmpdir.cleanup)
         tmp_path = Path(tmpdir.name)
@@ -86,7 +95,13 @@ class ApplyRewordPlanTests(unittest.TestCase):
         ]
         if dry_run:
             argv.append("--dry-run")
-        with mock.patch.object(sys, "argv", argv), contextlib.redirect_stdout(stdout):
+        if temp_root is not None:
+            argv.extend(["--temp-root", str(temp_root)])
+        with (
+            mock.patch.object(sys, "argv", argv),
+            mock.patch.dict(os.environ, env or {}, clear=False),
+            contextlib.redirect_stdout(stdout),
+        ):
             exit_code = apply_reword_plan.main()
         return exit_code, load_json(result_path)
 
@@ -209,6 +224,61 @@ class ApplyRewordPlanTests(unittest.TestCase):
         self.assertEqual(result["stop_reasons"], ["replay_failed"])
         self.assertFalse(result["cleanup_succeeded"])
         self.assertEqual(result["leftover_paths"], ["C:/tmp/reword-leftover"])
+        self.assertEqual(run_git(repo, "rev-parse", "HEAD"), head_before)
+
+    def test_apply_uses_cli_temp_root_over_env(self) -> None:
+        _temp_dir, repo, context, validated = self.build_validated_plan()
+        cli_temp_root = repo.parent / "cli-temp-root"
+        env_temp_root = repo.parent / "env-temp-root"
+
+        exit_code, result = self.run_apply(
+            context,
+            validated,
+            dry_run=False,
+            temp_root=cli_temp_root,
+            env={apply_reword_plan.TEMP_ROOT_ENV_VAR: str(env_temp_root)},
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(result["temp_root_parent"], str(cli_temp_root.resolve()))
+        self.assertEqual(result["temp_root_source"], "cli")
+
+    def test_apply_uses_env_temp_root_without_cli_override(self) -> None:
+        _temp_dir, repo, context, validated = self.build_validated_plan()
+        env_temp_root = repo.parent / "env-temp-root"
+
+        exit_code, result = self.run_apply(
+            context,
+            validated,
+            dry_run=False,
+            env={apply_reword_plan.TEMP_ROOT_ENV_VAR: str(env_temp_root)},
+        )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(result["temp_root_parent"], str(env_temp_root.resolve()))
+        self.assertEqual(result["temp_root_source"], "env")
+
+    def test_apply_reports_actionable_temp_root_permission_failure(self) -> None:
+        _temp_dir, repo, context, validated = self.build_validated_plan()
+        blocked_temp_root = repo.parent / "blocked-temp-root"
+        blocked_temp_root.write_text("not a directory\n", encoding="utf-8")
+        head_before = run_git(repo, "rev-parse", "HEAD")
+
+        exit_code, result = self.run_apply(
+            context,
+            validated,
+            dry_run=False,
+            temp_root=blocked_temp_root,
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(result["stop_reasons"], ["replay_failed"])
+        self.assertEqual(result["temp_root_parent"], str(blocked_temp_root.resolve()))
+        self.assertEqual(result["temp_root_source"], "cli")
+        self.assertIn(str(blocked_temp_root.resolve()), result["error_message"])
+        self.assertIn("--temp-root", result["error_message"])
+        self.assertEqual(result["leftover_paths"], [])
+        self.assertFalse(result["cleanup_attempted"])
         self.assertEqual(run_git(repo, "rev-parse", "HEAD"), head_before)
 
 

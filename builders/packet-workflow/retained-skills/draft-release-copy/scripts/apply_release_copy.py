@@ -186,7 +186,15 @@ def main() -> int:
         if issue_mode != "noop":
             payload["issue_action_attempted"] = True
             body_markdown = str(issue_action.get("body_markdown") or "")
-            with tempfile.NamedTemporaryFile("w", encoding="utf-8", suffix=".md", delete=False) as temp_file:
+            temp_root = repo_root / ".codex" / "tmp" / "packet-workflow" / "draft-release-copy"
+            temp_root.mkdir(parents=True, exist_ok=True)
+            with tempfile.NamedTemporaryFile(
+                "w",
+                encoding="utf-8",
+                suffix=".md",
+                dir=temp_root,
+                delete=False,
+            ) as temp_file:
                 temp_file.write(body_markdown)
                 body_path = Path(temp_file.name)
             try:
