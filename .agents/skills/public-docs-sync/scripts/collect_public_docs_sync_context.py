@@ -1497,6 +1497,7 @@ def collect_github_evidence(
     identity: dict[str, str],
     relevant_ref: dict[str, Any],
     public_doc_paths: list[str],
+    repo_profile: dict[str, Any],
 ) -> dict[str, Any]:
     evidence = {
         "enabled": False,
@@ -1807,7 +1808,7 @@ def main() -> int:
     diff_paths = collect_diff_paths(repo_root, effective_base_commit) if effective_base_commit else []
     raw_changed_paths = sorted(dict.fromkeys(diff_paths + status_paths))
 
-    github_evidence = collect_github_evidence(repo_root, identity, relevant_ref, public_doc_paths)
+    github_evidence = collect_github_evidence(repo_root, identity, relevant_ref, public_doc_paths, repo_profile)
     evidence_summary = build_evidence_summary(github_evidence)
 
     if audit_mode == "full":

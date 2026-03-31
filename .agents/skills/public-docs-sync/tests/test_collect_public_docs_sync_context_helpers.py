@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -62,6 +63,87 @@ class CollectPublicDocsSyncContextHelperTests(unittest.TestCase):
             repo_profile=profile,
         )
         self.assertIn("workflow_packet", artifact["packet_hints"])
+
+    def test_main_passes_repo_profile_into_github_evidence_collection(self) -> None:
+        profile = {
+            "name": "default",
+            "summary": "test profile",
+            "bindings": {
+                "primary_readme_path": "README.md",
+                "publish_config_path": None,
+                "settings_source_path": None,
+            },
+        }
+        identity = {
+            "repo_name": "packetflow_foundry",
+            "repo_id": "repo-id",
+            "repo_hash": "repo-hash",
+            "remote_url": "https://github.com/FennexFox/packetflow_foundry",
+            "repo_slug": "FennexFox/packetflow_foundry",
+        }
+        relevant_ref = {
+            "kind": "current-branch-pr",
+            "base_commit": None,
+            "head_commit": "head-sha",
+            "primary_pr_number": 1,
+        }
+        observed: dict[str, object] = {}
+
+        def fake_collect_github_evidence(
+            repo_root: Path,
+            actual_identity: dict[str, str],
+            actual_relevant_ref: dict[str, object],
+            public_doc_paths: list[str],
+            actual_repo_profile: dict[str, object],
+        ) -> dict[str, object]:
+            observed["repo_root"] = repo_root
+            observed["identity"] = actual_identity
+            observed["relevant_ref"] = actual_relevant_ref
+            observed["public_doc_paths"] = public_doc_paths
+            observed["repo_profile"] = actual_repo_profile
+            return {"required": False, "enabled": False, "digest": None}
+
+        with tempfile.TemporaryDirectory() as temp_dir:
+            output_path = Path(temp_dir) / "context.json"
+            state_path = Path(temp_dir) / "state.json"
+            args = mock.Mock(
+                repo_root="C:/repo",
+                output=str(output_path),
+                profile="profile.json",
+                full=True,
+                since_ref=None,
+                state_file=None,
+            )
+            with (
+                mock.patch.object(collector, "parse_args", return_value=args),
+                mock.patch.object(collector, "resolve_repo_root", return_value=Path("C:/repo")),
+                mock.patch.object(collector, "resolve_profile_path", return_value=Path("C:/repo/profile.json")),
+                mock.patch.object(collector, "load_repo_profile", return_value=profile),
+                mock.patch.object(collector, "repo_identity", return_value=identity),
+                mock.patch.object(collector, "default_state_file", return_value=state_path),
+                mock.patch.object(collector, "git_head_commit", return_value="head-sha"),
+                mock.patch.object(collector, "git_branch", return_value="develop"),
+                mock.patch.object(collector, "collect_public_doc_paths", return_value=[]),
+                mock.patch.object(collector, "build_baseline", return_value={"mode": "saved", "base_commit": None}),
+                mock.patch.object(collector, "select_relevant_ref", return_value=(relevant_ref, [])),
+                mock.patch.object(collector, "collect_status_paths", return_value=[]),
+                mock.patch.object(collector, "collect_github_evidence", side_effect=fake_collect_github_evidence),
+                mock.patch.object(collector, "build_evidence_summary", return_value={"artifact_count": 0, "comment_count": 0}),
+                mock.patch.object(
+                    collector,
+                    "build_packet_candidates",
+                    return_value={"forms_batch_packet": {"active": False, "direct_source_changes": []}},
+                ),
+                mock.patch.object(collector, "build_builder_compatibility", return_value={"status": "current"}),
+                mock.patch.object(collector, "write_json"),
+            ):
+                self.assertEqual(collector.main(), 0)
+
+        self.assertEqual(observed["repo_root"], Path("C:/repo"))
+        self.assertIs(observed["identity"], identity)
+        self.assertIs(observed["relevant_ref"], relevant_ref)
+        self.assertEqual(observed["public_doc_paths"], [])
+        self.assertIs(observed["repo_profile"], profile)
 
 
 if __name__ == "__main__":
