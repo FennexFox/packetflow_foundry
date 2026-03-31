@@ -1,19 +1,21 @@
 # PacketFlow Foundry
 
 `packetflow_foundry` is a vendorable shared core for packet-first, token-efficient workflow orchestration.
-It ships reusable contracts, templates, builders, overlay profiles, and a default managed agent set.
+It ships reusable contracts, templates, builders, overlay profiles, a default managed agent set, and reusable repo-scoped skills.
 
 It is not a project-specific monolith.
-Consumer projects should keep repo-specific profiles, skills, and agents outside the foundry in `.codex/project/`.
+Consumer projects should keep repo-specific profiles in `.codex/project/profiles/`, repo-specific skills in `.agents/skills/`, and repo-specific agents in `.codex/project/agents/`.
 
 ## Compose Precedence
 
-`foundry baseline -> optional foundry overlay -> project-local profile -> project-local skill/agent overrides`
+`foundry baseline -> optional foundry overlay -> project-local profile -> root .agents/skills override surface`
 
 ## Layout
 
 ```text
 packetflow_foundry/
+  .agents/
+    skills/
   AGENTS.md
   README.md
   codex.example.toml
@@ -28,8 +30,6 @@ packetflow_foundry/
   builders/
     consumer-bootstrap/
     packet-workflow/
-  skills/
-    packet-workflow-skill-builder/
   docs/
     vendoring.md
 ```
@@ -54,10 +54,10 @@ packetflow_foundry/
   - Builder logic, builder contract, helper scripts, and tests.
   - This builder consumes `core/`; it does not own shared semantics.
 - `builders/consumer-bootstrap/`
-  - Consumer-repo bootstrap helper for initializing the minimum project-local `.codex/` overlay after vendoring.
-  - This builder is append-only for `AGENTS.md` handling and otherwise keeps an all-or-nothing conflict policy.
-- `skills/packet-workflow-skill-builder/`
-  - Thin skill entrypoint only.
+  - Consumer-repo bootstrap helper for initializing the minimum project-local Codex overlay after vendoring.
+  - This builder is append-only for `AGENTS.md` handling and otherwise keeps an all-or-nothing conflict policy for tracked scaffolds.
+- `.agents/skills/`
+  - Thin skill entrypoints only.
   - Authoritative contracts, templates, scripts, and tests must not live here.
 
 ## Managed Agents
@@ -67,7 +67,9 @@ It is not a declaration that every consumer project must use only this exact glo
 
 The intended model is:
 - foundry default managed agents under `.codex/vendor/packetflow_foundry/agents/`
-- project-local additive overrides under `.codex/project/agents/`
+- foundry reusable skills under `.codex/vendor/packetflow_foundry/.agents/skills/`
+- consumer-local repo skill discovery under `.agents/skills/`
+- project-local additive agents under `.codex/project/agents/`
 
 Foundry owns reusable agent behavior semantics.
 Projects should only adjust binding, selection, or routing locally.
@@ -80,13 +82,14 @@ Typical consumer layout:
 
 ```text
 project-root/
+  .agents/
+    skills/
   .codex/
     AGENTS.md
     vendor/
       packetflow_foundry/
     project/
       profiles/
-      skills/
       agents/
 ```
 
@@ -94,7 +97,9 @@ Rules:
 - use foundry `profiles/baseline/profile.json` by default
 - opt into `profiles/packet-heavy-orchestrator/profile.json` only when the workflow is packet-heavy
 - put repo-specific profile data in `.codex/project/profiles/`
-- put repo-specific skills and agents in `.codex/project/`
+- put repo-specific skills in repo-root `.agents/skills/`
+- put repo-specific agents in `.codex/project/agents/`
+- treat legacy `.codex/project/skills/` as migration-only
 - do not make repo-specific edits in the vendor subtree
 
 Bootstrap the local overlay after vendoring:
@@ -107,7 +112,10 @@ python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init
 Bootstrap behavior:
 - root `AGENTS.md` and `.codex/AGENTS.md` are append-only targets
 - `.codex/project/profiles/default/profile.json` is a project-local scaffold, not a reusable foundry overlay
-- if any non-`AGENTS.md` bootstrap output already exists, the helper aborts without writing files
+- repo-root `.agents/skills/` is the canonical discovery surface in the consumer repo
+- vendored foundry skills are bridged into root `.agents/skills/` with directory symlinks unless a root entry already exists
+- legacy `.codex/project/skills/` entries are bridged only as a migration shim and should be moved to root `.agents/skills/`
+- if any non-`AGENTS.md` tracked bootstrap output already exists, the helper aborts without writing files
 
 See [docs/vendoring.md](./docs/vendoring.md) for the full model.
 

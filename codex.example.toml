@@ -15,11 +15,11 @@ profile_dirs = [
   ".codex/project/profiles",
 ]
 skill_dirs = [
-  ".codex/vendor/packetflow_foundry/skills",
-  ".codex/project/skills",
+  ".codex/vendor/packetflow_foundry/.agents/skills",
+  ".agents/skills",
 ]
 agent_dirs = [
   ".codex/vendor/packetflow_foundry/agents",
   ".codex/project/agents",
 ]
-precedence = "foundry baseline -> optional foundry overlay -> project-local profile -> project-local skill/agent overrides"
+precedence = "foundry baseline -> optional foundry overlay -> project-local profile -> root .agents/skills override surface"

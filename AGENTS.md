@@ -11,7 +11,7 @@ It does not try to map or govern an entire consumer project.
 - reusable contracts, templates, builders, and managed agents
 
 It is not a project-specific monolith.
-Repo-specific profiles, skills, and agents belong in the consumer repo under `.codex/project/`.
+Repo-specific profiles belong in `.codex/project/profiles/`, repo-specific skills in `.agents/skills/`, and repo-specific agents in `.codex/project/agents/`.
 
 ## Directory Ownership
 
@@ -27,8 +27,8 @@ Repo-specific profiles, skills, and agents belong in the consumer repo under `.c
   - `packet-heavy-orchestrator` is an opt-in upper overlay.
 - `builders/`
   - Builder logic, builder-specific contracts, generators, and tests that consume `core/`.
-- `skills/`
-  - Thin entrypoints only.
+- `.agents/skills/`
+  - Thin skill entrypoints only.
   - Do not place authoritative contracts, templates, scripts, or tests here.
 
 ## Core Versus Profile
@@ -66,6 +66,8 @@ Consumer projects may adjust binding, selection, and routing locally, but should
 
 Use this model when vendored:
 - foundry default managed set: `.codex/vendor/packetflow_foundry/agents/`
+- foundry reusable skill source: `.codex/vendor/packetflow_foundry/.agents/skills/`
+- consumer-local skill discovery surface: `.agents/skills/`
 - additive project overrides: `.codex/project/agents/`
 
 ## Vendoring Rules
@@ -73,8 +75,9 @@ Use this model when vendored:
 When this repo is used as `.codex/vendor/packetflow_foundry`:
 - do not make repo-specific edits inside the vendor subtree
 - put repo-specific profiles in `.codex/project/profiles/`
-- put repo-specific skills in `.codex/project/skills/`
+- put repo-specific skills in `.agents/skills/`
 - put repo-specific agents in `.codex/project/agents/`
+- treat legacy `.codex/project/skills/` as migration-only, not canonical
 
 Direct vendor edits are reserved for reusable fixes or reusable capability additions that should be kept upstream in the foundry.
 
@@ -82,5 +85,5 @@ Direct vendor edits are reserved for reusable fixes or reusable capability addit
 
 - If you change `core/contracts`, `core/templates`, or `core/defaults`, update `builders/` and builder tests in the same change.
 - If you add a new foundry profile, it must be reusable across multiple repos. Otherwise keep it in `.codex/project/profiles/`.
-- Do not reintroduce duplicate authoritative copies of contracts, templates, scripts, or tests under `skills/`.
+- Do not reintroduce duplicate authoritative copies of contracts, templates, scripts, or tests under `.agents/skills/`.
 - Treat `codex.example.toml` as a repo convention example only, not a Codex platform standard.

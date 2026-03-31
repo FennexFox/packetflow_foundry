@@ -1,8 +1,0 @@
-interface:
-  display_name: "Weekly Update"
-  short_description: "Top-level packet-driven weekly update orchestrator with profile-aware repo conventions"
-  default_prompt: >-
-    Use $weekly-update to collect context, build packets, optionally delegate
-    narrow read-only packet analysis, keep final adjudication and wording
-    local, state the exact reporting window, and apply only after local plan
-    validation.

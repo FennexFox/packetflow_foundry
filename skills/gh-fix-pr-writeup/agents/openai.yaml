@@ -1,9 +1,0 @@
-interface:
-  display_name: "Fix PR Writeup"
-  short_description: "Audit and repair PR title/body"
-  default_prompt: >-
-    Use $gh-fix-pr-writeup to verify a PR title and body against repository
-    PR rules and the actual change set, then rewrite it only if the new text
-    is materially better. Keep rules_packet.json in view before editing the
-    PR, run validate_pr_writeup_edit.py before any mutation, and use
-    apply_pr_writeup.py only with validator output.

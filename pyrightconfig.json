@@ -2,7 +2,7 @@
   "include": [
     "builders",
     "core",
-    "skills"
+    ".agents"
   ],
   "exclude": [
     "**/__pycache__",
@@ -16,8 +16,8 @@
       "root": "builders/consumer-bootstrap/tests",
       "extraPaths": [
         "builders/consumer-bootstrap/scripts",
-        "skills/reword-recent-commits/scripts",
-        "skills/git-split-and-commit/scripts"
+        ".agents/skills/reword-recent-commits/scripts",
+        ".agents/skills/git-split-and-commit/scripts"
       ]
     },
     {
@@ -30,39 +30,39 @@
       ]
     },
     {
-      "root": "skills/gh-address-review-threads/scripts"
+      "root": ".agents/skills/gh-address-review-threads/scripts"
     },
     {
-      "root": "skills/gh-address-review-threads/tests",
+      "root": ".agents/skills/gh-address-review-threads/tests",
       "extraPaths": [
-        "skills/gh-address-review-threads/scripts"
+        ".agents/skills/gh-address-review-threads/scripts"
       ]
     },
     {
-      "root": "skills/gh-fix-pr-writeup/scripts"
+      "root": ".agents/skills/gh-fix-pr-writeup/scripts"
     },
     {
-      "root": "skills/gh-fix-pr-writeup/tests",
+      "root": ".agents/skills/gh-fix-pr-writeup/tests",
       "extraPaths": [
-        "skills/gh-fix-pr-writeup/scripts"
+        ".agents/skills/gh-fix-pr-writeup/scripts"
       ]
     },
     {
-      "root": "skills/git-split-and-commit/scripts"
+      "root": ".agents/skills/git-split-and-commit/scripts"
     },
     {
-      "root": "skills/git-split-and-commit/tests",
+      "root": ".agents/skills/git-split-and-commit/tests",
       "extraPaths": [
-        "skills/git-split-and-commit/scripts"
+        ".agents/skills/git-split-and-commit/scripts"
       ]
     },
     {
-      "root": "skills/reword-recent-commits/scripts"
+      "root": ".agents/skills/reword-recent-commits/scripts"
     },
     {
-      "root": "skills/reword-recent-commits/tests",
+      "root": ".agents/skills/reword-recent-commits/tests",
       "extraPaths": [
-        "skills/reword-recent-commits/scripts"
+        ".agents/skills/reword-recent-commits/scripts"
       ]
     }
   ]

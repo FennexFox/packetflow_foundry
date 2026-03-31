@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -19,14 +20,14 @@ BOOTSTRAP_MARKER_END = "<!-- packetflow_foundry consumer bootstrap:end -->"
 CODEX_AGENTS_RELATIVE = Path(".codex/AGENTS.md")
 ROOT_AGENTS_RELATIVE = Path("AGENTS.md")
 PROJECT_PROFILE_RELATIVE = Path(".codex/project/profiles/default/profile.json")
-PROJECT_SKILLS_GITKEEP_RELATIVE = Path(".codex/project/skills/.gitkeep")
 PROJECT_AGENTS_GITKEEP_RELATIVE = Path(".codex/project/agents/.gitkeep")
+ROOT_SKILLS_RELATIVE = Path(".agents/skills")
+LEGACY_PROJECT_SKILLS_RELATIVE = Path(".codex/project/skills")
+PROJECT_LOCAL_PROFILE_KIND = "project-local-scaffold-profile"
 CONFLICT_TARGETS = (
     PROJECT_PROFILE_RELATIVE,
-    PROJECT_SKILLS_GITKEEP_RELATIVE,
     PROJECT_AGENTS_GITKEEP_RELATIVE,
 )
-PROJECT_LOCAL_PROFILE_KIND = "project-local-scaffold-profile"
 
 
 def parse_args() -> argparse.Namespace:
@@ -58,6 +59,16 @@ def require_vendor_subtree(repo_root: Path) -> Path:
     return vendor_dir
 
 
+def require_vendor_skills_root(vendor_dir: Path) -> Path:
+    vendor_skills = vendor_dir / ".agents" / "skills"
+    if not vendor_skills.is_dir():
+        raise RuntimeError(
+            "Missing PacketFlow Foundry vendor skills subtree at "
+            f"{vendor_skills.as_posix()}"
+        )
+    return vendor_skills
+
+
 def read_text(path: Path) -> str:
     return path.read_text(encoding="utf-8-sig")
 
@@ -75,13 +86,14 @@ def render_agents_block() -> str:
             "- Vendor: `.codex/vendor/packetflow_foundry`",
             (
                 "- Project-local overlays: `.codex/project/profiles/`, "
-                "`.codex/project/skills/`, `.codex/project/agents/`"
+                "`.agents/skills/`, `.codex/project/agents/`"
             ),
             "- Do not edit `.codex/vendor/packetflow_foundry` for local needs.",
             (
                 "- `.codex/project/profiles/default/profile.json` is a "
                 "project-local scaffold."
             ),
+            "- Legacy `.codex/project/skills/` is migration-only and should move to `.agents/skills/`.",
             BOOTSTRAP_MARKER_END,
         ]
     )
@@ -212,15 +224,93 @@ def preflight_non_agents(repo_root: Path) -> None:
         )
 
 
+def ensure_root_skill_dir(repo_root: Path) -> Path:
+    root_skills = repo_root / ROOT_SKILLS_RELATIVE
+    if root_skills.exists() and not root_skills.is_dir():
+        raise RuntimeError(
+            f"Root skills target is not a directory: {root_skills.as_posix()}"
+        )
+    root_skills.mkdir(parents=True, exist_ok=True)
+    return root_skills
+
+
+def iter_skill_directories(root: Path) -> dict[str, Path]:
+    if not root.is_dir():
+        return {}
+    skills: dict[str, Path] = {}
+    for child in sorted(root.iterdir(), key=lambda entry: entry.name):
+        if child.is_dir() and (child / "SKILL.md").is_file():
+            skills[child.name] = child
+    return skills
+
+
+def relative_link_target(source: Path, *, target_parent: Path) -> Path:
+    return Path(os.path.relpath(source, start=target_parent))
+
+
+def create_directory_symlink(link_path: Path, source_path: Path) -> str:
+    link_path.parent.mkdir(parents=True, exist_ok=True)
+    relative_target = relative_link_target(source_path, target_parent=link_path.parent)
+    try:
+        link_path.symlink_to(relative_target, target_is_directory=True)
+    except OSError as exc:
+        raise RuntimeError(
+            "Failed to create directory symlink "
+            f"{link_path.as_posix()} -> {source_path.as_posix()}. "
+            "Enable Windows Developer Mode or run the bootstrap with permissions "
+            "that allow symbolic links."
+        ) from exc
+    return f"{link_path.as_posix()} -> {source_path.as_posix()}"
+
+
+def create_skill_bridges(repo_root: Path, vendor_skills_root: Path) -> dict[str, list[str]]:
+    root_skills = ensure_root_skill_dir(repo_root)
+    vendor_skills = iter_skill_directories(vendor_skills_root)
+    legacy_skills = iter_skill_directories(repo_root / LEGACY_PROJECT_SKILLS_RELATIVE)
+
+    created: list[str] = []
+    migrated: list[str] = []
+    skipped: list[str] = []
+    notices: list[str] = []
+
+    for skill_name in sorted(set(vendor_skills) | set(legacy_skills)):
+        target_path = root_skills / skill_name
+        if target_path.exists():
+            skipped.append(
+                f"{target_path.as_posix()} (existing root entry takes precedence)"
+            )
+            continue
+
+        legacy_source = legacy_skills.get(skill_name)
+        if legacy_source is not None:
+            migrated.append(create_directory_symlink(target_path, legacy_source))
+            notices.append(
+                "Legacy `.codex/project/skills/` entry bridged for migration: "
+                f"{skill_name}. Move canonical ownership to `.agents/skills/{skill_name}`."
+            )
+            continue
+
+        created.append(create_directory_symlink(target_path, vendor_skills[skill_name]))
+
+    if legacy_skills:
+        notices.append(
+            "Legacy `.codex/project/skills/` is deprecated and remains migration-only."
+        )
+
+    return {
+        "created": created,
+        "migrated": migrated,
+        "skipped": skipped,
+        "notices": notices,
+    }
+
+
 def create_non_agents(repo_root: Path) -> list[str]:
     created: list[str] = []
 
     profile_path = repo_root / PROJECT_PROFILE_RELATIVE
     write_text(profile_path, render_project_local_profile(repo_root))
     created.append(PROJECT_PROFILE_RELATIVE.as_posix())
-
-    write_text(repo_root / PROJECT_SKILLS_GITKEEP_RELATIVE, "")
-    created.append(PROJECT_SKILLS_GITKEEP_RELATIVE.as_posix())
 
     write_text(repo_root / PROJECT_AGENTS_GITKEEP_RELATIVE, "")
     created.append(PROJECT_AGENTS_GITKEEP_RELATIVE.as_posix())
@@ -233,11 +323,13 @@ def main() -> int:
 
     try:
         repo_root = resolve_repo_root(args.repo_root)
-        require_vendor_subtree(repo_root)
+        vendor_dir = require_vendor_subtree(repo_root)
+        vendor_skills_root = require_vendor_skills_root(vendor_dir)
         preflight_non_agents(repo_root)
         root_agents_status = update_root_agents(repo_root)
         codex_agents_status = update_codex_agents(repo_root)
         created = create_non_agents(repo_root)
+        bridge_report = create_skill_bridges(repo_root, vendor_skills_root)
     except RuntimeError as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1
@@ -247,6 +339,15 @@ def main() -> int:
     print(f" - .codex/AGENTS.md: {codex_agents_status}")
     for relative_path in created:
         print(f" - {relative_path}: created")
+    print(f" - {ROOT_SKILLS_RELATIVE.as_posix()}: ready")
+    for bridge in bridge_report["created"]:
+        print(f" - skill bridge: {bridge}")
+    for bridge in bridge_report["migrated"]:
+        print(f" - legacy skill bridge: {bridge}")
+    for bridge in bridge_report["skipped"]:
+        print(f" - skipped skill bridge: {bridge}")
+    for notice in bridge_report["notices"]:
+        print(f"[NOTICE] {notice}", file=sys.stderr)
     return 0
 
 

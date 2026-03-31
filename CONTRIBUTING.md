@@ -15,7 +15,9 @@ behavior such as:
 - general documentation for vendoring or operating the foundry
 
 Changes are usually not a fit when they only support one consumer repo.
-Put those in `.codex/project/` in the consumer repository instead.
+Put repo-specific profiles in `.codex/project/profiles/`, repo-specific
+skills in `.agents/skills/`, and repo-specific agents in
+`.codex/project/agents/` in the consumer repository instead.
 
 ## Commit messages
 
@@ -58,7 +60,7 @@ When a change touches `core/contracts`, `core/templates`, or
 change.
 
 Do not add duplicate authoritative copies of contracts, templates,
-scripts, or tests under `skills/`.
+scripts, or tests under `.agents/skills/`.
 
 ## Validation
 
