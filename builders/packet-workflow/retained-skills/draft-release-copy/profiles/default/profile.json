@@ -1,0 +1,113 @@
+{
+    "bindings":  {
+                     "primary_readme_path":  "README.md",
+                     "publish_config_path":  null,
+                     "settings_source_path":  null
+                 },
+    "extra":  {
+                  "release_copy":  {
+                                       "allowed_publish_fields":  [
+                                                                      "short_description",
+                                                                      "long_description",
+                                                                      "mod_version",
+                                                                      "change_log"
+                                                                  ],
+                                       "allowed_readme_sections":  [
+                                                                       "Current Release",
+                                                                       "Current Status"
+                                                                   ],
+                                       "issue_defaults":  {
+                                                              "label_names":  [
+                                                                                  "release"
+                                                                              ],
+                                                              "project_mode":  "none",
+                                                              "title_prefix":  "[Release]"
+                                                          },
+                                       "maintaining_path":  "MAINTAINING.md",
+                                       "release_checklist_template_path":  ".github/ISSUE_TEMPLATE/release_checklist.yml",
+                                       "release_workflow_path":  ".github/workflows/release.yml"
+                                   }
+              },
+    "lint_rules":  {
+                       "missing_review_docs_are_errors":  false,
+                       "require_readme_settings_table":  false
+                   },
+    "name":  "default",
+    "notes":  [
+                  "Keep release gates, helper handoff policy, and repo-specific wording constraints in the consumer-local wrapper.",
+                  "Do not encode validator or apply behavior in this profile.",
+                  "The retained default scaffold keeps repo-specific bindings null; add them in a project-local override before running the workflow."
+              ],
+    "packet_defaults":  {
+                            "review_docs":  {
+                                                "changes_packet":  [
+                                                                       "README.md",
+                                                                       "MAINTAINING.md",
+                                                                       ".github/workflows/release.yml"
+                                                                   ],
+                                                "checklist_packet":  [
+                                                                         ".github/ISSUE_TEMPLATE/release_checklist.yml",
+                                                                         ".github/workflows/release.yml",
+                                                                         "MAINTAINING.md"
+                                                                     ],
+                                                "evidence_packet":  [
+                                                                        "README.md",
+                                                                        "MAINTAINING.md",
+                                                                        ".github/workflows/release.yml"
+                                                                    ],
+                                                "publish_packet":  [
+                                                                       "README.md",
+                                                                       "MAINTAINING.md"
+                                                                   ],
+                                                "readme_packet":  [
+                                                                      "README.md",
+                                                                      "MAINTAINING.md",
+                                                                      ".github/ISSUE_TEMPLATE/release_checklist.yml"
+                                                                  ]
+                                            },
+                            "source_path_globs":  {
+                                                      "changes_packet":  [
+                                                                             "src/**",
+                                                                             "release/**",
+                                                                             ".github/workflows/release.yml"
+                                                                         ],
+                                                      "checklist_packet":  [
+                                                                               ".github/ISSUE_TEMPLATE/*.yml",
+                                                                               ".github/workflows/release.yml",
+                                                                               "docs/**"
+                                                                           ],
+                                                      "evidence_packet":  [
+                                                                              ".github/**",
+                                                                              "docs/**",
+                                                                              "README.md"
+                                                                          ],
+                                                      "publish_packet":  [
+                                                                             "**/PublishConfiguration.xml"
+                                                                         ],
+                                                      "readme_packet":  [
+                                                                            "README.md",
+                                                                            "MAINTAINING.md",
+                                                                            ".github/ISSUE_TEMPLATE/*.yml"
+                                                                        ]
+                                                  }
+                        },
+    "profile_path":  "profiles/default/profile.json",
+    "repo_match":  {
+                       "remote_patterns":  [
+
+                                           ],
+                       "root_markers":  [
+                                            ".git",
+                                            "README.md"
+                                        ]
+                   },
+    "summary":  "Neutral reusable profile scaffold for release-copy drafting. Add repo layout bindings, review docs, and declarative release metadata in project-local profiles when vendored.",
+    "metadata":  {
+                     "versioning":  {
+                                        "builder_family":  "packet-workflow",
+                                        "builder_semver":  "0.1.0",
+                                        "compatibility_epoch":  1,
+                                        "repo_profile_schema_version":  1
+                                    }
+                 }
+}

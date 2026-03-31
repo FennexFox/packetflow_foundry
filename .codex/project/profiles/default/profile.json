@@ -1,0 +1,40 @@
+{
+  "kind": "project-local-profile",
+  "name": "default",
+  "profile_path": ".codex/project/profiles/default/profile.json",
+  "summary": "Project-local default scaffold for packetflow_foundry. Keep repo-wide notes here and put skill-specific bindings in skill-named profiles.",
+  "repo_match": {
+    "root_markers": [
+      ".git",
+      "README.md"
+    ],
+    "remote_patterns": []
+  },
+  "bindings": {
+    "primary_readme_path": "README.md",
+    "settings_source_path": null,
+    "publish_config_path": null
+  },
+  "packet_defaults": {
+    "review_docs": {},
+    "source_path_globs": {}
+  },
+  "lint_rules": {
+    "require_readme_settings_table": false,
+    "missing_review_docs_are_errors": false
+  },
+  "notes": [
+    "This file is a project-local scaffold profile for one repository.",
+    "It is not a reusable foundry overlay and should stay outside reusable skill defaults.",
+    "Keep this profile data-only: add repo-specific bindings, review docs, booleans, and notes here.",
+    "Skill-specific packet-workflow bindings should live in `.codex/project/profiles/<skill-name>/profile.json` instead of this default scaffold."
+  ],
+  "metadata": {
+    "versioning": {
+      "builder_family": "packet-workflow",
+      "builder_semver": "0.1.0",
+      "compatibility_epoch": 1,
+      "repo_profile_schema_version": 1
+    }
+  }
+}

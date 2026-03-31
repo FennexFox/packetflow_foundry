@@ -2,6 +2,11 @@
 
 Use this file when drafting `builder-spec.json` for `scripts/init_packet_skill.py`.
 
+Boundary note:
+- the thin-entrypoint intent for `.agents/skills/` predates the retained-kernel split
+- earlier drift happened because the original generator and tests still emitted bundled skills under `.agents/skills/`
+- the current contract is enforced by generation output and tests: retained kernels live under `retained-skills/`, wrappers live under `.agents/skills/`
+
 Authoritative ownership:
 - shared contracts, templates, and default semantics live under [`../../core/`](../../core/)
 - this builder consumes those assets and is not their authoritative owner
@@ -13,10 +18,21 @@ This builder separates:
 - a default repo-profile scaffold for repo-specific path bindings, packet review docs, and lint toggles
 - optional domain overlays that rename or specialize semantics without changing the shared structure
 
-Repo profiles are intentionally data-only. Keep only declarative bindings, globs, doc lists, booleans, and notes there. Do not treat `profile.json` as a place for executable hooks, prompt fragments, or worker-routing behavior.
+Repo profiles are intentionally data-only. Keep only declarative bindings, globs, doc lists, booleans, notes, and generated compatibility metadata there. Do not treat `profile.json` as a place for executable hooks, prompt fragments, or worker-routing behavior.
 
 ## Required Fields
 
+- `builder_versioning`
+  - Object copied from `version.json` when the skill is current.
+  - Required keys:
+    - `builder_family`
+    - `builder_semver`
+    - `compatibility_epoch`
+    - `builder_spec_schema_version`
+    - `repo_profile_schema_version`
+  - Generation rejects missing or invalid version blocks.
+  - Semver-only drift is allowed.
+  - Epoch or schema mismatch requires manual migration instead of silent auto-bump.
 - `skill_name`
   - Hyphen-case skill folder name and SKILL frontmatter name.
 - `description`
@@ -79,6 +95,8 @@ Repo profiles are intentionally data-only. Keep only declarative bindings, globs
   - Default:
     - `classification-oriented` when `decision_ready_packets=true`
     - otherwise `generic`
+  - Guard:
+    - `classification-oriented` requires `decision_ready_packets=true`
 - `worker_output_shape`
   - Enum:
     - `flat`
@@ -98,8 +116,13 @@ Repo profiles are intentionally data-only. Keep only declarative bindings, globs
     - `description`
     - `required`
     - `fields`
+  - Guard:
+    - explicit `candidate_field_bundles` require `worker_return_contract=classification-oriented`
 - `worker_footer_fields`
   - Ordered array of footer field names for hierarchical worker output.
+  - Guard:
+    - explicit `worker_footer_fields` require `decision_ready_packets=true`
+    - explicit `worker_footer_fields` require `worker_output_shape=hierarchical`
 - `reread_reason_values`
   - Ordered array of allowed reread reasons.
 - `required_candidate_fields`
@@ -141,6 +164,7 @@ Repo profiles are intentionally data-only. Keep only declarative bindings, globs
   - Optional default repo-profile scaffold for generated skills.
   - Generated at `profiles/<name>/profile.json`.
   - Keep it data-only end to end.
+  - `metadata.versioning` is generated automatically and is not authored through this field.
   - Supported keys:
     - `name`
     - `summary`
@@ -157,11 +181,58 @@ Repo profiles are intentionally data-only. Keep only declarative bindings, globs
     - `lint_rules`
       - `require_readme_settings_table`
       - `missing_review_docs_are_errors`
+    - `extra`
+      - arbitrary data-only JSON for skill-specific profile fields that do not
+        fit the baseline bindings/packet-defaults/lint-rules scaffold
+      - values must remain declarative data only
+      - do not use this for executable hooks, prompt fragments, routing
+        authority, or validator/apply behavior
+      - example:
+        - keep repo-specific weekly-update conventions in
+          `repo_profile.extra.weekly_update`
     - `notes`
   - Default intent:
     - keep repo-specific file layout and packet ownership out of the generic core
     - keep repo-specific configuration declarative so the generated scripts own executable behavior
     - let future repo ports add or replace profile folders without rewriting the core contract or templates
+
+## Builder Versioning
+
+Canonical current builder metadata lives in `version.json`.
+
+Compatibility expectations:
+- `compatibility_epoch` must match for generation to proceed
+- `builder_spec_schema_version` must match for generation to proceed
+- `repo_profile_schema_version` must match for generation to proceed
+- `builder_semver` may trail current builder semver when the skill is still structurally compatible
+
+Generated runtime metadata:
+- `builder_versioning` is copied into generated `SPEC_METADATA`
+- `profiles/<name>/profile.json` gets `metadata.versioning`
+- runtime collectors should record builder compatibility and warn when the active skill or profile is not current
+
+## Output Layout
+
+`scripts/init_packet_skill.py --output-dir <repo-root>` generates two coordinated trees:
+- authoritative retained kernel:
+  - `builders/packet-workflow/retained-skills/<skill-name>/`
+- thin discovery wrapper:
+  - `.agents/skills/<skill-name>/`
+
+Wrapper rules:
+- wrapper subtree may contain only `SKILL.md` and `agents/openai.yaml`
+- wrapper must point operators at the retained kernel
+- wrapper must not carry `builder-spec.json`, profiles, references, scripts, tests, or migration worksheets
+
+Generated operator-doc rules:
+- generated retained `SKILL.md` files must define the execution contract in terms of `<python-bin>` and `<skill-dir>`
+- generated helper invocations must use `<python-bin> -B <skill-dir>/scripts/...`
+- generated docs must not prescribe launcher-specific shims such as bare `python` or `py`
+
+Bump rules:
+- bump `compatibility_epoch` when generated skills or profiles require manual migration
+- do not bump the epoch for docs-only, tests-only, or additive backward-compatible changes
+- use `versioning-policy.md` for the authoritative bump and migration-record rules
 
 ## Known Worker Agent Types
 
@@ -197,6 +268,18 @@ Recommended pairing:
 - `decision_ready_packets=true`
 - `worker_return_contract=classification-oriented`
 - `worker_output_shape=hierarchical`
+
+Retained weekly-update-like pattern:
+- use this same pairing for retained hierarchical adjudication workflows
+- keep repo-specific review markers, release-title conventions, and similar
+  data-only overrides in `repo_profile.extra.weekly_update`
+- do not create a new builder family when the workflow still fits this shape
+
+Forbidden retained-shape combinations:
+- `candidate_field_bundles` with `worker_return_contract=generic`
+- `worker_footer_fields` without `decision_ready_packets=true`
+- `worker_footer_fields` with `worker_output_shape=flat`
+- `domain_overlay` with `worker_return_contract=generic`
 
 Shared structure:
 - `candidates[]`
@@ -329,7 +412,7 @@ Generated mutating scaffolds should inherit these defaults:
 
 ## Generated Files
 
-Every generated skill includes:
+Every generated retained kernel includes:
 - `SKILL.md`
 - `agents/openai.yaml`
 - `references/core-contract.md`
@@ -346,6 +429,10 @@ Optional generated files:
 - `scripts/lint_<domain_slug>.py`
 - `scripts/validate_<domain_slug>.py`
 - `scripts/apply_<domain_slug>.py`
+
+Every generated wrapper includes:
+- `SKILL.md`
+- `agents/openai.yaml`
 
 ## Generated Packet Conventions
 

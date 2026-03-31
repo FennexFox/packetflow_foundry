@@ -1,0 +1,184 @@
+{
+  "now_utc": "2026-03-27T12:00:00Z",
+  "window_days": 7,
+  "state_marker": {
+    "window_end_utc": "2026-03-20T23:59:59Z"
+  },
+  "default_branch": "master",
+  "releases": [
+    {
+      "tag_name": "v0.2.2",
+      "published_at": "2026-03-25T09:00:00Z",
+      "release_issue_number": 105
+    },
+    {
+      "tag_name": "v0.2.3",
+      "published_at": "2026-03-26T15:00:00Z",
+      "release_issue_number": 106
+    },
+    {
+      "tag_name": "v0.2.1",
+      "published_at": "2026-03-18T09:00:00Z",
+      "release_issue_number": 104
+    }
+  ],
+  "prs": [
+    {
+      "number": 90,
+      "title": "Backfill telemetry guard",
+      "base_ref_name": "develop",
+      "merged_at": "2026-03-22T10:00:00Z",
+      "absorbed_into": 97,
+      "linked_issue_numbers": [],
+      "shipped_change_bullets": [
+        "Added a telemetry guard for the backfill path."
+      ],
+      "review_followups": [
+        "Fold the guard into the release branch after validation."
+      ]
+    },
+    {
+      "number": 93,
+      "title": "Normalize release evidence wording",
+      "base_ref_name": "develop",
+      "merged_at": "2026-03-23T10:00:00Z",
+      "absorbed_into": 97,
+      "linked_issue_numbers": [],
+      "shipped_change_bullets": [
+        "Normalized evidence wording for the release checklist."
+      ],
+      "review_followups": [
+        "Confirm the checklist text matches the published release note."
+      ]
+    },
+    {
+      "number": 97,
+      "title": "Land growable office demand hotfix",
+      "base_ref_name": "master",
+      "merged_at": "2026-03-24T10:00:00Z",
+      "linked_issue_numbers": [110],
+      "shipped_change_bullets": [
+        "Guarded the growable office demand transition path.",
+        "Stabilized the validation hook that runs after the fix lands."
+      ],
+      "review_followups": [
+        "Adjust the release-note wording to mention the validation gate."
+      ]
+    },
+    {
+      "number": 101,
+      "title": "Refresh docs and release copy",
+      "base_ref_name": "master",
+      "merged_at": "2026-03-25T08:00:00Z",
+      "linked_issue_numbers": [],
+      "shipped_change_bullets": [
+        "Refreshed release-facing copy and doc references."
+      ],
+      "review_followups": [
+        "Keep the public copy aligned with the published tag."
+      ]
+    }
+  ],
+  "issues": [
+    {
+      "number": 110,
+      "title": "[Investigation] Reproduce growable upgrade stall in office demand flow",
+      "body": "Summary: the stall is reproducible when growable upgrades cross the existing office demand boundary.\nCurrent evidence: the validation path fails on the affected scenario.\nConclusion: this is an actual failure that blocks delivery.",
+      "labels": ["investigation", "compatibility"],
+      "state": "OPEN",
+      "created_at": "2026-03-23T08:00:00Z",
+      "updated_at": "2026-03-24T09:00:00Z",
+      "linked_from_pr_numbers": [97]
+    },
+    {
+      "number": 111,
+      "title": "[Software Investigation] Classify post-v0.2.x default runtime behavior changes",
+      "body": "Summary: track the release-gate classification for the runtime behavior shift.\nCurrent evidence: no reproduced signal yet.\nConclusion: keep this as a blocker tracker until more evidence arrives.",
+      "labels": ["software investigation"],
+      "state": "OPEN",
+      "created_at": "2026-03-24T08:00:00Z",
+      "updated_at": "2026-03-25T08:00:00Z"
+    },
+    {
+      "number": 103,
+      "title": "[Software Evidence] Mixed buyer recovery in validation trace",
+      "body": "Evidence summary: captured logs and counters for reference.\nCurrent evidence: the trace is reusable but does not add a new failure signal this week.\nConclusion: artifact collection only.",
+      "labels": ["software evidence"],
+      "state": "OPEN",
+      "created_at": "2026-03-25T09:00:00Z",
+      "updated_at": "2026-03-26T09:00:00Z"
+    },
+    {
+      "number": 112,
+      "title": "[Bug] Regression in telemetry counters after load",
+      "body": "Summary: telemetry counters reset after load.\nExpected: counters remain stable.\nSteps to reproduce: load a saved state and inspect the counter values.",
+      "labels": ["bug"],
+      "state": "OPEN",
+      "created_at": "2026-03-26T08:00:00Z",
+      "updated_at": "2026-03-26T10:00:00Z"
+    }
+  ],
+  "review_threads": [
+    {
+      "pr_number": 107,
+      "comments": [
+        {
+          "id": 2992368622,
+          "body": "Potential off-by-one in the validation loop.",
+          "author": "codex",
+          "created_at": "2026-03-26T09:00:00Z",
+          "in_reply_to_id": null,
+          "path": "ExampleProduct/Systems/PerformanceTelemetrySystem.cs"
+        },
+        {
+          "id": 2992368623,
+          "body": "phase=complete resolved in the next commit.",
+          "author": "codex",
+          "created_at": "2026-03-26T11:00:00Z",
+          "in_reply_to_id": 2992368622,
+          "path": "ExampleProduct/Systems/PerformanceTelemetrySystem.cs"
+        }
+      ]
+    },
+    {
+      "pr_number": 107,
+      "comments": [
+        {
+          "id": 2992369000,
+          "body": "Need to verify the release gate wording before merge.",
+          "author": "codex",
+          "created_at": "2026-03-26T13:00:00Z",
+          "in_reply_to_id": null,
+          "path": "ExampleProduct/Properties/PublishConfiguration.xml"
+        }
+      ]
+    },
+    {
+      "pr_number": 107,
+      "comments": [
+        {
+          "id": 2992369999,
+          "body": "Looks good to me.",
+          "author": "github-actions[bot]",
+          "created_at": "2026-03-26T14:00:00Z",
+          "in_reply_to_id": null,
+          "path": "ExampleProduct/Properties/PublishConfiguration.xml"
+        }
+      ]
+    }
+  ],
+  "workflow_runs": [
+    {
+      "databaseId": 23635553980,
+      "workflowName": "CI",
+      "conclusion": "failure",
+      "status": "completed",
+      "event": "push",
+      "headBranch": "master",
+      "headSha": "abc1234",
+      "createdAt": "2026-03-26T12:00:00Z",
+      "updatedAt": "2026-03-26T12:30:00Z",
+      "url": "https://example.invalid/run/23635553980"
+    }
+  ]
+}

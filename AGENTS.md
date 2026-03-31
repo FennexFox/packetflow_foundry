@@ -11,14 +11,15 @@ It does not try to map or govern an entire consumer project.
 - reusable contracts, templates, builders, and managed agents
 
 It is not a project-specific monolith.
-Repo-specific profiles, skills, and agents belong in the consumer repo under `.codex/project/`.
+Repo-specific profiles belong in `.codex/project/profiles/`, repo-specific skills in `.agents/skills/`, and project-scoped subagents in `.codex/agents/`.
 
 ## Directory Ownership
 
-- `agents/`
-  - Foundry default managed worker registry.
+- `.codex/agents/`
+  - Foundry default managed worker registry and the direct-repo project-scoped subagent discovery surface.
   - This is the reusable default set shipped by the foundry, not a claim that every consumer project must use only these agents.
-  - Consumer projects may add `.codex/project/agents/` as additive overrides.
+  - When vendored, bridge the foundry defaults into the consumer repo-root `.codex/agents/`.
+  - Legacy `.codex/project/agents/` entries are migration-only and should move to `.codex/agents/`.
 - `core/`
   - Authoritative home for cross-project behavior semantics, contracts, templates, and shared defaults.
 - `profiles/`
@@ -27,8 +28,11 @@ Repo-specific profiles, skills, and agents belong in the consumer repo under `.c
   - `packet-heavy-orchestrator` is an opt-in upper overlay.
 - `builders/`
   - Builder logic, builder-specific contracts, generators, and tests that consume `core/`.
-- `skills/`
-  - Thin entrypoints only.
+- `builders/packet-workflow/retained-skills/`
+  - Authoritative retained skill kernels.
+  - Owns reusable builder specs, profiles, references, scripts, tests, and migration worksheets for foundry packet workflows.
+- `.agents/skills/`
+  - Thin skill entrypoints only.
   - Do not place authoritative contracts, templates, scripts, or tests here.
 
 ## Core Versus Profile
@@ -65,16 +69,22 @@ Foundry core owns reusable agent behavior semantics.
 Consumer projects may adjust binding, selection, and routing locally, but should not fork shared semantics for repo-specific convenience.
 
 Use this model when vendored:
-- foundry default managed set: `.codex/vendor/packetflow_foundry/agents/`
-- additive project overrides: `.codex/project/agents/`
+- foundry default managed set: `.codex/vendor/packetflow_foundry/.codex/agents/`
+- foundry thin skill wrapper surface: `.codex/vendor/packetflow_foundry/.agents/skills/`
+- foundry authoritative retained skill source: `.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/`
+- consumer-local skill discovery surface: `.agents/skills/`
+- consumer-local subagent discovery surface: `.codex/agents/`
+- legacy project-agent shim: `.codex/project/agents/`
 
 ## Vendoring Rules
 
 When this repo is used as `.codex/vendor/packetflow_foundry`:
 - do not make repo-specific edits inside the vendor subtree
 - put repo-specific profiles in `.codex/project/profiles/`
-- put repo-specific skills in `.codex/project/skills/`
-- put repo-specific agents in `.codex/project/agents/`
+- put repo-specific skills in `.agents/skills/`
+- put repo-specific agents in `.codex/agents/`
+- treat legacy `.codex/project/agents/` as migration-only, not canonical
+- treat legacy `.codex/project/skills/` as migration-only, not canonical
 
 Direct vendor edits are reserved for reusable fixes or reusable capability additions that should be kept upstream in the foundry.
 
@@ -82,5 +92,5 @@ Direct vendor edits are reserved for reusable fixes or reusable capability addit
 
 - If you change `core/contracts`, `core/templates`, or `core/defaults`, update `builders/` and builder tests in the same change.
 - If you add a new foundry profile, it must be reusable across multiple repos. Otherwise keep it in `.codex/project/profiles/`.
-- Do not reintroduce duplicate authoritative copies of contracts, templates, scripts, or tests under `skills/`.
+- Do not reintroduce duplicate authoritative copies of contracts, templates, scripts, or tests under `.agents/skills/`.
 - Treat `codex.example.toml` as a repo convention example only, not a Codex platform standard.

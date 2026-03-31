@@ -1,0 +1,105 @@
+{
+  "include": [
+    "builders",
+    "core",
+    ".agents"
+  ],
+  "exclude": [
+    "**/__pycache__",
+    ".pytest_cache"
+  ],
+  "executionEnvironments": [
+    {
+      "root": "builders/consumer-bootstrap/scripts"
+    },
+    {
+      "root": "builders/consumer-bootstrap/tests",
+      "extraPaths": [
+        "builders/consumer-bootstrap/scripts",
+        "builders/packet-workflow/retained-skills/reword-recent-commits/scripts",
+        "builders/packet-workflow/retained-skills/git-split-and-commit/scripts"
+      ]
+    },
+    {
+      "root": "builders/packet-workflow/scripts"
+    },
+    {
+      "root": "builders/packet-workflow/tests",
+      "extraPaths": [
+        "builders/packet-workflow/scripts"
+      ]
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/draft-release-copy/scripts"
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/draft-release-copy/tests",
+      "extraPaths": [
+        "builders/packet-workflow/retained-skills/draft-release-copy/scripts"
+      ]
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/gh-address-review-threads/scripts"
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/gh-address-review-threads/tests",
+      "extraPaths": [
+        "builders/packet-workflow/retained-skills/gh-address-review-threads/scripts"
+      ]
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/gh-create-pr/scripts"
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/gh-create-pr/tests",
+      "extraPaths": [
+        "builders/packet-workflow/retained-skills/gh-create-pr/scripts"
+      ]
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/gh-fix-pr-writeup/scripts"
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/gh-fix-pr-writeup/tests",
+      "extraPaths": [
+        "builders/packet-workflow/retained-skills/gh-fix-pr-writeup/scripts"
+      ]
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/git-split-and-commit/scripts"
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/git-split-and-commit/tests",
+      "extraPaths": [
+        "builders/packet-workflow/retained-skills/git-split-and-commit/scripts"
+      ]
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/public-docs-sync/scripts"
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/public-docs-sync/tests",
+      "extraPaths": [
+        "builders/packet-workflow/retained-skills/public-docs-sync/scripts"
+      ]
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/reword-recent-commits/scripts"
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/reword-recent-commits/tests",
+      "extraPaths": [
+        "builders/packet-workflow/retained-skills/reword-recent-commits/scripts"
+      ]
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/weekly-update/scripts"
+    },
+    {
+      "root": "builders/packet-workflow/retained-skills/weekly-update/tests",
+      "extraPaths": [
+        "builders/packet-workflow/retained-skills/weekly-update/scripts"
+      ]
+    }
+  ]
+}

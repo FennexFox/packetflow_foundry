@@ -1,0 +1,7 @@
+{
+  "builder_family": "packet-workflow",
+  "builder_semver": "0.1.0",
+  "compatibility_epoch": 1,
+  "builder_spec_schema_version": 1,
+  "repo_profile_schema_version": 1
+}

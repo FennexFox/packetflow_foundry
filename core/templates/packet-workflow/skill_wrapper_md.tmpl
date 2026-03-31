@@ -1,0 +1,20 @@
+---
+name: __SKILL_NAME__
+description: __DESCRIPTION__
+---
+
+# __SKILL_TITLE__
+
+Thin entrypoint for the foundry retained `__SKILL_NAME__` kernel.
+
+This subtree is intentionally minimal:
+- keep only `SKILL.md` and `agents/openai.yaml` here
+- keep authoritative retained workflow assets in `__RETAINED_SKILL_DIR__/`
+- do not reintroduce local copies of builder specs, profiles, references, scripts, tests, or migration worksheets under this wrapper
+
+Use this skill by reading and following the retained kernel instructions at `__RETAINED_SKILL_MD__`.
+
+When working on this skill:
+- treat `__RETAINED_SKILL_DIR__/` as the source of truth
+- apply reusable fixes in the retained kernel, not in this wrapper
+- keep consumer-local overrides outside the vendor subtree

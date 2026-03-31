@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reword Recent Commits"
+  short_description: "Reword recent commits to repo conventions"
+  default_prompt: "Use $reword-recent-commits to rewrite the last 3 commit messages to the repo rules."

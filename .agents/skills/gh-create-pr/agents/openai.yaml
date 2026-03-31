@@ -1,0 +1,4 @@
+interface:
+  display_name: "Gh Create Pr"
+  short_description: "create a guarded GitHub pull request from a pushe..."
+  default_prompt: "create a guarded GitHub pull request from a pushed branch with packet-heavy local synthesis and validator-normalized apply"

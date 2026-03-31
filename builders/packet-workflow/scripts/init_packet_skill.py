@@ -14,6 +14,12 @@ import tomllib
 from collections.abc import Mapping
 from pathlib import Path
 
+from packet_workflow_versioning import (
+    compare_builder_semver,
+    load_builder_versioning,
+    normalize_versioning_block,
+)
+
 
 def foundry_root_dir() -> Path:
     return Path(__file__).resolve().parents[3]
@@ -25,6 +31,14 @@ def core_templates_dir() -> Path:
 
 def core_defaults_dir() -> Path:
     return foundry_root_dir() / "core" / "defaults" / "packet-workflow"
+
+
+def retained_skills_root(root_dir: Path) -> Path:
+    return root_dir / "builders" / "packet-workflow" / "retained-skills"
+
+
+def wrapper_skills_root(root_dir: Path) -> Path:
+    return root_dir / ".agents" / "skills"
 
 
 def load_json_document(path: Path) -> object:
@@ -75,6 +89,7 @@ SUPPORTED_REVIEW_MODES = load_string_list_default(
 DEFAULT_REVIEW_MODE_OVERRIDES = load_string_list_default(
     "review-modes.json", key="default_override_signals"
 )
+CURRENT_BUILDER_VERSIONING = load_builder_versioning()
 DEFAULT_REPO_PROFILE = {
     "name": "default",
     "summary": (
@@ -98,6 +113,7 @@ DEFAULT_REPO_PROFILE = {
         "require_readme_settings_table": False,
         "missing_review_docs_are_errors": False,
     },
+    "extra": {},
     "notes": [
         "Populate repo-specific doc paths, code bindings, and packet ownership rules here.",
         "Keep the repo profile data-only: store declarative paths, globs, doc lists, booleans, and notes only.",
@@ -245,7 +261,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--output-dir",
         required=True,
-        help="Root directory that will receive the generated skill folder",
+        help=(
+            "Repository-like root directory that will receive both "
+            "`builders/packet-workflow/retained-skills/<skill>` and "
+            "`.agents/skills/<skill>`."
+        ),
     )
     parser.add_argument(
         "--managed-agents-dir",
@@ -465,6 +485,26 @@ def normalize_bundle_overrides(value: object, field_name: str) -> dict[str, dict
     return overrides
 
 
+def normalize_json_data(value: object, field_name: str) -> object:
+    if value is None or isinstance(value, (bool, int, float, str)):
+        return value
+    if isinstance(value, list):
+        return [
+            normalize_json_data(item, f"{field_name}[{index}]")
+            for index, item in enumerate(value)
+        ]
+    if isinstance(value, dict):
+        normalized: dict[str, object] = {}
+        for key, item in value.items():
+            if not isinstance(key, str) or not key.strip():
+                raise ValueError(f"{field_name} keys must be non-empty strings")
+            normalized[key] = normalize_json_data(item, f"{field_name}.{key}")
+        return normalized
+    raise ValueError(
+        f"{field_name} must contain only JSON-serializable data-only values"
+    )
+
+
 def normalize_domain_overlay(value: object) -> dict:
     if value is None:
         return {
@@ -629,6 +669,7 @@ def normalize_repo_profile(
     *,
     task_packet_names: list[str],
     uses_batch_packets: bool,
+    builder_versioning: dict[str, object],
 ) -> dict:
     if value is None:
         profile = copy.deepcopy(DEFAULT_REPO_PROFILE)
@@ -642,6 +683,7 @@ def normalize_repo_profile(
             "bindings",
             "packet_defaults",
             "lint_rules",
+            "extra",
             "notes",
         }
         unexpected = sorted(set(value) - allowed_top_level)
@@ -794,6 +836,12 @@ def normalize_repo_profile(
                 normalized_lint_rules[key] = lint_value
             profile["lint_rules"] = normalized_lint_rules
 
+        if "extra" in value:
+            extra = value["extra"]
+            if not isinstance(extra, dict):
+                raise ValueError("repo_profile.extra must be an object")
+            profile["extra"] = normalize_json_data(extra, "repo_profile.extra")
+
         if "notes" in value:
             profile["notes"] = ensure_string_list(
                 value["notes"], "repo_profile.notes", allow_empty=True
@@ -801,6 +849,16 @@ def normalize_repo_profile(
 
     profile["name"] = normalize_profile_name(profile["name"])
     profile["profile_path"] = f"profiles/{profile['name']}/profile.json"
+    profile["metadata"] = {
+        "versioning": {
+            "builder_family": builder_versioning["builder_family"],
+            "builder_semver": builder_versioning["builder_semver"],
+            "compatibility_epoch": builder_versioning["compatibility_epoch"],
+            "repo_profile_schema_version": builder_versioning[
+                "repo_profile_schema_version"
+            ],
+        }
+    }
     return profile
 
 
@@ -1087,6 +1145,42 @@ def derive_spec(raw: dict) -> dict:
     if missing:
         raise ValueError(f"Missing required fields: {', '.join(missing)}")
 
+    builder_versioning = normalize_versioning_block(
+        raw.get("builder_versioning"),
+        require_builder_spec_schema_version=True,
+    )
+    if builder_versioning is None:
+        raise ValueError("builder_versioning is required and must be a valid object")
+    if builder_versioning["builder_family"] != CURRENT_BUILDER_VERSIONING["builder_family"]:
+        raise ValueError(
+            "builder_versioning.builder_family must match the current builder family"
+        )
+    if builder_versioning["compatibility_epoch"] != CURRENT_BUILDER_VERSIONING["compatibility_epoch"]:
+        raise ValueError(
+            "builder_versioning.compatibility_epoch must match the current builder compatibility epoch"
+        )
+    if (
+        builder_versioning["builder_spec_schema_version"]
+        != CURRENT_BUILDER_VERSIONING["builder_spec_schema_version"]
+    ):
+        raise ValueError(
+            "builder_versioning.builder_spec_schema_version must match the current builder spec schema version"
+        )
+    if (
+        builder_versioning["repo_profile_schema_version"]
+        != CURRENT_BUILDER_VERSIONING["repo_profile_schema_version"]
+    ):
+        raise ValueError(
+            "builder_versioning.repo_profile_schema_version must match the current repo profile schema version"
+        )
+    if compare_builder_semver(
+        builder_versioning["builder_semver"],
+        CURRENT_BUILDER_VERSIONING["builder_semver"],
+    ) > 0:
+        raise ValueError(
+            "builder_versioning.builder_semver cannot be ahead of the current builder"
+        )
+
     archetype = raw["archetype"]
     if archetype not in ARCHETYPE_DEFAULTS:
         raise ValueError(
@@ -1177,6 +1271,14 @@ def derive_spec(raw: dict) -> dict:
             "worker_output_shape=hierarchical requires "
             "worker_return_contract=classification-oriented"
         )
+    if (
+        worker_return_contract == "classification-oriented"
+        and not decision_ready_packets
+    ):
+        raise ValueError(
+            "worker_return_contract=classification-oriented requires "
+            "decision_ready_packets=true"
+        )
 
     xhigh_reread_policy = raw.get(
         "xhigh_reread_policy", DEFAULT_XHIGH_REREAD_POLICY
@@ -1211,6 +1313,14 @@ def derive_spec(raw: dict) -> dict:
         candidate_field_bundles = normalize_candidate_bundles(
             candidate_field_bundles_raw, "candidate_field_bundles", allow_empty=True
         )
+    if (
+        candidate_field_bundles_raw is not None
+        and worker_return_contract != "classification-oriented"
+    ):
+        raise ValueError(
+            "candidate_field_bundles requires "
+            "worker_return_contract=classification-oriented"
+        )
 
     worker_footer_fields_raw = raw.get("worker_footer_fields")
     if worker_footer_fields_raw is None:
@@ -1222,6 +1332,14 @@ def derive_spec(raw: dict) -> dict:
     else:
         worker_footer_fields = ensure_string_list(
             worker_footer_fields_raw, "worker_footer_fields", allow_empty=True
+        )
+    if worker_footer_fields_raw is not None and not decision_ready_packets:
+        raise ValueError(
+            "worker_footer_fields requires decision_ready_packets=true"
+        )
+    if worker_footer_fields_raw is not None and worker_output_shape != "hierarchical":
+        raise ValueError(
+            "worker_footer_fields requires worker_output_shape=hierarchical"
         )
 
     reread_reason_values_raw = raw.get("reread_reason_values")
@@ -1254,6 +1372,7 @@ def derive_spec(raw: dict) -> dict:
         raw.get("repo_profile"),
         task_packet_names=task_packet_names,
         uses_batch_packets=uses_batch_packets,
+        builder_versioning=builder_versioning,
     )
 
     if worker_output_shape == "hierarchical" and not candidate_field_bundles:
@@ -1277,6 +1396,7 @@ def derive_spec(raw: dict) -> dict:
         "workflow_family": ensure_non_empty_string(
             raw["workflow_family"], "workflow_family"
         ),
+        "builder_versioning": builder_versioning,
         "archetype": archetype,
         "primary_goal": ensure_non_empty_string(raw["primary_goal"], "primary_goal"),
         "trigger_phrases": trigger_phrases,
@@ -1660,7 +1780,7 @@ def lint_cli_section(spec: dict) -> tuple[str, str, str]:
     if not spec["needs_lint"]:
         return "", "", ""
     step = (
-        f"- Run `python scripts/lint_{spec['domain_slug']}.py --context <context-json> "
+        f"- Run `<python-bin> -B <skill-dir>/scripts/lint_{spec['domain_slug']}.py --context <context-json> "
         "--output <lint-json>`."
     )
     script_line = (
@@ -1679,7 +1799,7 @@ def workflow_tail(spec: dict) -> str:
             "\n".join(
                 [
                     f"{step_number}. Validate before mutating.",
-                    f"- Run `python scripts/validate_{spec['domain_slug']}.py --context <context-json> --plan <plan-json> --output <validation-json>`.",
+                    f"- Run `<python-bin> -B <skill-dir>/scripts/validate_{spec['domain_slug']}.py --context <context-json> --plan <plan-json> --output <validation-json>`.",
                     "- Stop if validation reports errors, stale context, low-confidence findings, or an apply-gate failure.",
                 ]
             )
@@ -1690,7 +1810,7 @@ def workflow_tail(spec: dict) -> str:
             "\n".join(
                 [
                     f"{step_number}. Apply only after local verification.",
-                    f"- Run `python scripts/apply_{spec['domain_slug']}.py --validation <validation-json>` after the validation output is locally reviewed.",
+                    f"- Run `<python-bin> -B <skill-dir>/scripts/apply_{spec['domain_slug']}.py --validation <validation-json>` after the validation output is locally reviewed.",
                     "- Apply must consume validator-normalized output only; do not wire raw plan JSON directly into the mutation step.",
                     "- If the user asked for `dry-run`, keep the same validation path and stop before any external mutation.",
                 ]
@@ -2274,6 +2394,7 @@ def build_render_context(spec: dict) -> dict[str, str]:
         "preferred_worker_families": spec["preferred_worker_families"],
         "packet_worker_map": spec["packet_worker_map"],
         "worker_selection_guidance": spec["worker_selection_guidance"],
+        "builder_versioning": spec["builder_versioning"],
         "repo_profile": spec["repo_profile"],
         "domain_overlay": spec["domain_overlay"],
         "candidate_template": spec["candidate_template"],
@@ -2291,6 +2412,12 @@ def build_render_context(spec: dict) -> dict[str, str]:
         "DESCRIPTION": spec["description"],
         "SHORT_DESCRIPTION": short_description(spec["primary_goal"]),
         "DEFAULT_PROMPT": spec["primary_goal"],
+        "RETAINED_SKILL_DIR": (
+            f"../../../builders/packet-workflow/retained-skills/{spec['skill_name']}"
+        ),
+        "RETAINED_SKILL_MD": (
+            f"../../../builders/packet-workflow/retained-skills/{spec['skill_name']}/SKILL.md"
+        ),
         "DOMAIN_SLUG": spec["domain_slug"],
         "WORKFLOW_FAMILY": spec["workflow_family"],
         "PRIMARY_GOAL": spec["primary_goal"],
@@ -2397,7 +2524,7 @@ def write_text(path: Path, content: str) -> None:
     path.write_text(content.rstrip() + "\n", encoding="utf-8", newline="\n")
 
 
-def generate_files(skill_dir: Path, spec: dict) -> list[Path]:
+def generate_retained_files(skill_dir: Path, spec: dict) -> list[Path]:
     context = build_render_context(spec)
     generated: list[Path] = []
 
@@ -2429,6 +2556,43 @@ def generate_files(skill_dir: Path, spec: dict) -> list[Path]:
     return generated
 
 
+def generate_wrapper_files(wrapper_dir: Path, spec: dict) -> list[Path]:
+    context = build_render_context(spec)
+    generated: list[Path] = []
+    outputs = {
+        "SKILL.md": "skill_wrapper_md.tmpl",
+        "agents/openai.yaml": "openai_yaml.tmpl",
+    }
+    for relative_path, template_name in outputs.items():
+        destination = wrapper_dir / relative_path
+        write_text(destination, render(template_name, context))
+        generated.append(destination)
+    return generated
+
+
+def generate_files(skill_dir: Path, spec: dict) -> list[Path]:
+    return generate_retained_files(skill_dir, spec)
+
+
+def ensure_target_is_empty(path: Path, *, label: str) -> None:
+    if path.exists() and any(path.iterdir()):
+        raise ValueError(f"Refusing to overwrite non-empty {label}: {path}")
+
+
+def generate_skill_layout(
+    output_root: Path, spec: dict
+) -> tuple[Path, list[Path], Path, list[Path]]:
+    retained_dir = retained_skills_root(output_root) / str(spec["skill_name"])
+    wrapper_dir = wrapper_skills_root(output_root) / str(spec["skill_name"])
+    ensure_target_is_empty(retained_dir, label="retained skill directory")
+    ensure_target_is_empty(wrapper_dir, label="wrapper skill directory")
+    retained_dir.mkdir(parents=True, exist_ok=True)
+    wrapper_dir.mkdir(parents=True, exist_ok=True)
+    retained_files = generate_retained_files(retained_dir, spec)
+    wrapper_files = generate_wrapper_files(wrapper_dir, spec)
+    return retained_dir, retained_files, wrapper_dir, wrapper_files
+
+
 def main() -> int:
     args = parse_args()
     spec_path = Path(args.spec).resolve()
@@ -2437,21 +2601,19 @@ def main() -> int:
     try:
         validate_managed_agent_registry(args.managed_agents_dir)
         spec = derive_spec(load_spec(spec_path))
+        retained_dir, retained_files, wrapper_dir, wrapper_files = generate_skill_layout(
+            output_dir, spec
+        )
     except ValueError as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1
 
-    skill_dir = output_dir / spec["skill_name"]
-    if skill_dir.exists() and any(skill_dir.iterdir()):
-        print(f"[ERROR] Refusing to overwrite non-empty skill directory: {skill_dir}")
-        return 1
-
-    skill_dir.mkdir(parents=True, exist_ok=True)
-    generated = generate_files(skill_dir, spec)
-
-    print(f"[OK] Generated {spec['skill_name']} at {skill_dir}")
-    for path in generated:
-        print(f" - {path.relative_to(skill_dir)}")
+    print(f"[OK] Generated retained {spec['skill_name']} kernel at {retained_dir}")
+    for path in retained_files:
+        print(f" - retained {path.relative_to(retained_dir)}")
+    print(f"[OK] Generated thin wrapper for {spec['skill_name']} at {wrapper_dir}")
+    for path in wrapper_files:
+        print(f" - wrapper {path.relative_to(wrapper_dir)}")
     return 0
 
 

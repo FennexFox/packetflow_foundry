@@ -9,8 +9,8 @@
 /docs/ @FennexFox
 
 # Foundry surfaces
-/agents/ @FennexFox
+/.agents/ @FennexFox
+/.codex/agents/ @FennexFox
 /builders/ @FennexFox
 /core/ @FennexFox
 /profiles/ @FennexFox
-/skills/ @FennexFox

@@ -15,7 +15,9 @@ behavior such as:
 - general documentation for vendoring or operating the foundry
 
 Changes are usually not a fit when they only support one consumer repo.
-Put those in `.codex/project/` in the consumer repository instead.
+Put repo-specific profiles in `.codex/project/profiles/`, repo-specific
+skills in `.agents/skills/`, and project-scoped subagents in
+`.codex/agents/` in the consumer repository instead.
 
 ## Commit messages
 
@@ -47,6 +49,20 @@ PRs should describe:
 - whether vendored consumers need to do anything
 - what risks or rollback paths matter
 
+## Issues
+
+Prefer the repository issue templates:
+- Bug report -> `bug`
+- Feature request -> `enhancement`
+- Release checklist -> `release`
+
+Maintainers may add one `area:` label for the primary reusable foundry
+surface and may use `question`, `duplicate`, `invalid`, or `wontfix`
+for triage or disposition.
+
+See `MAINTAINING.md` for the canonical label taxonomy and maintenance
+rules.
+
 ## Change discipline
 
 Keep shared semantics authoritative in `core/`.
@@ -58,7 +74,7 @@ When a change touches `core/contracts`, `core/templates`, or
 change.
 
 Do not add duplicate authoritative copies of contracts, templates,
-scripts, or tests under `skills/`.
+scripts, or tests under `.agents/skills/`.
 
 ## Validation
 

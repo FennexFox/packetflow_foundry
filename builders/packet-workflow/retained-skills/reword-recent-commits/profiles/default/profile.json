@@ -1,0 +1,54 @@
+{
+  "bindings": {
+    "primary_readme_path": "README.md",
+    "publish_config_path": null,
+    "settings_source_path": null
+  },
+  "lint_rules": {
+    "missing_review_docs_are_errors": false,
+    "require_readme_settings_table": false
+  },
+  "name": "default",
+  "notes": [
+    "Keep repo-specific commit-message guidance and source-path hints in project-local profile data.",
+    "Do not place rewrite safety policy, confirmation rules, or apply semantics in the profile."
+  ],
+  "packet_defaults": {
+    "review_docs": {
+      "commit": [
+        "README.md",
+        "CONTRIBUTING.md"
+      ],
+      "rules": [
+        "CONTRIBUTING.md",
+        "README.md"
+      ]
+    },
+    "source_path_globs": {
+      "commit": [
+        "**/*"
+      ],
+      "rules": [
+        ".github/**",
+        "*.md"
+      ]
+    }
+  },
+  "profile_path": "profiles/default/profile.json",
+  "repo_match": {
+    "remote_patterns": [],
+    "root_markers": [
+      ".git",
+      "README.md"
+    ]
+  },
+  "summary": "Default reusable profile scaffold for commit-message rewording. Replace with project-local commit-guidance docs and path hints when vendored.",
+  "metadata": {
+    "versioning": {
+      "builder_family": "packet-workflow",
+      "builder_semver": "0.1.0",
+      "compatibility_epoch": 1,
+      "repo_profile_schema_version": 1
+    }
+  }
+}

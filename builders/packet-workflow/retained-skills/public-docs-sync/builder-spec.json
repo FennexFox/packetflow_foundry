@@ -1,0 +1,159 @@
+{
+    "skill_name":  "public-docs-sync",
+    "description":  "Audit and synchronize public repository docs against tracked runtime metadata, selected GitHub evidence, and validator-normalized deterministic edits. Use when Codex must detect public-doc drift, propose scoped fixes, and update marker state without embedding repo-specific governance policy in the retained kernel.",
+    "domain_slug":  "public_docs_sync",
+    "workflow_family":  "repo-audit",
+    "archetype":  "audit-and-apply",
+    "primary_goal":  "audit public docs with scoped packet analysis and validator-normalized deterministic sync actions",
+    "trigger_phrases":  [
+                            "sync public docs",
+                            "audit public documentation drift",
+                            "repair public docs metadata",
+                            "update public workflow docs"
+                        ],
+    "task_packet_names":  [
+                              "claims_packet",
+                              "reporting_packet",
+                              "workflow_packet",
+                              "forms_batch_packet"
+                          ],
+    "orchestrator_profile":  "standard",
+    "needs_lint":  true,
+    "needs_validate":  true,
+    "needs_apply":  true,
+    "worker_return_contract":  "generic",
+    "worker_output_shape":  "flat",
+    "packet_worker_map":  {
+                              "claims_packet":  [
+                                                    "docs_verifier"
+                                                ],
+                              "reporting_packet":  [
+                                                       "evidence_summarizer"
+                                                   ],
+                              "workflow_packet":  [
+                                                      "packet_explorer"
+                                                  ],
+                              "forms_batch_packet":  [
+                                                         "docs_verifier"
+                                                     ]
+                          },
+    "repo_profile":  {
+                         "name":  "default",
+                         "summary":  "Neutral reusable profile scaffold for public-doc drift auditing. Add audited doc inventory, packet ownership, and marker metadata in project-local profiles when vendored.",
+                         "repo_match":  {
+                                            "root_markers":  [
+                                                                 ".git",
+                                                                 "README.md"
+                                                             ],
+                                            "remote_patterns":  [
+
+                                                                ]
+                                        },
+                         "bindings":  {
+                                          "primary_readme_path":  "README.md",
+                                          "settings_source_path":  null,
+                                          "publish_config_path":  null
+                                      },
+                         "packet_defaults":  {
+                                                 "review_docs":  {
+                                                                     "claims_packet":  [
+                                                                                           "README.md"
+                                                                                       ],
+                                                                     "reporting_packet":  [
+                                                                                              "LOG_REPORTING.md",
+                                                                                              "PERF_REPORTING.md",
+                                                                                              ".github/software-evidence-schema.md",
+                                                                                              ".github/software-investigation-workflow.md"
+                                                                                          ],
+                                                                     "workflow_packet":  [
+                                                                                             "CONTRIBUTING.md",
+                                                                                             "MAINTAINING.md",
+                                                                                             ".github/pull_request_template.md",
+                                                                                             ".github/workflows/release.yml"
+                                                                                         ],
+                                                                     "forms_batch_packet":  [
+                                                                                                ".github/ISSUE_TEMPLATE/release_checklist.yml",
+                                                                                                ".github/ISSUE_TEMPLATE/bug_report.yml",
+                                                                                                ".github/ISSUE_TEMPLATE/feature_request.yml",
+                                                                                                ".github/ISSUE_TEMPLATE/investigation.yml"
+                                                                                            ]
+                                                                 },
+                                                 "source_path_globs":  {
+                                                                           "claims_packet":  [
+                                                                                                 "README.md",
+                                                                                                 "**/PublishConfiguration.xml",
+                                                                                                 "**/Setting.cs"
+                                                                                             ],
+                                                                           "reporting_packet":  [
+                                                                                                    "LOG_REPORTING.md",
+                                                                                                    "PERF_REPORTING.md",
+                                                                                                    ".github/software-*.md"
+                                                                                                ],
+                                                                           "workflow_packet":  [
+                                                                                                   "CONTRIBUTING.md",
+                                                                                                   "MAINTAINING.md",
+                                                                                                   ".github/pull_request_template.md",
+                                                                                                   ".github/workflows/*.yml"
+                                                                                               ],
+                                                                           "forms_batch_packet":  [
+                                                                                                      ".github/ISSUE_TEMPLATE/*.yml"
+                                                                                                  ]
+                                                                       }
+                                             },
+                         "lint_rules":  {
+                                            "require_readme_settings_table":  true,
+                                            "missing_review_docs_are_errors":  false
+                                        },
+                         "extra":  {
+                                       "public_docs_sync":  {
+                                                                "audited_public_doc_inventory":  [
+                                                                                                     "README.md",
+                                                                                                     "LOG_REPORTING.md",
+                                                                                                     "PERF_REPORTING.md",
+                                                                                                     "CONTRIBUTING.md",
+                                                                                                     "MAINTAINING.md",
+                                                                                                     ".github/pull_request_template.md",
+                                                                                                     ".github/software-evidence-schema.md",
+                                                                                                     ".github/software-investigation-workflow.md",
+                                                                                                     ".github/workflows/release.yml"
+                                                                                                 ],
+                                                                "issue_template_groups":  {
+                                                                                              "reporting":  [
+                                                                                                                "performance_telemetry_report.yml",
+                                                                                                                "raw_log_report.yml",
+                                                                                                                "software_evidence.yml",
+                                                                                                                "software_investigation.yml"
+                                                                                                            ],
+                                                                                              "workflow":  [
+                                                                                                               "bug_report.yml",
+                                                                                                               "feature_request.yml",
+                                                                                                               "investigation.yml",
+                                                                                                               "release_checklist.yml"
+                                                                                                           ]
+                                                                                          },
+                                                                "public_workflow_doc_paths":  [
+                                                                                                  ".github/pull_request_template.md",
+                                                                                                  ".github/software-evidence-schema.md",
+                                                                                                  ".github/software-investigation-workflow.md",
+                                                                                                  ".github/workflows/release.yml"
+                                                                                              ],
+                                                                "state":  {
+                                                                              "namespace":  "public-docs-sync",
+                                                                              "marker_path":  ".codex/state/public-docs-sync-last-success.json"
+                                                                          }
+                                                            }
+                                   },
+                         "notes":  [
+                                       "Keep narrative completion thresholds, evidence-strength wording, and governance-linked completion policy in the consumer-local wrapper.",
+                                       "Do not encode validator or apply behavior in this profile.",
+                                       "The retained default scaffold keeps repo-specific bindings null; add them in a project-local override when the workflow needs runtime-source coupling."
+                                   ]
+                     },
+    "builder_versioning":  {
+                               "builder_family":  "packet-workflow",
+                               "builder_semver":  "0.1.0",
+                               "compatibility_epoch":  1,
+                               "builder_spec_schema_version":  1,
+                               "repo_profile_schema_version":  1
+                           }
+}

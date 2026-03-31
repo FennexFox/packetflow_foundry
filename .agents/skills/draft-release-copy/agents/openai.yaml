@@ -1,0 +1,4 @@
+interface:
+  display_name: "Draft Release Copy"
+  short_description: "prepare reusable release-copy updates with packet..."
+  default_prompt: "prepare reusable release-copy updates with packet-heavy local synthesis and validator-normalized apply actions"

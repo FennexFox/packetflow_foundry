@@ -1,0 +1,115 @@
+{
+  "skill_name": "gh-fix-pr-writeup",
+  "description": "Verify and repair a GitHub pull request title and body when the user gives a PR number or asks to audit, rewrite, or fix PR text. Use when Codex must compare a PR's current writeup against repository PR instructions/templates and the actual code changes, then update it with gh CLI if the title/body are missing, truncated, generic, misleading, or unsupported by the diff.",
+  "domain_slug": "pr_writeup",
+  "workflow_family": "github-review",
+  "archetype": "audit-and-apply",
+  "primary_goal": "repair PR title and body against repo rules and diff-supported evidence with packet-heavy local synthesis",
+  "trigger_phrases": [
+    "fix PR writeup",
+    "rewrite pull request description",
+    "audit PR title and body",
+    "repair PR body"
+  ],
+  "task_packet_names": [
+    "rules",
+    "runtime",
+    "process",
+    "testing"
+  ],
+  "orchestrator_profile": "packet-heavy-orchestrator",
+  "needs_lint": true,
+  "needs_validate": true,
+  "needs_apply": true,
+  "decision_ready_packets": false,
+  "worker_return_contract": "generic",
+  "worker_output_shape": "flat",
+  "packet_worker_map": {
+    "rules": [
+      "docs_verifier"
+    ],
+    "runtime": [
+      "packet_explorer"
+    ],
+    "process": [
+      "packet_explorer"
+    ],
+    "testing": [
+      "evidence_summarizer"
+    ]
+  },
+  "repo_profile": {
+    "name": "default",
+    "summary": "Default reusable profile scaffold for PR writeup repair. Replace with project-local PR guidance bindings, review-doc lists, and repo-specific lint toggles when vendored.",
+    "repo_match": {
+      "root_markers": [
+        ".git",
+        "README.md"
+      ],
+      "remote_patterns": []
+    },
+    "bindings": {
+      "primary_readme_path": "README.md",
+      "settings_source_path": null,
+      "publish_config_path": null
+    },
+    "packet_defaults": {
+      "review_docs": {
+        "rules": [
+          ".github/pull_request_template.md",
+          "CONTRIBUTING.md",
+          "MAINTAINING.md"
+        ],
+        "runtime": [
+          "README.md"
+        ],
+        "process": [
+          ".github/pull_request_template.md",
+          "CONTRIBUTING.md",
+          "MAINTAINING.md"
+        ],
+        "testing": [
+          "README.md",
+          "CONTRIBUTING.md"
+        ]
+      },
+      "source_path_globs": {
+        "rules": [
+          ".github/**",
+          "*.md"
+        ],
+        "runtime": [
+          "src/**",
+          "lib/**",
+          "app/**",
+          "server/**",
+          "client/**"
+        ],
+        "process": [
+          ".github/**",
+          "*.md",
+          "docs/**"
+        ],
+        "testing": [
+          "tests/**",
+          "**/*test*.*"
+        ]
+      }
+    },
+    "lint_rules": {
+      "require_readme_settings_table": false,
+      "missing_review_docs_are_errors": false
+    },
+    "notes": [
+      "Keep template order, PR guidance locations, and repo-specific rule files in project-local profile data.",
+      "Do not place title/body drafting policy, QA gates, or validator/apply rules in the profile."
+    ]
+  },
+  "builder_versioning": {
+    "builder_family": "packet-workflow",
+    "builder_semver": "0.1.0",
+    "compatibility_epoch": 1,
+    "builder_spec_schema_version": 1,
+    "repo_profile_schema_version": 1
+  }
+}

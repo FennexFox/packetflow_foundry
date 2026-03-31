@@ -10,6 +10,7 @@ Profiles are data-only overlays.
 - review-doc lists
 - lint and review defaults
 - worker selection defaults
+- `metadata.versioning` compatibility metadata
 - notes
 
 ## Must Stay In Core

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import py_compile
 import subprocess
@@ -18,8 +19,13 @@ if str(SCRIPT_DIR) not in sys.path:
 import init_packet_skill as builder
 
 
+def current_builder_versioning() -> dict[str, object]:
+    return dict(builder.CURRENT_BUILDER_VERSIONING)
+
+
 def sample_spec() -> dict[str, object]:
     return {
+        "builder_versioning": current_builder_versioning(),
         "skill_name": "packet-explorer-smoke",
         "description": "Verify packet explorer support in generated packet workflow skills.",
         "domain_slug": "builder-tests",
@@ -63,8 +69,151 @@ def sample_spec() -> dict[str, object]:
                 "require_readme_settings_table": True,
                 "missing_review_docs_are_errors": True,
             },
+            "extra": {
+                "release_copy": {
+                    "maintaining_path": "MAINTAINING.md",
+                    "release_workflow_path": ".github/workflows/release.yml",
+                }
+            },
             "notes": [
                 "Replace sample packet defaults before using this scaffold in production.",
+            ],
+        },
+    }
+
+
+def weekly_update_like_spec() -> dict[str, object]:
+    return {
+        "builder_versioning": current_builder_versioning(),
+        "skill_name": "weekly-update-like-smoke",
+        "description": (
+            "Verify weekly-update-like retained hierarchical packet workflow support."
+        ),
+        "domain_slug": "weekly_update_like",
+        "workflow_family": "repo-audit",
+        "archetype": "plan-validate-apply",
+        "primary_goal": (
+            "prepare a validated weekly operational summary from decision-ready packets"
+        ),
+        "trigger_phrases": ["build weekly update"],
+        "task_packet_names": [
+            "mapping_packet",
+            "changes_packet",
+            "incidents_packet",
+            "risks_packet",
+        ],
+        "orchestrator_profile": "standard",
+        "decision_ready_packets": True,
+        "worker_return_contract": "classification-oriented",
+        "worker_output_shape": "hierarchical",
+        "candidate_field_bundles": [
+            {
+                "name": "identity",
+                "description": "Stable candidate identity and source information.",
+                "required": True,
+                "fields": ["candidate_id", "source_type", "source_id", "title"],
+            },
+            {
+                "name": "proposal",
+                "description": "Proposal-grade summary and classification rationale.",
+                "required": True,
+                "fields": [
+                    "summary",
+                    "proposed_classification",
+                    "classification_rationale",
+                ],
+            },
+            {
+                "name": "evidence",
+                "description": "Decision-ready citations and reread control.",
+                "required": True,
+                "fields": ["source_refs", "confidence", "raw_reread_reason"],
+            },
+        ],
+        "worker_footer_fields": [
+            "packet_ids",
+            "candidate_ids",
+            "primary_outcome",
+            "overall_confidence",
+            "coverage_gaps",
+            "overall_risk",
+        ],
+        "reread_reason_values": [
+            "conflicting_signals",
+            "insufficient_excerpt_quality",
+        ],
+        "packet_worker_map": {
+            "mapping_packet": ["repo_mapper"],
+            "changes_packet": ["large_diff_auditor"],
+            "incidents_packet": ["log_triager"],
+            "risks_packet": ["evidence_summarizer"],
+        },
+        "domain_overlay": {
+            "proposal_enum_values": [
+                "actual_incident",
+                "blocker_or_risk",
+                "artifact_only",
+                "ignore",
+            ],
+            "reference_only_candidate_values": ["artifact_only"],
+            "output_inclusion_rules": {
+                "standalone": ["actual_incident", "blocker_or_risk"],
+                "reference_only": ["artifact_only"],
+                "excluded": ["ignore"],
+            },
+        },
+        "repo_profile": {
+            "name": "default",
+            "summary": (
+                "Default reusable profile scaffold for weekly-update workflows. "
+                "Replace review docs, path hints, and repo conventions in "
+                "project-local profiles when vendored."
+            ),
+            "repo_match": {
+                "root_markers": [".git", "README.md"],
+                "remote_patterns": [],
+            },
+            "bindings": {
+                "primary_readme_path": "README.md",
+                "settings_source_path": None,
+                "publish_config_path": None,
+            },
+            "packet_defaults": {
+                "review_docs": {
+                    "mapping_packet": ["README.md", "CONTRIBUTING.md"],
+                    "changes_packet": ["README.md", "CONTRIBUTING.md"],
+                    "incidents_packet": ["README.md", "CONTRIBUTING.md"],
+                    "risks_packet": ["README.md", "CONTRIBUTING.md"],
+                },
+                "source_path_globs": {
+                    "mapping_packet": ["**/*"],
+                    "changes_packet": ["**/*"],
+                    "incidents_packet": ["**/*"],
+                    "risks_packet": ["**/*"],
+                },
+            },
+            "lint_rules": {
+                "require_readme_settings_table": False,
+                "missing_review_docs_are_errors": False,
+            },
+            "extra": {
+                "weekly_update": {
+                    "state": {"namespace": "weekly-update"},
+                    "review_markers": {
+                        "acknowledged": ["phase=ack"],
+                        "resolved": ["phase=complete"],
+                    },
+                    "release_issue": {
+                        "title_regex": r"^\[Release\]\s*(?P<tag>v[0-9A-Za-z._-]+)",
+                    },
+                    "priority_markers": {
+                        "regex": r"\[(?:P[0-3]|medium|high|low)\]",
+                    },
+                }
+            },
+            "notes": [
+                "Keep repo-specific weekly-update conventions in project-local "
+                "profile data when vendored.",
             ],
         },
     }
@@ -76,10 +225,149 @@ def run_python(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
         check=True,
         capture_output=True,
         text=True,
+        stdin=subprocess.DEVNULL,
     )
 
 
+def load_module_from_path(module_name: str, script_path: Path):
+    spec = importlib.util.spec_from_file_location(module_name, script_path)
+    if spec is None or spec.loader is None:
+        raise AssertionError(f"Unable to load module from {script_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(script_path.parent))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        try:
+            sys.path.remove(str(script_path.parent))
+        except ValueError:
+            pass
+    return module
+
+
+EXECUTION_ROOTS_HEADER = "## Execution Roots"
+PYTHON_BIN_SKILL_PREFIX = "<python-bin> -B <skill-dir>/scripts/"
+FORBIDDEN_OPERATOR_DOC_PATTERNS = ("python scripts/", "py -3")
+
+
+def assert_skill_md_execution_contract(
+    testcase: unittest.TestCase, skill_md: str, *, source: Path | str
+) -> None:
+    label = str(source)
+    testcase.assertIn(EXECUTION_ROOTS_HEADER, skill_md, label)
+    testcase.assertIn(PYTHON_BIN_SKILL_PREFIX, skill_md, label)
+    for pattern in FORBIDDEN_OPERATOR_DOC_PATTERNS:
+        testcase.assertNotIn(pattern, skill_md, label)
+
+
+def operator_doc_scan_targets(foundry_root: Path) -> list[Path]:
+    scan_roots = [
+        foundry_root / "builders",
+        foundry_root / "core",
+    ]
+    allowed_suffixes = {".md", ".py", ".tmpl"}
+    excluded_parts = {"__pycache__", ".git", "tests"}
+    targets: list[Path] = []
+    for root in scan_roots:
+        for path in root.rglob("*"):
+            if not path.is_file() or path.suffix not in allowed_suffixes:
+                continue
+            if any(part in excluded_parts for part in path.parts):
+                continue
+            targets.append(path)
+    return targets
+
+
 class PacketWorkflowBuilderContractTests(unittest.TestCase):
+    def test_retained_skill_builder_specs_generate_core_contract_and_profile(self) -> None:
+        foundry_root = builder.foundry_root_dir()
+        retained_specs = [
+            foundry_root
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+            / "draft-release-copy"
+            / "builder-spec.json",
+            foundry_root
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+            / "gh-create-pr"
+            / "builder-spec.json",
+            foundry_root
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+            / "gh-address-review-threads"
+            / "builder-spec.json",
+            foundry_root
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+            / "gh-fix-pr-writeup"
+            / "builder-spec.json",
+            foundry_root
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+            / "git-split-and-commit"
+            / "builder-spec.json",
+            foundry_root
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+            / "public-docs-sync"
+            / "builder-spec.json",
+            foundry_root
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+            / "reword-recent-commits"
+            / "builder-spec.json",
+            foundry_root
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+            / "weekly-update"
+            / "builder-spec.json",
+        ]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            output_root = Path(tmp)
+            for spec_path in retained_specs:
+                run_python(
+                    SCRIPT_DIR / "init_packet_skill.py",
+                    "--spec",
+                    str(spec_path),
+                    "--output-dir",
+                    str(output_root),
+                    "--managed-agents-dir",
+                    str(FIXTURE_AGENTS_DIR),
+                )
+                retained_dir = (
+                    output_root
+                    / "builders"
+                    / "packet-workflow"
+                    / "retained-skills"
+                    / spec_path.parent.name
+                )
+                wrapper_dir = output_root / ".agents" / "skills" / spec_path.parent.name
+                self.assertTrue((retained_dir / "references" / "core-contract.md").is_file())
+                self.assertTrue(
+                    (retained_dir / "profiles" / "default" / "profile.json").is_file()
+                )
+                assert_skill_md_execution_contract(
+                    self,
+                    (retained_dir / "SKILL.md").read_text(encoding="utf-8"),
+                    source=retained_dir / "SKILL.md",
+                )
+                wrapper_files = sorted(
+                    str(path.relative_to(wrapper_dir)).replace("\\", "/")
+                    for path in wrapper_dir.rglob("*")
+                    if path.is_file()
+                )
+                self.assertEqual(wrapper_files, ["SKILL.md", "agents/openai.yaml"])
+
     def test_builder_uses_root_core_assets(self) -> None:
         foundry_root = builder.foundry_root_dir()
         self.assertEqual(builder.managed_agents_dir(), foundry_root / "agents")
@@ -100,15 +388,25 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             builder.DEFAULT_REVIEW_MODE_OVERRIDES,
             review_mode_defaults["default_override_signals"],
         )
+        self.assertEqual(
+            builder.CURRENT_BUILDER_VERSIONING,
+            json.loads(
+                (foundry_root / "builders" / "packet-workflow" / "version.json").read_text(
+                    encoding="utf-8"
+                )
+            ),
+        )
 
     def test_skill_subtree_stays_thin(self) -> None:
-        skill_dir = builder.foundry_root_dir() / "skills" / "packet-workflow-skill-builder"
-        files = sorted(
-            str(path.relative_to(skill_dir)).replace("\\", "/")
-            for path in skill_dir.rglob("*")
-            if path.is_file()
-        )
-        self.assertEqual(files, ["SKILL.md", "agents/openai.yaml"])
+        skills_root = builder.foundry_root_dir() / ".agents" / "skills"
+        for skill_dir in sorted(path for path in skills_root.iterdir() if path.is_dir()):
+            with self.subTest(skill=skill_dir.name):
+                files = sorted(
+                    str(path.relative_to(skill_dir)).replace("\\", "/")
+                    for path in skill_dir.rglob("*")
+                    if path.is_file()
+                )
+                self.assertEqual(files, ["SKILL.md", "agents/openai.yaml"])
 
     def test_managed_agent_registry_contains_packet_explorer(self) -> None:
         self.assertIn("packet_explorer", builder.KNOWN_WORKER_AGENT_TYPES)
@@ -206,9 +504,25 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             spec["repo_profile"]["profile_path"],
             "profiles/sample-repo/profile.json",
         )
+        self.assertEqual(spec["builder_versioning"], current_builder_versioning())
+        self.assertEqual(
+            spec["repo_profile"]["metadata"]["versioning"],
+            {
+                "builder_family": current_builder_versioning()["builder_family"],
+                "builder_semver": current_builder_versioning()["builder_semver"],
+                "compatibility_epoch": current_builder_versioning()["compatibility_epoch"],
+                "repo_profile_schema_version": current_builder_versioning()[
+                    "repo_profile_schema_version"
+                ],
+            },
+        )
         self.assertEqual(
             spec["repo_profile"]["bindings"]["settings_source_path"],
             "src/Settings.cs",
+        )
+        self.assertEqual(
+            spec["repo_profile"]["extra"]["release_copy"]["maintaining_path"],
+            "MAINTAINING.md",
         )
         self.assertTrue(
             spec["repo_profile"]["lint_rules"]["missing_review_docs_are_errors"]
@@ -218,6 +532,14 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
         bad_spec = sample_spec()
         bad_spec["orchestrator_profile"] = "everything"
         with self.assertRaisesRegex(ValueError, "orchestrator_profile must be one of"):
+            builder.derive_spec(bad_spec)
+
+    def test_missing_builder_versioning_is_rejected(self) -> None:
+        bad_spec = sample_spec()
+        bad_spec.pop("builder_versioning")
+        with self.assertRaisesRegex(
+            ValueError, "builder_versioning is required and must be a valid object"
+        ):
             builder.derive_spec(bad_spec)
 
     def test_repo_profile_rejects_unknown_packet_defaults(self) -> None:
@@ -239,6 +561,140 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
         bad_spec["needs_validate"] = False
         with self.assertRaisesRegex(
             ValueError, "needs_apply=true requires needs_validate=true"
+        ):
+            builder.derive_spec(bad_spec)
+
+    def test_weekly_update_like_retained_shape_generates_hierarchical_packets(self) -> None:
+        spec = builder.derive_spec(weekly_update_like_spec())
+
+        self.assertEqual(spec["archetype"], "plan-validate-apply")
+        self.assertTrue(spec["decision_ready_packets"])
+        self.assertEqual(spec["worker_return_contract"], "classification-oriented")
+        self.assertEqual(spec["worker_output_shape"], "hierarchical")
+        self.assertEqual(
+            spec["repo_profile"]["extra"]["weekly_update"]["state"]["namespace"],
+            "weekly-update",
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp) / str(spec["skill_name"])
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            builder.generate_files(skill_dir, spec)
+
+            scripts_dir = skill_dir / "scripts"
+            for script in scripts_dir.glob("*.py"):
+                py_compile.compile(str(script), doraise=True)
+
+            context_path = Path(tmp) / "context.json"
+            packets_dir = Path(tmp) / "packets"
+            build_result_path = Path(tmp) / "build-result.json"
+
+            run_python(
+                scripts_dir / "collect_weekly_update_like_context.py",
+                "--repo-root",
+                str(repo_root),
+                "--output",
+                str(context_path),
+            )
+            run_python(
+                scripts_dir / "build_weekly_update_like_packets.py",
+                "--context",
+                str(context_path),
+                "--output-dir",
+                str(packets_dir),
+                "--result-output",
+                str(build_result_path),
+            )
+
+            context = json.loads(context_path.read_text(encoding="utf-8"))
+            orchestrator = json.loads(
+                (packets_dir / "orchestrator.json").read_text(encoding="utf-8")
+            )
+            global_packet = json.loads(
+                (packets_dir / "global_packet.json").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(context["repo_profile_name"], "default")
+            self.assertEqual(context["builder_compatibility"]["status"], "current")
+            self.assertEqual(orchestrator["repo_profile_name"], "default")
+            self.assertTrue(orchestrator["decision_ready_packets"])
+            self.assertEqual(
+                orchestrator["worker_return_contract"], "classification-oriented"
+            )
+            self.assertEqual(orchestrator["worker_output_shape"], "hierarchical")
+            self.assertEqual(
+                global_packet["domain_overlay"]["proposal_enum_values"],
+                ["actual_incident", "blocker_or_risk", "artifact_only", "ignore"],
+            )
+            self.assertEqual(
+                global_packet["repo_profile"]["extra"]["weekly_update"]["state"][
+                    "namespace"
+                ],
+                "weekly-update",
+            )
+
+    def test_candidate_field_bundles_require_classification_oriented(self) -> None:
+        bad_spec = sample_spec()
+        bad_spec["candidate_field_bundles"] = [
+            {
+                "name": "candidate",
+                "description": "Candidate data.",
+                "required": True,
+                "fields": ["summary"],
+            }
+        ]
+        with self.assertRaisesRegex(
+            ValueError,
+            "candidate_field_bundles requires worker_return_contract=classification-oriented",
+        ):
+            builder.derive_spec(bad_spec)
+
+    def test_classification_oriented_requires_decision_ready_packets(self) -> None:
+        bad_spec = sample_spec()
+        bad_spec["worker_return_contract"] = "classification-oriented"
+        with self.assertRaisesRegex(
+            ValueError,
+            "worker_return_contract=classification-oriented requires decision_ready_packets=true",
+        ):
+            builder.derive_spec(bad_spec)
+
+    def test_worker_footer_fields_require_decision_ready_packets(self) -> None:
+        bad_spec = sample_spec()
+        bad_spec["worker_footer_fields"] = ["packet_ids", "primary_outcome"]
+        with self.assertRaisesRegex(
+            ValueError,
+            "worker_footer_fields requires decision_ready_packets=true",
+        ):
+            builder.derive_spec(bad_spec)
+
+    def test_worker_footer_fields_require_hierarchical_output(self) -> None:
+        bad_spec = weekly_update_like_spec()
+        bad_spec["worker_output_shape"] = "flat"
+        with self.assertRaisesRegex(
+            ValueError,
+            "worker_footer_fields requires worker_output_shape=hierarchical",
+        ):
+            builder.derive_spec(bad_spec)
+
+    def test_domain_overlay_requires_classification_oriented(self) -> None:
+        bad_spec = sample_spec()
+        bad_spec["domain_overlay"] = {
+            "proposal_enum_values": ["accept", "reject"],
+            "output_inclusion_rules": {"standalone": ["accept"], "excluded": ["reject"]},
+        }
+        with self.assertRaisesRegex(
+            ValueError,
+            "domain_overlay requires worker_return_contract=classification-oriented",
+        ):
+            builder.derive_spec(bad_spec)
+
+    def test_hierarchical_output_requires_usable_candidate_bundles(self) -> None:
+        bad_spec = weekly_update_like_spec()
+        bad_spec["candidate_field_bundles"] = []
+        with self.assertRaisesRegex(
+            ValueError,
+            "worker_output_shape=hierarchical requires candidate_field_bundles or required_candidate_fields",
         ):
             builder.derive_spec(bad_spec)
 
@@ -268,16 +724,57 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             self.assertIn("runtime_packet", skill_md)
             self.assertIn("Orchestrator profile: `standard`.", skill_md)
             self.assertIn("profiles/sample-repo/profile.json", skill_md)
+            self.assertIn(".codex/project/profiles/packet-explorer-smoke/profile.json", skill_md)
             self.assertIn("references/core-contract.md", skill_md)
             self.assertIn("data-only", skill_md)
+            self.assertIn(
+                ".codex/tmp/packet-workflow/packet-explorer-smoke/<run-id>/",
+                skill_md,
+            )
+            self.assertIn(
+                "~/.codex/tmp/evaluation_logs/packet-explorer-smoke/<run-id>.json",
+                skill_md,
+            )
+            self.assertIn(".codex/tmp/", skill_md)
             self.assertIn("profiles/sample-repo/profile.json", core_contract)
+            self.assertIn(".codex/project/profiles/packet-explorer-smoke/profile.json", core_contract)
             self.assertIn("data-only", core_contract)
             self.assertIn('display_name: "Packet Explorer Smoke"', agents_yaml)
             self.assertEqual(profile_json["name"], "sample-repo")
             self.assertEqual(
+                profile_json["metadata"]["versioning"]["builder_semver"],
+                current_builder_versioning()["builder_semver"],
+            )
+            self.assertEqual(
                 profile_json["bindings"]["publish_config_path"],
                 "src/Properties/PublishConfiguration.xml",
             )
+            assert_skill_md_execution_contract(self, skill_md, source=skill_dir / "SKILL.md")
+
+    def test_retained_skill_docs_use_python_bin_execution_contract(self) -> None:
+        retained_root = (
+            builder.foundry_root_dir()
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+        )
+        for skill_md_path in sorted(retained_root.glob("*/SKILL.md")):
+            with self.subTest(skill=skill_md_path.parent.name):
+                assert_skill_md_execution_contract(
+                    self,
+                    skill_md_path.read_text(encoding="utf-8"),
+                    source=skill_md_path,
+                )
+
+    def test_repo_operator_docs_do_not_prescribe_python_shims(self) -> None:
+        foundry_root = builder.foundry_root_dir()
+        violations: list[str] = []
+        for path in operator_doc_scan_targets(foundry_root):
+            text = path.read_text(encoding="utf-8", errors="ignore")
+            for pattern in FORBIDDEN_OPERATOR_DOC_PATTERNS:
+                if pattern in text:
+                    violations.append(f"{path}: {pattern}")
+        self.assertEqual(violations, [])
 
     def test_standard_scaffold_uses_validation_only_apply_contract(self) -> None:
         spec = builder.derive_spec(sample_spec())
@@ -318,6 +815,11 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             self.assertEqual(
                 context["repo_profile"]["bindings"]["primary_readme_path"],
                 "README.md",
+            )
+            self.assertEqual(context["builder_compatibility"]["status"], "current")
+            self.assertEqual(
+                context["builder_compatibility"]["current_builder_semver"],
+                current_builder_versioning()["builder_semver"],
             )
             run_python(
                 scripts_dir / "build_builder_tests_packets.py",
@@ -393,6 +895,157 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             apply_result = json.loads(apply_result_path.read_text(encoding="utf-8"))
             self.assertTrue(apply_result["validation_boundary_enforced"])
             self.assertTrue(apply_result["dry_run"])
+
+    def test_generated_collector_warns_but_returns_context_for_stale_profile(self) -> None:
+        spec = builder.derive_spec(sample_spec())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp) / str(spec["skill_name"])
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            builder.generate_files(skill_dir, spec)
+
+            profile_path = skill_dir / "profiles" / "sample-repo" / "profile.json"
+            profile_payload = json.loads(profile_path.read_text(encoding="utf-8"))
+            profile_payload["metadata"]["versioning"]["repo_profile_schema_version"] = 0
+            profile_path.write_text(
+                json.dumps(profile_payload, indent=2, ensure_ascii=True) + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_python(
+                skill_dir / "scripts" / "collect_builder_tests_context.py",
+                "--repo-root",
+                str(repo_root),
+                "--output",
+                str(Path(tmp) / "context.json"),
+                "--profile",
+                str(profile_path),
+            )
+            context = json.loads((Path(tmp) / "context.json").read_text(encoding="utf-8"))
+            self.assertEqual(context["builder_compatibility"]["status"], "stale-profile")
+            self.assertIn("status=stale-profile", result.stderr)
+
+    def test_generated_collector_warns_but_returns_context_for_invalid_profile_semver(self) -> None:
+        spec = builder.derive_spec(sample_spec())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp) / str(spec["skill_name"])
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            builder.generate_files(skill_dir, spec)
+
+            profile_path = skill_dir / "profiles" / "sample-repo" / "profile.json"
+            profile_payload = json.loads(profile_path.read_text(encoding="utf-8"))
+            profile_payload["metadata"]["versioning"]["builder_semver"] = "not-semver"
+            profile_path.write_text(
+                json.dumps(profile_payload, indent=2, ensure_ascii=True) + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_python(
+                skill_dir / "scripts" / "collect_builder_tests_context.py",
+                "--repo-root",
+                str(repo_root),
+                "--output",
+                str(Path(tmp) / "context.json"),
+                "--profile",
+                str(profile_path),
+            )
+            context = json.loads((Path(tmp) / "context.json").read_text(encoding="utf-8"))
+            self.assertEqual(context["builder_compatibility"]["status"], "missing-profile-versioning")
+            self.assertIn("status=missing-profile-versioning", result.stderr)
+
+    def test_generated_collector_warns_but_returns_context_for_non_string_profile_semver(
+        self,
+    ) -> None:
+        spec = builder.derive_spec(sample_spec())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp) / str(spec["skill_name"])
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            builder.generate_files(skill_dir, spec)
+
+            profile_path = skill_dir / "profiles" / "sample-repo" / "profile.json"
+            profile_payload = json.loads(profile_path.read_text(encoding="utf-8"))
+            profile_payload["metadata"]["versioning"]["builder_semver"] = 1
+            profile_path.write_text(
+                json.dumps(profile_payload, indent=2, ensure_ascii=True) + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_python(
+                skill_dir / "scripts" / "collect_builder_tests_context.py",
+                "--repo-root",
+                str(repo_root),
+                "--output",
+                str(Path(tmp) / "context.json"),
+                "--profile",
+                str(profile_path),
+            )
+            context = json.loads((Path(tmp) / "context.json").read_text(encoding="utf-8"))
+            self.assertEqual(context["builder_compatibility"]["status"], "missing-profile-versioning")
+            self.assertIn("status=missing-profile-versioning", result.stderr)
+
+    def test_generated_collector_prefers_project_local_skill_profile(self) -> None:
+        spec = builder.derive_spec(sample_spec())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp) / str(spec["skill_name"])
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            builder.generate_files(skill_dir, spec)
+
+            skill_profile = (
+                repo_root
+                / ".codex"
+                / "project"
+                / "profiles"
+                / str(spec["skill_name"])
+                / "profile.json"
+            )
+            default_profile = (
+                repo_root / ".codex" / "project" / "profiles" / "default" / "profile.json"
+            )
+            retained_profile = skill_dir / "profiles" / "sample-repo" / "profile.json"
+            collector = load_module_from_path(
+                "collect_builder_tests_context_dynamic",
+                skill_dir / "scripts" / "collect_builder_tests_context.py",
+            )
+
+            skill_profile.parent.mkdir(parents=True, exist_ok=True)
+            skill_profile.write_text("{}", encoding="utf-8")
+            default_profile.parent.mkdir(parents=True, exist_ok=True)
+            default_profile.write_text("{}", encoding="utf-8")
+
+            self.assertEqual(
+                collector.default_repo_profile_path(repo_root),
+                skill_profile.resolve(),
+            )
+            self.assertEqual(
+                collector.resolve_profile_path(
+                    ".codex/project/profiles/default/profile.json",
+                    repo_root,
+                ),
+                default_profile.resolve(),
+            )
+            self.assertEqual(
+                collector.resolve_profile_path("profiles/sample-repo/profile.json", repo_root),
+                retained_profile.resolve(),
+            )
+
+            skill_profile.unlink()
+            self.assertEqual(
+                collector.default_repo_profile_path(repo_root),
+                default_profile.resolve(),
+            )
+
+            default_profile.unlink()
+            self.assertEqual(
+                collector.default_repo_profile_path(repo_root),
+                retained_profile.resolve(),
+            )
 
     def test_packet_heavy_profile_emits_synthesis_and_metrics_sidecar(self) -> None:
         raw_spec = sample_spec()
@@ -486,3 +1139,5 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+

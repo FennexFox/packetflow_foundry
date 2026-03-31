@@ -1,0 +1,253 @@
+{
+  "skill_name": "weekly-update",
+  "description": "Synthesize a concise, evidence-based weekly update from repository and directly related GitHub evidence by collecting a reporting window, building decision-ready packets, optionally delegating narrow read-only packet analysis, keeping final classification and wording local, and updating only a last-success marker after a reviewed plan clears apply gates. Use when Codex must prepare a guarded weekly status update without encoding repo-specific conventions in foundry core.",
+  "domain_slug": "weekly_update",
+  "workflow_family": "repo-audit",
+  "archetype": "plan-validate-apply",
+  "primary_goal": "produce a concise, evidence-based weekly update from repository and directly related GitHub evidence",
+  "trigger_phrases": [
+    "weekly update",
+    "summarize this week's PRs",
+    "synthesize this week's rollouts incidents and reviews",
+    "build a weekly status update"
+  ],
+  "task_packet_names": [
+    "mapping_packet",
+    "changes_packet",
+    "incidents_packet",
+    "risks_packet"
+  ],
+  "orchestrator_profile": "standard",
+  "needs_lint": true,
+  "needs_validate": true,
+  "needs_apply": true,
+  "decision_ready_packets": true,
+  "worker_return_contract": "classification-oriented",
+  "worker_output_shape": "hierarchical",
+  "authority_order": [
+    "published GitHub releases and linked release issues",
+    "merged PR diffs and git history",
+    "directly related review, issue, and workflow-run evidence",
+    "structured workflow packets",
+    "local last-success state as baseline only"
+  ],
+  "stop_conditions": [
+    "low confidence",
+    "stale snapshot or stale structured context",
+    "GitHub evidence is required but gh auth is invalid",
+    "ambiguous incident versus blocker classification",
+    "missing reporting window baseline when reuse is required"
+  ],
+  "review_mode_overrides": [
+    "reporting window includes more than 8 merged PRs or more than 15 relevant issues",
+    "release, incident, and review surfaces are all active in the same window",
+    "nested branch lineage or workflow-run failures materially expand the evidence graph"
+  ],
+  "preferred_worker_families": {
+    "context_findings": [
+      "repo_mapper",
+      "docs_verifier"
+    ],
+    "candidate_producers": [
+      "evidence_summarizer",
+      "large_diff_auditor",
+      "log_triager"
+    ],
+    "verifiers": [
+      "docs_verifier"
+    ]
+  },
+  "candidate_field_bundles": [
+    {
+      "name": "identity",
+      "description": "Stable candidate identity and source information.",
+      "required": true,
+      "fields": [
+        "candidate_id",
+        "source_type",
+        "source_id",
+        "title"
+      ]
+    },
+    {
+      "name": "proposal",
+      "description": "Proposal-grade summary and classification rationale for local adjudication.",
+      "required": true,
+      "fields": [
+        "summary",
+        "proposed_classification",
+        "classification_rationale"
+      ]
+    },
+    {
+      "name": "evidence",
+      "description": "Decision-ready supporting evidence, references, and excerpt bundle.",
+      "required": true,
+      "fields": [
+        "materiality_evidence",
+        "concrete_failure_evidence",
+        "source_refs",
+        "excerpt_bundle"
+      ]
+    },
+    {
+      "name": "adjudication",
+      "description": "Ambiguity, confidence, reread control, and packet membership for local xHigh adjudication.",
+      "required": true,
+      "fields": [
+        "open_ambiguity",
+        "confidence",
+        "raw_reread_reason",
+        "packet_membership"
+      ]
+    },
+    {
+      "name": "follow_up",
+      "description": "Candidate-local risk, next step, and checks.",
+      "required": true,
+      "fields": [
+        "risk",
+        "recommended_next_step",
+        "tests_or_checks"
+      ]
+    }
+  ],
+  "worker_footer_fields": [
+    "packet_ids",
+    "candidate_ids",
+    "primary_outcome",
+    "overall_confidence",
+    "coverage_gaps",
+    "overall_risk"
+  ],
+  "reread_reason_values": [
+    "conflicting_signals",
+    "missing_failure_evidence",
+    "missing_materiality_evidence",
+    "schema_mismatch",
+    "insufficient_excerpt_quality"
+  ],
+  "packet_worker_map": {
+    "mapping_packet": [
+      "repo_mapper"
+    ],
+    "changes_packet": [
+      "large_diff_auditor"
+    ],
+    "incidents_packet": [
+      "log_triager"
+    ],
+    "risks_packet": [
+      "evidence_summarizer"
+    ]
+  },
+  "domain_overlay": {
+    "proposal_enum_values": [
+      "actual_incident",
+      "blocker_or_risk",
+      "artifact_only",
+      "ignore"
+    ],
+    "reference_only_candidate_values": [
+      "artifact_only"
+    ],
+    "output_inclusion_rules": {
+      "standalone": [
+        "actual_incident",
+        "blocker_or_risk"
+      ],
+      "reference_only": [
+        "artifact_only"
+      ],
+      "excluded": [
+        "ignore"
+      ]
+    }
+  },
+  "repo_profile": {
+    "name": "default",
+    "summary": "Default reusable profile scaffold for weekly-update workflows. Replace review docs, path hints, and repo conventions in project-local profiles when vendored.",
+    "repo_match": {
+      "root_markers": [
+        ".git",
+        "README.md"
+      ],
+      "remote_patterns": []
+    },
+    "bindings": {
+      "primary_readme_path": "README.md",
+      "settings_source_path": null,
+      "publish_config_path": null
+    },
+    "packet_defaults": {
+      "review_docs": {
+        "mapping_packet": [
+          "README.md",
+          "CONTRIBUTING.md"
+        ],
+        "changes_packet": [
+          "README.md",
+          "CONTRIBUTING.md"
+        ],
+        "incidents_packet": [
+          "README.md",
+          "CONTRIBUTING.md"
+        ],
+        "risks_packet": [
+          "README.md",
+          "CONTRIBUTING.md"
+        ]
+      },
+      "source_path_globs": {
+        "mapping_packet": [
+          "**/*"
+        ],
+        "changes_packet": [
+          "**/*"
+        ],
+        "incidents_packet": [
+          "**/*"
+        ],
+        "risks_packet": [
+          "**/*"
+        ]
+      }
+    },
+    "lint_rules": {
+      "require_readme_settings_table": false,
+      "missing_review_docs_are_errors": false
+    },
+    "extra": {
+      "weekly_update": {
+        "state": {
+          "namespace": "weekly-update"
+        },
+        "review_markers": {
+          "acknowledged": [
+            "phase=ack"
+          ],
+          "resolved": [
+            "phase=complete"
+          ]
+        },
+        "release_issue": {
+          "title_regex": "^\\[Release\\]\\s*(?P<tag>v[0-9A-Za-z._-]+)$"
+        },
+        "priority_markers": {
+          "regex": "\\[(?:P[0-3]|medium|high|low)\\]"
+        }
+      }
+    },
+    "notes": [
+      "Keep repo-specific weekly-update conventions in project-local profile data when vendored.",
+      "Do not encode validator or apply behavior in this profile."
+    ]
+  },
+  "builder_versioning": {
+    "builder_family": "packet-workflow",
+    "builder_semver": "0.1.0",
+    "compatibility_epoch": 1,
+    "builder_spec_schema_version": 1,
+    "repo_profile_schema_version": 1
+  }
+}
