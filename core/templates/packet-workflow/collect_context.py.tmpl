@@ -77,7 +77,7 @@ def normalize_versioning_block(
     repo_profile_schema_version = value.get("repo_profile_schema_version")
     if not isinstance(builder_family, str) or not builder_family.strip():
         return None
-    if not isinstance(builder_semver, str) or not builder_semver.strip():
+    if parse_semver(builder_semver) is None:
         return None
     if not isinstance(compatibility_epoch, int):
         return None
@@ -85,7 +85,7 @@ def normalize_versioning_block(
         return None
     normalized = {
         "builder_family": builder_family.strip(),
-        "builder_semver": builder_semver.strip(),
+        "builder_semver": str(builder_semver).strip(),
         "compatibility_epoch": compatibility_epoch,
         "repo_profile_schema_version": repo_profile_schema_version,
     }
