@@ -16,8 +16,8 @@ behavior such as:
 
 Changes are usually not a fit when they only support one consumer repo.
 Put repo-specific profiles in `.codex/project/profiles/`, repo-specific
-skills in `.agents/skills/`, and repo-specific agents in
-`.codex/project/agents/` in the consumer repository instead.
+skills in `.agents/skills/`, and project-scoped subagents in
+`.codex/agents/` in the consumer repository instead.
 
 ## Commit messages
 

@@ -4,7 +4,7 @@
 It ships reusable contracts, templates, builders, overlay profiles, a default managed agent set, and reusable repo-scoped skills.
 
 It is not a project-specific monolith.
-Consumer projects should keep repo-specific profiles in `.codex/project/profiles/`, repo-specific skills in `.agents/skills/`, and repo-specific agents in `.codex/project/agents/`.
+Consumer projects should keep repo-specific profiles in `.codex/project/profiles/`, repo-specific skills in `.agents/skills/`, and project-scoped subagents in `.codex/agents/`.
 
 Thin-entrypoint intent predates the current retained-skill layout. The earlier drift came from generator and test contracts that still emitted bundled skills under `.agents/skills/`. The current contract is enforced by layout generation and tests instead of prose alone.
 
@@ -18,10 +18,13 @@ Thin-entrypoint intent predates the current retained-skill layout. The earlier d
 packetflow_foundry/
   .agents/
     skills/
+  .codex/
+    agents/
+    project/
+      profiles/
   AGENTS.md
   README.md
   codex.example.toml
-  agents/
   core/
     contracts/packet-workflow/
     templates/packet-workflow/
@@ -39,9 +42,10 @@ packetflow_foundry/
 
 ## Directory Roles
 
-- `agents/`
-  - Foundry default managed worker registry.
-  - Consumer projects can add `.codex/project/agents/` as additive overrides.
+- `.codex/agents/`
+  - Foundry default managed worker registry and the direct-repo project-scoped subagent discovery surface.
+  - Vendored consumers should expose the foundry defaults and their own local agent TOMLs through repo-root `.codex/agents/`.
+  - Legacy `.codex/project/agents/` entries are migration-only and should move to `.codex/agents/`.
 - `core/contracts/packet-workflow/`
   - Authoritative shared semantics.
   - This is where validator/apply rules, common-path rules, profile boundaries, worker-family semantics, and evaluation-log rules live.
@@ -68,15 +72,16 @@ packetflow_foundry/
 
 ## Managed Agents
 
-The root `agents/` directory is the foundry's default managed agent set.
+The root `.codex/agents/` directory is the foundry's default managed agent set.
 It is not a declaration that every consumer project must use only this exact global set unchanged.
 
 The intended model is:
-- foundry default managed agents under `.codex/vendor/packetflow_foundry/agents/`
+- foundry default managed agents under `.codex/vendor/packetflow_foundry/.codex/agents/`
 - foundry thin skill wrappers under `.codex/vendor/packetflow_foundry/.agents/skills/`
 - foundry authoritative retained skills under `.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/`
 - consumer-local repo skill discovery under `.agents/skills/`
-- project-local additive agents under `.codex/project/agents/`
+- consumer-local project-scoped subagent discovery under `.codex/agents/`
+- legacy project-agent migration shim under `.codex/project/agents/`
 
 Foundry owns reusable agent behavior semantics.
 Projects should only adjust binding, selection, or routing locally.
@@ -93,11 +98,11 @@ project-root/
     skills/
   .codex/
     AGENTS.md
+    agents/
     vendor/
       packetflow_foundry/
     project/
       profiles/
-      agents/
 ```
 
 Rules:
@@ -107,7 +112,8 @@ Rules:
   - keep repo-wide defaults in `.codex/project/profiles/default/profile.json`
   - keep skill-specific overrides in `.codex/project/profiles/<skill-name>/profile.json`
 - put repo-specific skills in repo-root `.agents/skills/`
-- put repo-specific agents in `.codex/project/agents/`
+- put repo-specific agents in `.codex/agents/`
+- treat legacy `.codex/project/agents/` as migration-only
 - treat legacy `.codex/project/skills/` as migration-only
 - do not make repo-specific edits in the vendor subtree
 
@@ -120,11 +126,14 @@ python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init
 
 Bootstrap behavior:
 - root `AGENTS.md` and `.codex/AGENTS.md` are append-only targets
+- repo-root `.codex/agents/` is the canonical project-scoped subagent discovery surface
 - `.codex/project/profiles/default/profile.json` is a project-local scaffold, not a reusable foundry overlay
 - skill-specific project-local overrides belong in `.codex/project/profiles/<skill-name>/profile.json`
 - repo-root `.agents/skills/` is the canonical discovery surface in the consumer repo
+- vendored foundry default agent TOMLs are bridged into repo-root `.codex/agents/` unless a root entry already exists
 - vendored foundry thin skill wrappers are bridged into root `.agents/skills/` with directory symlinks unless a root entry already exists
 - bridged wrappers resolve their authoritative retained kernels under `.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/`
+- legacy `.codex/project/agents/` entries are bridged only as a migration shim and should be moved to `.codex/agents/`
 - legacy `.codex/project/skills/` entries are bridged only as a migration shim and should be moved to root `.agents/skills/`
 - if any non-`AGENTS.md` tracked bootstrap output already exists, the helper aborts without writing files
 

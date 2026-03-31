@@ -7,7 +7,7 @@ foundry_root = ".codex/vendor/packetflow_foundry"
 default_profile = "baseline"
 optional_overlays = []
 builder_entrypoint = ".codex/vendor/packetflow_foundry/builders/packet-workflow/scripts/init_packet_skill.py"
-managed_agents_policy = "foundry default set plus additive project overrides"
+managed_agents_policy = "foundry default set bridged into .codex/agents plus additive project overrides"
 
 [packetflow_foundry.compose]
 profile_dirs = [
@@ -19,7 +19,7 @@ skill_dirs = [
   ".agents/skills",
 ]
 agent_dirs = [
-  ".codex/vendor/packetflow_foundry/agents",
-  ".codex/project/agents",
+  ".codex/vendor/packetflow_foundry/.codex/agents",
+  ".codex/agents",
 ]
-precedence = "foundry baseline -> optional foundry overlay -> project-local profile -> root .agents/skills override surface"
+precedence = "foundry baseline -> optional foundry overlay -> project-local profile -> root .agents/skills override surface -> root .codex/agents subagent discovery surface"

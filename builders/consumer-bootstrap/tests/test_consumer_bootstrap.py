@@ -52,6 +52,25 @@ def create_skill_dir(root: Path, name: str) -> Path:
     return skill_dir
 
 
+def create_agent_file(root: Path, name: str) -> Path:
+    root.mkdir(parents=True, exist_ok=True)
+    agent_path = root / f"{name}.toml"
+    agent_path.write_text(
+        "\n".join(
+            [
+                f'name = "{name.replace("-", "_")}"',
+                'description = "test agent"',
+                'developer_instructions = """',
+                "Do not edit files.",
+                '"""',
+                "",
+            ]
+        ),
+        encoding="utf-8",
+    )
+    return agent_path
+
+
 def create_consumer_repo(
     root: Path,
     *,
@@ -59,11 +78,13 @@ def create_consumer_repo(
     root_agents_text: str | None = None,
     codex_agents_text: str | None = None,
     existing_profile: bool = False,
-    existing_agent_gitkeep: bool = False,
     include_vendor: bool = True,
     vendor_skill_names: list[str] | None = None,
+    vendor_agent_names: list[str] | None = None,
     root_skill_names: list[str] | None = None,
+    root_agent_names: list[str] | None = None,
     legacy_skill_names: list[str] | None = None,
+    legacy_agent_names: list[str] | None = None,
 ) -> Path:
     repo = root / "consumer"
     repo.mkdir()
@@ -71,10 +92,18 @@ def create_consumer_repo(
     if include_readme:
         (repo / "README.md").write_text("# Consumer Repo\n", encoding="utf-8")
     if include_vendor:
-        vendor_root = repo / ".codex" / "vendor" / "packetflow_foundry" / ".agents" / "skills"
-        vendor_root.mkdir(parents=True)
+        vendor_skill_root = (
+            repo / ".codex" / "vendor" / "packetflow_foundry" / ".agents" / "skills"
+        )
+        vendor_skill_root.mkdir(parents=True)
         for skill_name in vendor_skill_names or []:
-            create_skill_dir(vendor_root, skill_name)
+            create_skill_dir(vendor_skill_root, skill_name)
+        vendor_agent_root = (
+            repo / ".codex" / "vendor" / "packetflow_foundry" / ".codex" / "agents"
+        )
+        vendor_agent_root.mkdir(parents=True)
+        for agent_name in vendor_agent_names or []:
+            create_agent_file(vendor_agent_root, agent_name)
     if root_agents_text is not None:
         (repo / "AGENTS.md").write_text(root_agents_text, encoding="utf-8")
     if codex_agents_text is not None:
@@ -85,14 +114,14 @@ def create_consumer_repo(
         profile_path = repo / bootstrap.PROJECT_PROFILE_RELATIVE
         profile_path.parent.mkdir(parents=True, exist_ok=True)
         profile_path.write_text("{}", encoding="utf-8")
-    if existing_agent_gitkeep:
-        gitkeep_path = repo / bootstrap.PROJECT_AGENTS_GITKEEP_RELATIVE
-        gitkeep_path.parent.mkdir(parents=True, exist_ok=True)
-        gitkeep_path.write_text("\n", encoding="utf-8")
     for skill_name in root_skill_names or []:
         create_skill_dir(repo / bootstrap.ROOT_SKILLS_RELATIVE, skill_name)
+    for agent_name in root_agent_names or []:
+        create_agent_file(repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE, agent_name)
     for skill_name in legacy_skill_names or []:
         create_skill_dir(repo / bootstrap.LEGACY_PROJECT_SKILLS_RELATIVE, skill_name)
+    for agent_name in legacy_agent_names or []:
+        create_agent_file(repo / bootstrap.LEGACY_PROJECT_AGENTS_RELATIVE, agent_name)
     return repo
 
 
@@ -127,7 +156,11 @@ class ConsumerBootstrapTests(unittest.TestCase):
 
     def test_init_creates_codex_scaffold_without_root_agents(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            repo = create_consumer_repo(Path(tmp), vendor_skill_names=["vendor-skill"])
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["vendor-skill"],
+                vendor_agent_names=["vendor-agent"],
+            )
             vendor_skill_dir = (
                 repo
                 / ".codex"
@@ -143,21 +176,42 @@ class ConsumerBootstrapTests(unittest.TestCase):
                 if path.is_file()
             )
             self.assertEqual(vendor_wrapper_files, ["SKILL.md", "agents/openai.yaml"])
+            vendor_agent_dir = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".codex"
+                / "agents"
+            )
+            vendor_agent_files = sorted(
+                path.name for path in vendor_agent_dir.iterdir() if path.is_file()
+            )
+            self.assertEqual(vendor_agent_files, ["vendor-agent.toml"])
 
             code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
 
             self.assertEqual(code, 0)
             self.assertIn("root AGENTS.md: not present", stdout)
             self.assertIn(".codex/AGENTS.md: created", stdout)
+            self.assertIn(".codex/agents: ready", stdout)
+            self.assertIn("agent bridge:", stdout)
+            self.assertIn("vendor-agent", stdout)
             self.assertIn(".agents/skills: ready", stdout)
             self.assertIn("skill bridge:", stdout)
             self.assertIn("vendor-skill", stdout)
-            self.assertEqual(symlink_mock.call_count, 1)
+            self.assertEqual(symlink_mock.call_count, 2)
             self.assertFalse((repo / "AGENTS.md").exists())
+            self.assertTrue((repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE).is_dir())
             self.assertTrue((repo / bootstrap.ROOT_SKILLS_RELATIVE).is_dir())
 
             codex_agents = (repo / ".codex" / "AGENTS.md").read_text(encoding="utf-8")
             self.assertIn(bootstrap.BOOTSTRAP_MARKER_START, codex_agents)
+            self.assertIn(".codex/agents/", codex_agents)
+            self.assertIn(
+                ".codex/vendor/packetflow_foundry/.codex/agents/",
+                codex_agents,
+            )
             self.assertIn(".agents/skills/", codex_agents)
             self.assertIn("thin discovery-wrapper surface", codex_agents)
             self.assertIn(
@@ -220,13 +274,14 @@ class ConsumerBootstrapTests(unittest.TestCase):
                 root_agents_text="# Root AGENTS\n",
                 codex_agents_text="# Local Codex AGENTS\n",
                 vendor_skill_names=["vendor-skill"],
+                vendor_agent_names=["vendor-agent"],
             )
 
             first_code, first_stdout, _, _ = run_bootstrap_main(repo)
             self.assertEqual(first_code, 0)
             create_skill_dir(repo / bootstrap.ROOT_SKILLS_RELATIVE, "vendor-skill")
+            create_agent_file(repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE, "vendor-agent")
             (repo / bootstrap.PROJECT_PROFILE_RELATIVE).unlink()
-            (repo / bootstrap.PROJECT_AGENTS_GITKEEP_RELATIVE).unlink()
 
             second_code, second_stdout, _, _ = run_bootstrap_main(repo)
 
@@ -235,6 +290,7 @@ class ConsumerBootstrapTests(unittest.TestCase):
             self.assertIn(".codex/AGENTS.md: appended foundry block", first_stdout)
             self.assertIn("root AGENTS.md: unchanged", second_stdout)
             self.assertIn(".codex/AGENTS.md: unchanged", second_stdout)
+            self.assertIn("skipped agent bridge:", second_stdout)
             self.assertIn("skipped skill bridge:", second_stdout)
 
             root_agents = (repo / "AGENTS.md").read_text(encoding="utf-8")
@@ -312,18 +368,22 @@ class ConsumerBootstrapTests(unittest.TestCase):
                 skill_profile.resolve(),
             )
 
-    def test_existing_root_skill_skips_vendor_bridge(self) -> None:
+    def test_existing_root_skill_and_agent_skip_vendor_bridges(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = create_consumer_repo(
                 Path(tmp),
                 vendor_skill_names=["vendor-skill"],
+                vendor_agent_names=["vendor-agent"],
                 root_skill_names=["vendor-skill"],
+                root_agent_names=["vendor-agent"],
             )
 
             code, stdout, _, symlink_mock = run_bootstrap_main(repo)
 
             self.assertEqual(code, 0)
             self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("skipped agent bridge:", stdout)
+            self.assertIn("vendor-agent", stdout)
             self.assertIn("skipped skill bridge:", stdout)
             self.assertIn("vendor-skill", stdout)
 
@@ -343,6 +403,23 @@ class ConsumerBootstrapTests(unittest.TestCase):
             self.assertIn("legacy-only", stdout)
             self.assertIn("shared-skill", stderr)
             self.assertIn("Legacy `.codex/project/skills/` is deprecated", stderr)
+
+    def test_legacy_project_agents_are_bridged_with_notice(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_agent_names=["shared-agent"],
+                legacy_agent_names=["shared-agent", "legacy-only"],
+            )
+
+            code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 2)
+            self.assertIn("legacy agent bridge:", stdout)
+            self.assertIn("legacy-only.toml", stdout)
+            self.assertIn("shared-agent", stderr)
+            self.assertIn("Legacy `.codex/project/agents/` is deprecated", stderr)
 
     def test_conflicting_generated_output_aborts_without_touching_agents(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -366,7 +443,7 @@ class ConsumerBootstrapTests(unittest.TestCase):
                 bootstrap.BOOTSTRAP_MARKER_START,
                 (repo / ".codex" / "AGENTS.md").read_text(encoding="utf-8"),
             )
-            self.assertFalse((repo / bootstrap.PROJECT_AGENTS_GITKEEP_RELATIVE).exists())
+            self.assertFalse((repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE).exists())
 
     def test_symlink_failure_produces_clear_error(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

@@ -13,7 +13,10 @@ Usage:
 Behavior:
 - creates `.codex/project/profiles/default/profile.json`
 - reserves `.codex/project/profiles/<skill-name>/profile.json` for skill-specific project-local overrides
-- creates `.codex/project/agents/.gitkeep`
+- ensures repo-root `.codex/agents/` exists as the consumer subagent discovery surface
+- creates file-symlink bridges from repo-root `.codex/agents/<agent>.toml` to `.codex/vendor/packetflow_foundry/.codex/agents/<agent>.toml`
+- skips agent bridge creation when a root `.codex/agents/<agent>.toml` entry already exists
+- bridges legacy `.codex/project/agents/<agent>.toml` only as a migration shim and emits a deprecation notice
 - ensures repo-root `.agents/skills/` exists as the consumer discovery surface
 - creates directory-symlink bridges from repo-root `.agents/skills/<skill-name>` to `.codex/vendor/packetflow_foundry/.agents/skills/<skill-name>`
 - bridges thin wrappers only; authoritative retained kernels stay under `.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/<skill-name>`
