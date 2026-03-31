@@ -39,7 +39,7 @@ class PrWriteupToolsTests(unittest.TestCase):
     def test_classify_changed_files_and_summary_cover_expected_groups(self) -> None:
         groups = tools.classify_changed_files(
             [
-                "NoOfficeDemandFix/Mod.cs",
+                "ExampleProduct/Mod.cs",
                 ".github/workflows/check.yml",
                 "docs/guide.md",
                 "tests/writeup_test.py",
@@ -55,7 +55,7 @@ class PrWriteupToolsTests(unittest.TestCase):
         self.assertEqual(summary["tests"]["count"], 1)
         self.assertEqual(summary["config"]["count"], 1)
         self.assertEqual(summary["other"]["count"], 1)
-        self.assertEqual(summary["runtime"]["sample_files"], ["NoOfficeDemandFix/Mod.cs"])
+        self.assertEqual(summary["runtime"]["sample_files"], ["ExampleProduct/Mod.cs"])
         self.assertEqual(summary["tests"]["sample_files"], ["tests/writeup_test.py"])
         self.assertEqual(summary["config"]["sample_strategy"], "directory_round_robin")
 

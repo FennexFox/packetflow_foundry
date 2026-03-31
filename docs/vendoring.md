@@ -12,6 +12,8 @@ Meaning:
 - start from `profiles/baseline/profile.json`
 - optionally add `profiles/packet-heavy-orchestrator/profile.json`
 - add repo-specific profile data from `.codex/project/profiles/`
+  - keep repo-wide defaults in `.codex/project/profiles/default/profile.json`
+  - keep skill-specific overrides in `.codex/project/profiles/<skill-name>/profile.json`
 - expose repo-scoped skills from repo-root `.agents/skills/`
 - bridge reusable foundry skills from `.codex/vendor/packetflow_foundry/.agents/skills/` into the root discovery surface
 
@@ -40,6 +42,7 @@ python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init
 Bootstrap notes:
 - root `AGENTS.md` and `.codex/AGENTS.md` are append-only targets
 - `.codex/project/profiles/default/profile.json` is a project-local scaffold, not a reusable foundry overlay
+- skill-specific project-local overrides belong in `.codex/project/profiles/<skill-name>/profile.json`
 - repo-root `.agents/skills/` is the canonical consumer skill location
 - vendored foundry skills are bridged into root `.agents/skills/` unless a root entry already exists
 - legacy `.codex/project/skills/` is deprecated and bridged only for migration
@@ -59,6 +62,8 @@ Keep these in the foundry vendor subtree:
 
 Keep these in the consumer repo root or `.codex/project/`:
 - repo-specific profile data in `.codex/project/profiles/`
+  - repo-wide scaffold defaults in `.codex/project/profiles/default/profile.json`
+  - skill-specific overrides in `.codex/project/profiles/<skill-name>/profile.json`
 - repo-specific skills in `.agents/skills/`
 - repo-specific agent bindings or additive agents in `.codex/project/agents/`
 - project-only overrides that should not be upstreamed

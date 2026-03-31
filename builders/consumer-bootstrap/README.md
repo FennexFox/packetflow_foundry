@@ -12,6 +12,7 @@ Usage:
 
 Behavior:
 - creates `.codex/project/profiles/default/profile.json`
+- reserves `.codex/project/profiles/<skill-name>/profile.json` for skill-specific project-local overrides
 - creates `.codex/project/agents/.gitkeep`
 - ensures repo-root `.agents/skills/` exists as the consumer discovery surface
 - creates directory-symlink bridges from repo-root `.agents/skills/<skill-name>` to `.codex/vendor/packetflow_foundry/.agents/skills/<skill-name>`

@@ -1,4 +1,4 @@
-import contextlib
+﻿import contextlib
 import io
 import json
 import sys
@@ -16,6 +16,33 @@ import collect_release_copy_context as collector
 
 
 class CollectReleaseCopyContextMainTests(unittest.TestCase):
+    def test_main_reports_missing_required_binding_without_traceback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            repo_root = Path(tmpdir)
+            (repo_root / "README.md").write_text("# Repo\n", encoding="utf-8")
+
+            stderr = io.StringIO()
+            output_path = repo_root / "out" / "context.json"
+            argv = [
+                "collect_release_copy_context.py",
+                "--repo-root",
+                str(repo_root),
+                "--profile",
+                str(collector.retained_default_repo_profile_path()),
+                "--output",
+                str(output_path),
+            ]
+
+            with mock.patch.object(sys, "argv", argv), contextlib.redirect_stderr(stderr):
+                exit_code = collector.main()
+
+            self.assertEqual(exit_code, 1)
+            error_text = stderr.getvalue()
+            self.assertIn("collect_release_copy_context.py:", error_text)
+            self.assertIn("bindings.publish_config_path", error_text)
+            self.assertIn("missing required repo profile binding", error_text)
+            self.assertNotIn("Traceback", error_text)
+
     def test_main_reports_missing_required_bound_file_without_traceback(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             repo_root = Path(tmpdir)

@@ -97,6 +97,8 @@ Rules:
 - use foundry `profiles/baseline/profile.json` by default
 - opt into `profiles/packet-heavy-orchestrator/profile.json` only when the workflow is packet-heavy
 - put repo-specific profile data in `.codex/project/profiles/`
+  - keep repo-wide defaults in `.codex/project/profiles/default/profile.json`
+  - keep skill-specific overrides in `.codex/project/profiles/<skill-name>/profile.json`
 - put repo-specific skills in repo-root `.agents/skills/`
 - put repo-specific agents in `.codex/project/agents/`
 - treat legacy `.codex/project/skills/` as migration-only
@@ -112,6 +114,7 @@ python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init
 Bootstrap behavior:
 - root `AGENTS.md` and `.codex/AGENTS.md` are append-only targets
 - `.codex/project/profiles/default/profile.json` is a project-local scaffold, not a reusable foundry overlay
+- skill-specific project-local overrides belong in `.codex/project/profiles/<skill-name>/profile.json`
 - repo-root `.agents/skills/` is the canonical discovery surface in the consumer repo
 - vendored foundry skills are bridged into root `.agents/skills/` with directory symlinks unless a root entry already exists
 - legacy `.codex/project/skills/` entries are bridged only as a migration shim and should be moved to root `.agents/skills/`

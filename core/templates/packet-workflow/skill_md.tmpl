@@ -14,6 +14,7 @@ This is a packet-driven repo workflow skill:
 - stop on low confidence, stale snapshots, or ambiguous ownership instead of guessing
 - keep generic packet rules in `references/__CORE_CONTRACT_FILE__` and repo-specific layout assumptions in `__REPO_PROFILE_FILE__`
 - keep repo profiles data-only: paths, globs, doc lists, booleans, and notes only; executable logic stays in scripts and contracts
+- prefer a project-local override at `.codex/project/profiles/__SKILL_NAME__/profile.json` when the repo carries skill-specific bindings or review docs
 __PROFILE_RUNTIME_NOTE__
 __REPO_PROFILE_NOTE__
 
@@ -21,7 +22,7 @@ __REPO_PROFILE_NOTE__
 
 1. Collect structured context.
 - Review `references/__CORE_CONTRACT_FILE__` before changing shared packet semantics.
-- Review `__REPO_PROFILE_FILE__` before trusting repo-specific path bindings, review-doc lists, or deterministic lint toggles.
+- Review the active repo profile before trusting repo-specific path bindings, review-doc lists, or deterministic lint toggles.
 - Run `python scripts/collect___DOMAIN_SLUG___context.py --repo-root <repo-root> --output <context-json>`.
 __LINT_STEP__
 - Run `python scripts/build___DOMAIN_SLUG___packets.py --context <context-json>__BUILD_LINT_ARG__ --output-dir <packet-dir>`.
@@ -37,7 +38,7 @@ __COMMON_PATH_NOTE__
 - Escalate to the next larger mode when churn is high, core runtime/config/process files span groups, or generated files are not the majority.
 
 3. Keep packet analysis narrow.
-- Treat `references/__CORE_CONTRACT_FILE__` as the generic workflow contract and `__REPO_PROFILE_FILE__` as the repo-specific overlay.
+- Treat `references/__CORE_CONTRACT_FILE__` as the generic workflow contract and the active repo profile as the repo-specific overlay.
 - Read `references/__DOMAIN_CONTRACT_FILE__` before drafting domain outputs.
 - Read `references/delegation-playbook.md` only when `review_mode` is not `local-only`.
 - Worker return contract for this skill: `__WORKER_RETURN_CONTRACT__`.

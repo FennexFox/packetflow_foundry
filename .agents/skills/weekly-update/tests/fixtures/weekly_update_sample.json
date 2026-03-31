@@ -128,7 +128,7 @@
           "author": "codex",
           "created_at": "2026-03-26T09:00:00Z",
           "in_reply_to_id": null,
-          "path": "NoOfficeDemandFix/Systems/PerformanceTelemetrySystem.cs"
+          "path": "ExampleProduct/Systems/PerformanceTelemetrySystem.cs"
         },
         {
           "id": 2992368623,
@@ -136,7 +136,7 @@
           "author": "codex",
           "created_at": "2026-03-26T11:00:00Z",
           "in_reply_to_id": 2992368622,
-          "path": "NoOfficeDemandFix/Systems/PerformanceTelemetrySystem.cs"
+          "path": "ExampleProduct/Systems/PerformanceTelemetrySystem.cs"
         }
       ]
     },
@@ -149,7 +149,7 @@
           "author": "codex",
           "created_at": "2026-03-26T13:00:00Z",
           "in_reply_to_id": null,
-          "path": "NoOfficeDemandFix/Properties/PublishConfiguration.xml"
+          "path": "ExampleProduct/Properties/PublishConfiguration.xml"
         }
       ]
     },
@@ -162,7 +162,7 @@
           "author": "github-actions[bot]",
           "created_at": "2026-03-26T14:00:00Z",
           "in_reply_to_id": null,
-          "path": "NoOfficeDemandFix/Properties/PublishConfiguration.xml"
+          "path": "ExampleProduct/Properties/PublishConfiguration.xml"
         }
       ]
     }

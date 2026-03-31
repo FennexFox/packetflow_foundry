@@ -1,4 +1,4 @@
-# Public Docs Sync Core Contract
+﻿# Public Docs Sync Core Contract
 
 This file captures the reusable packet-workflow core for the generated `public-docs-sync` scaffold.
 Keep repo-specific paths, review-doc lists, and lint toggles in `profiles/default/profile.json`.
@@ -89,16 +89,15 @@ Stop conditions:
 ## Repo Profile Boundary
 
 - Default generated profile: `profiles/default/profile.json`
-- Summary: Default reusable profile scaffold for public-doc drift auditing. Replace audited doc inventory, packet ownership, and marker metadata in project-local profiles when vendored.
+- Summary: Neutral reusable profile scaffold for public-doc drift auditing. Add audited doc inventory, packet ownership, and marker metadata in project-local profiles when vendored.
 - Default bindings:
 - `primary_readme_path`: `README.md`
-- `settings_source_path`: `NoOfficeDemandFix/Setting.cs`
-- `publish_config_path`: `NoOfficeDemandFix/Properties/PublishConfiguration.xml`
+- `settings_source_path`: `null`
+- `publish_config_path`: `null`
 - Default packet defaults:
 - review docs:
   - `claims_packet`
     - `README.md`
-    - `NoOfficeDemandFix/Properties/PublishConfiguration.xml`
   - `reporting_packet`
     - `LOG_REPORTING.md`
     - `PERF_REPORTING.md`
@@ -141,7 +140,9 @@ Stop conditions:
 - Keep repo-specific file layout and doc ownership in the repo profile instead of hardcoding them into this core contract.
 - Keep the repo profile declarative. Scripts may consume its data, but the profile itself should not define executable behavior.
 
-## Notes
+## Notes`r`n`r`n- Optional local helpers remain non-authoritative even when collected.`r`n- Final plan confidence is recomputed locally even when worker confidence signals are present.`r`n- The retained default scaffold keeps repo-specific bindings null and should be specialized by a project-local override when runtime-source coupling matters.
 
-- Optional local helpers remain non-authoritative even when collected.
-- Final plan confidence is recomputed locally even when worker confidence signals are present.
+
+
+
+

@@ -1,0 +1,149 @@
+{
+  "kind": "project-local-profile",
+  "name": "draft-release-copy",
+  "profile_path": ".codex/project/profiles/draft-release-copy/profile.json",
+  "summary": "Project-local draft-release-copy profile for packetflow_foundry release review and checklist generation.",
+  "repo_match": {
+    "root_markers": [
+      ".git",
+      "README.md"
+    ],
+    "remote_patterns": []
+  },
+  "bindings": {
+    "primary_readme_path": "README.md",
+    "settings_source_path": ".codex/project/release/ReleaseSettings.cs",
+    "publish_config_path": ".codex/project/release/ReleaseConfiguration.xml"
+  },
+  "packet_defaults": {
+    "review_docs": {
+      "changes_packet": [
+        "README.md",
+        "CONTRIBUTING.md",
+        "MAINTAINING.md",
+        "builders/packet-workflow/version.json"
+      ],
+      "checklist_packet": [
+        ".github/ISSUE_TEMPLATE/release_checklist.yml",
+        ".github/workflows/release.yml",
+        "MAINTAINING.md",
+        ".codex/project/profiles/draft-release-copy/profile.json"
+      ],
+      "evidence_packet": [
+        "README.md",
+        "CONTRIBUTING.md",
+        "MAINTAINING.md",
+        ".github/workflows/release.yml"
+      ],
+      "publish_packet": [
+        ".codex/project/release/ReleaseConfiguration.xml",
+        "builders/packet-workflow/version.json",
+        ".github/workflows/release.yml"
+      ],
+      "readme_packet": [
+        "README.md",
+        "CONTRIBUTING.md",
+        ".github/ISSUE_TEMPLATE/release_checklist.yml",
+        ".codex/project/profiles/draft-release-copy/profile.json"
+      ]
+    },
+    "source_path_globs": {
+      "changes_packet": [
+        ".agents/skills/**",
+        "builders/**",
+        "core/**",
+        "docs/**",
+        ".github/**"
+      ],
+      "checklist_packet": [
+        ".github/ISSUE_TEMPLATE/*.yml",
+        ".github/workflows/*.yml",
+        ".codex/project/**"
+      ],
+      "evidence_packet": [
+        ".github/**",
+        "README.md",
+        "CONTRIBUTING.md",
+        "MAINTAINING.md",
+        "builders/**"
+      ],
+      "publish_packet": [
+        ".codex/project/release/**",
+        "builders/packet-workflow/version.json"
+      ],
+      "readme_packet": [
+        "README.md",
+        "CONTRIBUTING.md",
+        "MAINTAINING.md",
+        ".github/ISSUE_TEMPLATE/*.yml"
+      ]
+    }
+  },
+  "lint_rules": {
+    "require_readme_settings_table": false,
+    "missing_review_docs_are_errors": false
+  },
+  "extra": {
+    "release_copy": {
+      "allowed_publish_fields": [
+        "short_description",
+        "long_description",
+        "mod_version",
+        "change_log"
+      ],
+      "allowed_readme_sections": [
+        "Current Release",
+        "Current Status"
+      ],
+      "issue_defaults": {
+        "label_names": [
+          "release"
+        ],
+        "project_mode": "none",
+        "title_prefix": "[Release]"
+      },
+      "maintaining_path": "MAINTAINING.md",
+      "release_checklist_template_path": ".github/ISSUE_TEMPLATE/release_checklist.yml",
+      "release_workflow_path": ".github/workflows/release.yml",
+      "release_goal": "Keep release scope anchored on packet-first orchestration that uses 5.4-mini subagents to reduce token usage.",
+      "classification_labels": [
+        "direct savings",
+        "measurement-enabling",
+        "structural-only"
+      ],
+      "measurement_metrics": [
+        "estimated_packet_tokens",
+        "estimated_delegation_savings",
+        "raw_reread_count",
+        "common_path_sufficient"
+      ],
+      "direct_savings_examples": [
+        "packet compaction",
+        "raw reread reduction",
+        "delegation scope reduction",
+        "local scripted preprocessing"
+      ],
+      "rules": {
+        "require_release_item_classification": true,
+        "require_structural_only_justification": true,
+        "require_measurement_metrics": true,
+        "require_direct_savings_path": true,
+        "retained_skill_direct_savings_requires_efficiency_path_or_metric_target": true
+      }
+    }
+  },
+  "notes": [
+    "This file is a project-local skill profile for one repository.",
+    "It is not a reusable foundry overlay and should stay outside reusable skill defaults.",
+    "Keep this profile data-only: add repo-specific bindings, review docs, booleans, and notes here.",
+    "Packetflow Foundry release review should block drift away from the packet-efficiency goal by classifying release items as direct savings, measurement-enabling, or structural-only."
+  ],
+  "metadata": {
+    "versioning": {
+      "builder_family": "packet-workflow",
+      "builder_semver": "0.1.0",
+      "compatibility_epoch": 1,
+      "repo_profile_schema_version": 1
+    }
+  }
+}

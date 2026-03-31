@@ -3,6 +3,7 @@
 This file captures the reusable packet-workflow core for the retained `weekly-update` scaffold.
 Keep repo-specific paths, review-doc lists, and weekly-update conventions in `profiles/default/profile.json`.
 Repo profiles are data-only inputs. Do not place executable hooks, prompt text, worker-routing behavior, or validator/apply semantics in them.
+Consumer repos should prefer `.codex/project/profiles/weekly-update/profile.json` over editing the retained default directly.
 
 ## Core Metadata
 
@@ -131,6 +132,7 @@ Domain overlay:
 ## Repo Profile Boundary
 
 - Default generated profile: `profiles/default/profile.json`
+- Preferred project-local override path: `.codex/project/profiles/weekly-update/profile.json`
 - Summary: Default reusable profile scaffold for weekly-update workflows. Replace review docs, path hints, and repo conventions in project-local profiles when vendored.
 - Default bindings:
 - `primary_readme_path`: `README.md`
@@ -178,4 +180,4 @@ Domain overlay:
 ## Notes
 
 - Active profile metadata should appear in collected context plus `orchestrator.json`, `global_packet.json`, and build-result artifacts.
-- Consumer repos should prefer a project-local `weekly-update` profile over editing the foundry-retained default.
+- Consumer repos should prefer the project-local `weekly-update` profile path above over editing the foundry-retained default.

@@ -1,4 +1,4 @@
-# Draft Release Copy Core Contract
+﻿# Draft Release Copy Core Contract
 
 This file captures the reusable packet-workflow core for the generated `draft-release-copy` scaffold.
 Keep repo-specific paths, review-doc lists, and lint toggles in `profiles/default/profile.json`.
@@ -93,17 +93,17 @@ Stop conditions:
 ## Repo Profile Boundary
 
 - Default generated profile: `profiles/default/profile.json`
-- Summary: Default reusable profile scaffold for release-copy drafting. Replace repo layout bindings, review docs, and declarative release metadata in project-local profiles when vendored.
+- Summary: Neutral reusable profile scaffold for release-copy drafting. Add repo layout bindings, review docs, and declarative release metadata in project-local profiles when vendored.
 - Default bindings:
 - `primary_readme_path`: `README.md`
-- `settings_source_path`: `NoOfficeDemandFix/Setting.cs`
-- `publish_config_path`: `NoOfficeDemandFix/Properties/PublishConfiguration.xml`
+- `settings_source_path`: `null`
+- `publish_config_path`: `null`
 - Default packet defaults:
 - review docs:
   - `publish_packet`
     - `README.md`
     - `MAINTAINING.md`
-    - `NoOfficeDemandFix/Properties/PublishConfiguration.xml`
+
   - `readme_packet`
     - `README.md`
     - `MAINTAINING.md`
@@ -129,7 +129,7 @@ Stop conditions:
     - `.github/ISSUE_TEMPLATE/*.yml`
   - `changes_packet`
     - `src/**`
-    - `NoOfficeDemandFix/**`
+    - `release/**`
     - `.github/workflows/release.yml`
   - `checklist_packet`
     - `.github/ISSUE_TEMPLATE/*.yml`
@@ -150,7 +150,5 @@ Stop conditions:
 - Keep repo-specific file layout and doc ownership in the repo profile instead of hardcoding them into this core contract.
 - Keep the repo profile declarative. Scripts may consume its data, but the profile itself should not define executable behavior.
 
-## Notes
+## Notes`r`n`r`n- Optional local helpers remain non-authoritative even when collected.`r`n- Final plan confidence is recomputed locally even when worker confidence signals are present.`r`n- The retained default scaffold keeps repo-specific bindings null and is expected to be specialized by a project-local override before runtime collection.
 
-- Optional local helpers remain non-authoritative even when collected.
-- Final plan confidence is recomputed locally even when worker confidence signals are present.

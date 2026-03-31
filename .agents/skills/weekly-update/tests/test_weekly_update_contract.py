@@ -406,7 +406,7 @@ class WeeklyUpdateContractTests(unittest.TestCase):
         agent_yaml = (Path(__file__).resolve().parents[1] / "agents" / "openai.yaml").read_text(encoding="utf-8")
         self.assertIn('short_description: "Top-level packet-driven weekly update orchestrator with profile-aware repo conventions"', agent_yaml)
         self.assertIn("Use $weekly-update to collect context, build packets, optionally delegate", agent_yaml)
-        self.assertNotIn("NoOfficeDemandFix", agent_yaml)
+        self.assertNotIn("ExampleProduct", agent_yaml)
         self.assertNotIn("worker-only packet analyst", agent_yaml)
 
     def test_retained_builder_assets_exist(self) -> None:

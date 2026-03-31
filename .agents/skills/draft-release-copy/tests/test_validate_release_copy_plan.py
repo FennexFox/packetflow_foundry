@@ -23,7 +23,7 @@ PUBLISH_XML = """<Configuration>
 </Configuration>
 """
 
-README_MD = """# NoOfficeDemandFix
+README_MD = """# ExampleProduct
 
 Intro text.
 
@@ -41,7 +41,7 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
 
     def build_context(self, tmp: Path, *, existing_issue: dict | None = None) -> dict:
         repo_root = tmp / "repo"
-        publish_path = repo_root / "NoOfficeDemandFix" / "Properties" / "PublishConfiguration.xml"
+        publish_path = repo_root / "ExampleProduct" / "Properties" / "PublishConfiguration.xml"
         readme_path = repo_root / "README.md"
         publish_path.parent.mkdir(parents=True, exist_ok=True)
         readme_path.parent.mkdir(parents=True, exist_ok=True)
@@ -67,7 +67,7 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
             },
             "readme": {
                 "path": str(readme_path),
-                "intro_text": "# NoOfficeDemandFix\n\nIntro text.",
+                "intro_text": "# ExampleProduct\n\nIntro text.",
                 "sections": {
                     "Current Release": "Current release block.",
                     "Current Status": "Current status block.",
@@ -80,7 +80,7 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
             "existing_release_issue": existing_issue,
             "evidence": None,
             "local_release_helper": {"status": "present"},
-            "project_title_default": "NoOfficeDemandFix Tracker",
+            "project_title_default": "ExampleProduct Tracker",
         }
         context["freshness_tuple"] = plan_tools.expected_freshness_tuple(context)
         context["context_fingerprint"] = plan_tools.expected_context_fingerprint(context)

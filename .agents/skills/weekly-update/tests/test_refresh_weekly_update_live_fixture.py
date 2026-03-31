@@ -46,10 +46,10 @@ class RefreshWeeklyUpdateLiveFixtureTests(unittest.TestCase):
         self.assertEqual(refresh.fixture_state_marker(marker, reporting_window), {"window_end_utc": "2026-03-20T23:59:59Z"})
         self.assertIsNone(refresh.fixture_state_marker(marker, {"source": "last_7_days"}))
 
-    def test_parse_args_defaults_profile_to_retained_profile(self) -> None:
+    def test_parse_args_leaves_profile_unset_until_repo_root_is_known(self) -> None:
         with patch.object(sys, "argv", ["refresh_weekly_update_live_fixture.py", "--repo-root", "C:/repo"]):
             args = refresh.parse_args()
-        self.assertEqual(args.profile, str(wl.default_repo_profile_path()))
+        self.assertIsNone(args.profile)
 
 
 if __name__ == "__main__":

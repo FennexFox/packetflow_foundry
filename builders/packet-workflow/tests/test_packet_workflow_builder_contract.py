@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import py_compile
 import subprocess
@@ -225,6 +226,22 @@ def run_python(script: Path, *args: str) -> subprocess.CompletedProcess[str]:
         capture_output=True,
         text=True,
     )
+
+
+def load_module_from_path(module_name: str, script_path: Path):
+    spec = importlib.util.spec_from_file_location(module_name, script_path)
+    if spec is None or spec.loader is None:
+        raise AssertionError(f"Unable to load module from {script_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.path.insert(0, str(script_path.parent))
+    try:
+        spec.loader.exec_module(module)
+    finally:
+        try:
+            sys.path.remove(str(script_path.parent))
+        except ValueError:
+            pass
+    return module
 
 
 class PacketWorkflowBuilderContractTests(unittest.TestCase):
@@ -611,9 +628,11 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             self.assertIn("runtime_packet", skill_md)
             self.assertIn("Orchestrator profile: `standard`.", skill_md)
             self.assertIn("profiles/sample-repo/profile.json", skill_md)
+            self.assertIn(".codex/project/profiles/packet-explorer-smoke/profile.json", skill_md)
             self.assertIn("references/core-contract.md", skill_md)
             self.assertIn("data-only", skill_md)
             self.assertIn("profiles/sample-repo/profile.json", core_contract)
+            self.assertIn(".codex/project/profiles/packet-explorer-smoke/profile.json", core_contract)
             self.assertIn("data-only", core_contract)
             self.assertIn('display_name: "Packet Explorer Smoke"', agents_yaml)
             self.assertEqual(profile_json["name"], "sample-repo")
@@ -805,6 +824,65 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             context = json.loads((Path(tmp) / "context.json").read_text(encoding="utf-8"))
             self.assertEqual(context["builder_compatibility"]["status"], "missing-profile-versioning")
             self.assertIn("status=missing-profile-versioning", result.stderr)
+
+    def test_generated_collector_prefers_project_local_skill_profile(self) -> None:
+        spec = builder.derive_spec(sample_spec())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp) / str(spec["skill_name"])
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            builder.generate_files(skill_dir, spec)
+
+            skill_profile = (
+                repo_root
+                / ".codex"
+                / "project"
+                / "profiles"
+                / str(spec["skill_name"])
+                / "profile.json"
+            )
+            default_profile = (
+                repo_root / ".codex" / "project" / "profiles" / "default" / "profile.json"
+            )
+            retained_profile = skill_dir / "profiles" / "sample-repo" / "profile.json"
+            collector = load_module_from_path(
+                "collect_builder_tests_context_dynamic",
+                skill_dir / "scripts" / "collect_builder_tests_context.py",
+            )
+
+            skill_profile.parent.mkdir(parents=True, exist_ok=True)
+            skill_profile.write_text("{}", encoding="utf-8")
+            default_profile.parent.mkdir(parents=True, exist_ok=True)
+            default_profile.write_text("{}", encoding="utf-8")
+
+            self.assertEqual(
+                collector.default_repo_profile_path(repo_root),
+                skill_profile.resolve(),
+            )
+            self.assertEqual(
+                collector.resolve_profile_path(
+                    ".codex/project/profiles/default/profile.json",
+                    repo_root,
+                ),
+                default_profile.resolve(),
+            )
+            self.assertEqual(
+                collector.resolve_profile_path("profiles/sample-repo/profile.json", repo_root),
+                retained_profile.resolve(),
+            )
+
+            skill_profile.unlink()
+            self.assertEqual(
+                collector.default_repo_profile_path(repo_root),
+                default_profile.resolve(),
+            )
+
+            default_profile.unlink()
+            self.assertEqual(
+                collector.default_repo_profile_path(repo_root),
+                retained_profile.resolve(),
+            )
 
     def test_packet_heavy_profile_emits_synthesis_and_metrics_sidecar(self) -> None:
         raw_spec = sample_spec()

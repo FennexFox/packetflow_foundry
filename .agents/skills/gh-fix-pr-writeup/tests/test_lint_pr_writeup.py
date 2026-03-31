@@ -53,7 +53,7 @@ def broken_context() -> dict:
             "PR Classification (optional)",
         ],
         "changed_file_groups": {
-            "runtime": {"count": 1, "sample_files": ["NoOfficeDemandFix/Mod.cs"]},
+            "runtime": {"count": 1, "sample_files": ["ExampleProduct/Mod.cs"]},
             "automation": {"count": 0, "sample_files": []},
             "docs": {"count": 1, "sample_files": ["README.md"]},
             "tests": {"count": 0, "sample_files": []},

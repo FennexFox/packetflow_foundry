@@ -48,10 +48,10 @@ def collected_context(repo_root: Path) -> dict:
         },
         "changed_files": [
             "README.md",
-            "NoOfficeDemandFix/Systems/OfficeDemandDiagnosticsSystem.cs",
+            "ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs",
         ],
         "changed_file_groups": {
-            "runtime": {"count": 1, "sample_files": ["NoOfficeDemandFix/Systems/OfficeDemandDiagnosticsSystem.cs"]},
+            "runtime": {"count": 1, "sample_files": ["ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs"]},
             "automation": {"count": 0, "sample_files": []},
             "docs": {"count": 1, "sample_files": ["README.md"]},
             "tests": {"count": 0, "sample_files": []},
@@ -211,7 +211,7 @@ class ApplyPrWriteupTests(unittest.TestCase):
                     return "\n".join(
                         [
                             "README.md",
-                            "NoOfficeDemandFix/Systems/OfficeDemandDiagnosticsSystem.cs",
+                            "ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs",
                             "MAINTAINING.md",
                         ]
                     )

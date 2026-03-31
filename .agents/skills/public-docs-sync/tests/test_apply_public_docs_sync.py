@@ -88,7 +88,7 @@ def sample_context(repo_root: Path, state_file: Path) -> dict[str, object]:
             },
         },
         "settings": {
-            "source_path": "NoOfficeDemandFix/Setting.cs",
+            "source_path": "ExampleProduct/Setting.cs",
             "defaults": {
                 "EnableThing": {
                     "default": "true",

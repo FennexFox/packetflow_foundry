@@ -3,6 +3,7 @@
 This file captures the reusable packet-workflow core for the generated `__SKILL_NAME__` scaffold.
 Keep repo-specific paths, review-doc lists, and lint toggles in `__REPO_PROFILE_FILE__`.
 Repo profiles are data-only inputs. Do not place executable hooks, prompt text, or worker-routing behavior in them.
+Consumer repos should prefer `.codex/project/profiles/__SKILL_NAME__/profile.json` over editing the retained default directly.
 
 ## Core Metadata
 
@@ -39,6 +40,7 @@ __WORKER_FAMILY_SECTION__
 ## Repo Profile Boundary
 
 - Default generated profile: `__REPO_PROFILE_FILE__`
+- Preferred project-local override path: `.codex/project/profiles/__SKILL_NAME__/profile.json`
 - Summary: __REPO_PROFILE_SUMMARY__
 - Default bindings:
 __REPO_PROFILE_BINDINGS_MARKDOWN__

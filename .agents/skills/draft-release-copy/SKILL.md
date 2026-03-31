@@ -14,10 +14,12 @@ This is a packet-driven repo workflow skill:
 - stop on low confidence, stale snapshots, or ambiguous ownership instead of guessing
 - keep generic packet rules in `references/core-contract.md` and repo-specific layout assumptions in `profiles/default/profile.json`
 - keep repo profiles data-only: paths, globs, doc lists, booleans, and notes only; executable logic stays in scripts and contracts
+- prefer a project-local override at `.codex/project/profiles/draft-release-copy/profile.json` when the repo carries release-copy-specific bindings or review docs
 - Orchestrator profile: `packet-heavy-orchestrator`.
 - Keep runtime contract metadata lean. Put packet sizing, byte proxies, and delegation-efficiency counters in `packet_metrics.json` and evaluation logs instead of `orchestrator.json`.
 - Read `synthesis_packet.json` as the shared local drafting packet before reopening raw artifacts.
-- Default repo profile scaffold: `profiles/default/profile.json`.
+- Retained neutral profile scaffold: `profiles/default/profile.json`.
+- Preferred project-local override path: `.codex/project/profiles/draft-release-copy/profile.json`.
 - Keep repo-specific paths, packet review docs, and deterministic lint toggles in the repo profile instead of hardcoding them into the generic core templates.
 - Keep the repo profile data-only: paths, globs, doc lists, booleans, and notes only. Do not add executable hooks, prompt text, or worker-routing logic there.
 
@@ -25,7 +27,7 @@ This is a packet-driven repo workflow skill:
 
 1. Collect structured context.
 - Review `references/core-contract.md` before changing shared packet semantics.
-- Review `profiles/default/profile.json` before trusting repo-specific path bindings, review-doc lists, or deterministic lint toggles.
+- Review the active repo profile before trusting repo-specific path bindings, review-doc lists, or deterministic lint toggles.
 - Run `python scripts/collect_release_copy_context.py --repo-root <repo-root> --output <context-json>`.
 - Run `python scripts/lint_release_copy.py --context <context-json> --output <lint-json>`.
 - Run `python scripts/build_release_copy_packets.py --context <context-json> --lint <lint-json> --output-dir <packet-dir>`.
@@ -45,7 +47,7 @@ This is a packet-driven repo workflow skill:
 - Escalate to the next larger mode when churn is high, core runtime/config/process files span groups, or generated files are not the majority.
 
 3. Keep packet analysis narrow.
-- Treat `references/core-contract.md` as the generic workflow contract and `profiles/default/profile.json` as the repo-specific overlay.
+- Treat `references/core-contract.md` as the generic workflow contract and the active repo profile as the repo-specific overlay.
 - Read `references/release-copy-contract.md` before drafting domain outputs.
 - Read `references/delegation-playbook.md` only when `review_mode` is not `local-only`.
 - Worker return contract for this skill: `generic`.

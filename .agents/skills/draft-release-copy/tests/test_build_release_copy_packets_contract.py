@@ -60,13 +60,13 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
                 },
                 "checked_labels": ["PublishConfiguration wording reviewed against shipped behavior"],
             },
-            "project_title_default": "NoOfficeDemandFix Tracker",
+            "project_title_default": "ExampleProduct Tracker",
             "diff_stat": " 6 files changed, 180 insertions(+), 25 deletions(-)",
             "changed_files": [
-                "NoOfficeDemandFix/Systems/OfficeDemandDiagnosticsSystem.cs",
-                "NoOfficeDemandFix/Setting.cs",
+                "ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs",
+                "ExampleProduct/Setting.cs",
                 "README.md",
-                "NoOfficeDemandFix/Properties/PublishConfiguration.xml",
+                "ExampleProduct/Properties/PublishConfiguration.xml",
                 ".github/workflows/release.yml",
                 "MAINTAINING.md",
             ],
@@ -74,8 +74,8 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
                 "runtime": {
                     "count": 2,
                     "sample_files": [
-                        "NoOfficeDemandFix/Systems/OfficeDemandDiagnosticsSystem.cs",
-                        "NoOfficeDemandFix/Setting.cs",
+                        "ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs",
+                        "ExampleProduct/Setting.cs",
                     ],
                 },
                 "docs": {
@@ -85,7 +85,7 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
                 "config": {
                     "count": 2,
                     "sample_files": [
-                        "NoOfficeDemandFix/Properties/PublishConfiguration.xml",
+                        "ExampleProduct/Properties/PublishConfiguration.xml",
                         ".github/workflows/release.yml",
                     ],
                 },
@@ -94,18 +94,18 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
                 "other": {"count": 0, "sample_files": []},
             },
             "changed_file_stats": {
-                "NoOfficeDemandFix/Systems/OfficeDemandDiagnosticsSystem.cs": {
+                "ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs": {
                     "insertions": 120,
                     "deletions": 40,
                     "churn": 160,
                 },
-                "NoOfficeDemandFix/Setting.cs": {
+                "ExampleProduct/Setting.cs": {
                     "insertions": 40,
                     "deletions": 20,
                     "churn": 60,
                 },
                 "README.md": {"insertions": 10, "deletions": 4, "churn": 14},
-                "NoOfficeDemandFix/Properties/PublishConfiguration.xml": {
+                "ExampleProduct/Properties/PublishConfiguration.xml": {
                     "insertions": 6,
                     "deletions": 2,
                     "churn": 8,
@@ -131,7 +131,7 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
                 "change_log": "- Prior release note.",
             },
             "readme": {
-                "intro_text": "# NoOfficeDemandFix\n\nIntro text.",
+                "intro_text": "# ExampleProduct\n\nIntro text.",
                 "sections": {
                     "Current Release": "Current release block.",
                     "Current Status": "Current status block.",
@@ -300,7 +300,7 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         exit_code, stdout, payloads = self.run_builder(context, lint)
 
         self.assertEqual(exit_code, 0)
-        self.assertIn('"review_mode": "broad-delegation"', stdout)
+        self.assertIn('"review_mode": "targeted-delegation"', stdout)
 
         expected_files = {
             "global_packet.json",

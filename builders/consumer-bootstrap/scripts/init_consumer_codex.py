@@ -93,6 +93,10 @@ def render_agents_block() -> str:
                 "- `.codex/project/profiles/default/profile.json` is a "
                 "project-local scaffold."
             ),
+            (
+                "- Skill-specific packet-workflow overrides may live at "
+                "`.codex/project/profiles/<skill-name>/profile.json`."
+            ),
             "- Legacy `.codex/project/skills/` is migration-only and should move to `.agents/skills/`.",
             BOOTSTRAP_MARKER_END,
         ]
@@ -193,6 +197,11 @@ def build_project_local_profile(repo_root: Path) -> dict[str, object]:
             (
                 "Keep this profile data-only: add repo-specific bindings, globs, "
                 "review docs, booleans, and notes here."
+            ),
+            (
+                "Skill-specific packet-workflow bindings should live in "
+                "`.codex/project/profiles/<skill-name>/profile.json` instead "
+                "of this default scaffold."
             ),
             (
                 "Do not add executable hooks, prompt fragments, or packet routing "

@@ -7,8 +7,9 @@ description: Top-level orchestration skill for reusable weekly updates. Synthesi
 
 Use this skill as the top-level orchestration layer for packet-driven weekly updates.
 
-The retained default profile lives at `profiles/default/profile.json`.
-When this skill is vendored, pass a project-local profile with `--profile` instead of hardcoding repo-specific conventions into the foundry copy.
+The retained fallback profile lives at `profiles/default/profile.json`.
+When this skill is vendored, prefer a project-local override at `.codex/project/profiles/weekly-update/profile.json`.
+Use `--profile` only when you need to override the default discovery order explicitly.
 Read `references/core-contract.md` for the reusable packet-workflow boundary.
 
 This is a packet-driven workflow:

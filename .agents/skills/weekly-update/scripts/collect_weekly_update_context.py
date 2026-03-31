@@ -20,8 +20,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", required=True, help="Output JSON path.")
     parser.add_argument(
         "--profile",
-        default=str(default_repo_profile_path()),
-        help="Path to the active repo profile JSON.",
+        default=None,
+        help=(
+            "Optional path to the active repo profile JSON. Relative paths resolve from the "
+            "repo root first, then the skill root. When omitted, the collector prefers "
+            "`.codex/project/profiles/<skill-name>/profile.json`, then "
+            "`.codex/project/profiles/default/profile.json`, then the retained default scaffold."
+        ),
     )
     parser.add_argument("--state-file", help="Optional state marker path override.")
     parser.add_argument("--window-days", type=int, default=7, help="Window size when no state marker is reused.")

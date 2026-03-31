@@ -1,4 +1,4 @@
-﻿#!/usr/bin/env python3
+#!/usr/bin/env python3
 """Collect release-copy context for packet-based release preparation."""
 
 from __future__ import annotations
@@ -35,19 +35,43 @@ def skill_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def default_repo_profile_path() -> Path:
+def retained_default_repo_profile_path() -> Path:
     return skill_root() / "profiles" / "default" / "profile.json"
 
 
-def resolve_profile_path(profile_path: str) -> Path:
+def project_local_profile_candidates(repo_root: Path) -> list[Path]:
+    repo_root = repo_root.resolve()
+    return [
+        repo_root / ".codex" / "project" / "profiles" / skill_root().name / "profile.json",
+        repo_root / ".codex" / "project" / "profiles" / "default" / "profile.json",
+    ]
+
+
+def default_repo_profile_path(repo_root: Path | None = None) -> Path:
+    if repo_root is not None:
+        for candidate in project_local_profile_candidates(repo_root):
+            if candidate.is_file():
+                return candidate.resolve()
+    return retained_default_repo_profile_path()
+
+
+def resolve_profile_path(profile_path: str | None, repo_root: Path) -> Path:
+    if not profile_path:
+        return default_repo_profile_path(repo_root)
+
     candidate = Path(profile_path)
-    if not candidate.is_absolute():
-        candidate = (skill_root() / candidate).resolve()
+    if candidate.is_absolute():
+        resolved_candidates = [candidate.resolve()]
     else:
-        candidate = candidate.resolve()
-    if not candidate.is_file():
-        raise RuntimeError(f"missing repo profile: {candidate}")
-    return candidate
+        resolved_candidates = [
+            (repo_root / candidate).resolve(),
+            (skill_root() / candidate).resolve(),
+        ]
+    for resolved in resolved_candidates:
+        if resolved.is_file():
+            return resolved
+    searched = ", ".join(path.as_posix() for path in resolved_candidates)
+    raise RuntimeError(f"missing repo profile: {searched}")
 
 
 def load_repo_profile(path: Path) -> dict[str, Any]:
@@ -722,8 +746,13 @@ def main() -> int:
     parser.add_argument("--evidence-file", default=None, help="Optional evidence JSON file")
     parser.add_argument(
         "--profile",
-        default=str(default_repo_profile_path()),
-        help="Path to the active repo profile JSON. Relative paths resolve from the skill root.",
+        default=None,
+        help=(
+            "Optional path to the active repo profile JSON. Relative paths resolve from the "
+            "repo root first, then the skill root. When omitted, the collector prefers "
+            "`.codex/project/profiles/<skill-name>/profile.json`, then "
+            "`.codex/project/profiles/default/profile.json`, then the retained neutral scaffold."
+        ),
     )
     parser.add_argument(
         "--release-issue-number",
@@ -743,7 +772,7 @@ def main() -> int:
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
     try:
-        profile_path = resolve_profile_path(args.profile)
+        profile_path = resolve_profile_path(args.profile, repo_root)
         repo_profile = load_repo_profile(profile_path)
         bindings = repo_profile.get("bindings") if isinstance(repo_profile.get("bindings"), dict) else {}
         extra_root = repo_profile.get("extra") if isinstance(repo_profile.get("extra"), dict) else {}
@@ -925,5 +954,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
-

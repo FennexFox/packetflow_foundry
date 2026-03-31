@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Run an end-to-end smoke test for draft-release-copy on a synthetic temp repo."""
 
 from __future__ import annotations
@@ -24,7 +24,7 @@ EXPECTED_PACKET_FILES = (
     "synthesis_packet.json",
 )
 
-README_BASE = """# NoOfficeDemandFix
+README_BASE = """# ExampleProduct
 
 Intro text.
 
@@ -41,7 +41,7 @@ Current status block.
 """
 
 
-README_HEAD = """# NoOfficeDemandFix
+README_HEAD = """# ExampleProduct
 
 Intro text.
 
@@ -76,7 +76,7 @@ PUBLISH_HEAD = """<Configuration>
 """
 
 
-SETTING_BASE = """namespace NoOfficeDemandFix;
+SETTING_BASE = """namespace ExampleProduct;
 
 public sealed class Setting
 {
@@ -90,7 +90,7 @@ public sealed class Setting
 """
 
 
-SETTING_HEAD = """namespace NoOfficeDemandFix;
+SETTING_HEAD = """namespace ExampleProduct;
 
 public sealed class Setting
 {
@@ -104,7 +104,7 @@ public sealed class Setting
 """
 
 
-DIAGNOSTICS_HEAD = """namespace NoOfficeDemandFix.Systems;
+DIAGNOSTICS_HEAD = """namespace ExampleProduct.Systems;
 
 public sealed class OfficeDemandDiagnosticsSystem
 {
@@ -207,17 +207,39 @@ def init_repo(repo_root: Path) -> None:
     write_text(repo_root / "MAINTAINING.md", MAINTAINING_MD)
     write_text(repo_root / ".github/ISSUE_TEMPLATE/release_checklist.yml", RELEASE_TEMPLATE)
     write_text(repo_root / ".github/workflows/release.yml", RELEASE_WORKFLOW)
-    write_text(repo_root / "NoOfficeDemandFix/Properties/PublishConfiguration.xml", PUBLISH_BASE)
-    write_text(repo_root / "NoOfficeDemandFix/Setting.cs", SETTING_BASE)
-    write_text(repo_root / "NoOfficeDemandFix/Systems/OfficeDemandDiagnosticsSystem.cs", "namespace NoOfficeDemandFix.Systems;\n")
+    write_text(
+        repo_root / ".codex/project/profiles/draft-release-copy/profile.json",
+        json.dumps(
+            {
+                "name": "draft-release-copy",
+                "summary": "smoke profile",
+                "bindings": {
+                    "primary_readme_path": "README.md",
+                    "settings_source_path": "ExampleProduct/Setting.cs",
+                    "publish_config_path": "ExampleProduct/Properties/PublishConfiguration.xml",
+                },
+                "extra": {
+                    "release_copy": {
+                        "maintaining_path": "MAINTAINING.md",
+                        "release_checklist_template_path": ".github/ISSUE_TEMPLATE/release_checklist.yml",
+                        "release_workflow_path": ".github/workflows/release.yml",
+                    }
+                },
+            },
+            indent=2,
+        ) + "\n",
+    )
+    write_text(repo_root / "ExampleProduct/Properties/PublishConfiguration.xml", PUBLISH_BASE)
+    write_text(repo_root / "ExampleProduct/Setting.cs", SETTING_BASE)
+    write_text(repo_root / "ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs", "namespace ExampleProduct.Systems;\n")
     git(["add", "."], cwd=repo_root)
     git(["commit", "-m", "Initial release baseline"], cwd=repo_root)
     git(["tag", "v1.0.0"], cwd=repo_root)
 
     write_text(repo_root / "README.md", README_HEAD)
-    write_text(repo_root / "NoOfficeDemandFix/Properties/PublishConfiguration.xml", PUBLISH_HEAD)
-    write_text(repo_root / "NoOfficeDemandFix/Setting.cs", SETTING_HEAD)
-    write_text(repo_root / "NoOfficeDemandFix/Systems/OfficeDemandDiagnosticsSystem.cs", DIAGNOSTICS_HEAD)
+    write_text(repo_root / "ExampleProduct/Properties/PublishConfiguration.xml", PUBLISH_HEAD)
+    write_text(repo_root / "ExampleProduct/Setting.cs", SETTING_HEAD)
+    write_text(repo_root / "ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs", DIAGNOSTICS_HEAD)
     git(["add", "."], cwd=repo_root)
     git(["commit", "-m", "Refresh diagnostics release copy"], cwd=repo_root)
 
@@ -272,7 +294,7 @@ def main() -> int:
         validation_path = temp_dir / "validation.json"
         apply_path = temp_dir / "apply.json"
 
-        publish_path = repo_root / "NoOfficeDemandFix/Properties/PublishConfiguration.xml"
+        publish_path = repo_root / "ExampleProduct/Properties/PublishConfiguration.xml"
         readme_path = repo_root / "README.md"
         publish_before = publish_path.read_text(encoding="utf-8")
         readme_before = readme_path.read_text(encoding="utf-8")
@@ -395,3 +417,4 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+

@@ -144,7 +144,7 @@ def init_repo(repo_root: Path) -> None:
         + "\n",
     )
     write_text(repo_root / "README.md", "# README\n",)
-    write_text(repo_root / "NoOfficeDemandFix" / "Systems" / "OfficeDemandDiagnosticsSystem.cs", "namespace Smoke;\n")
+    write_text(repo_root / "ExampleProduct" / "Systems" / "OfficeDemandDiagnosticsSystem.cs", "namespace Smoke;\n")
     run_git(repo_root, ["add", "."])
     run_git(repo_root, ["commit", "-m", "Initial smoke fixture"])
 
@@ -167,7 +167,7 @@ def install_gh_stub(target_dir: Path, repo_slug: str) -> Path:
             },
             "changed_files": [
                 "README.md",
-                "NoOfficeDemandFix/Systems/OfficeDemandDiagnosticsSystem.cs",
+                "ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs",
             ],
         },
     )

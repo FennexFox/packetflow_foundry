@@ -17,7 +17,7 @@ import build_pr_review_packets as packets  # noqa: E402
 
 def base_context(*, broad: bool) -> dict:
     changed_files = [
-        "NoOfficeDemandFix/Mod.cs",
+        "ExampleProduct/Mod.cs",
         "README.md",
     ]
     if broad:
@@ -25,11 +25,11 @@ def base_context(*, broad: bool) -> dict:
             [
                 ".github/instructions/pull-request.instructions.md",
                 ".github/workflows/release.yml",
-                "NoOfficeDemandFix/Systems/OfficeDemandDiagnosticsSystem.cs",
-                "NoOfficeDemandFix/Setting.cs",
+                "ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs",
+                "ExampleProduct/Setting.cs",
                 "MAINTAINING.md",
                 "CONTRIBUTING.md",
-                "NoOfficeDemandFix/NoOfficeDemandFix.csproj",
+                "ExampleProduct/ExampleProduct.csproj",
                 "docs/faq.md",
                 ".github/scripts/check_release.py",
                 "tests/test_writeup_rules.py",
@@ -39,8 +39,8 @@ def base_context(*, broad: bool) -> dict:
         "runtime": {
             "count": 2 if broad else 1,
             "sample_files": [
-                "NoOfficeDemandFix/Mod.cs",
-                *(["NoOfficeDemandFix/Systems/OfficeDemandDiagnosticsSystem.cs"] if broad else []),
+                "ExampleProduct/Mod.cs",
+                *(["ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs"] if broad else []),
             ],
         },
         "automation": {
@@ -60,7 +60,7 @@ def base_context(*, broad: bool) -> dict:
         },
         "config": {
             "count": 1 if broad else 0,
-            "sample_files": ["NoOfficeDemandFix/NoOfficeDemandFix.csproj"] if broad else [],
+            "sample_files": ["ExampleProduct/ExampleProduct.csproj"] if broad else [],
         },
         "other": {"count": 0, "sample_files": []},
     }
@@ -131,7 +131,7 @@ def lint_payload() -> dict:
                     "ordered": True,
                 },
                 "section_rewrite_requirements": [{"section": "How", "reason": "Template guidance text is still present in `How`."}],
-                "supported_claims": [{"cluster": "runtime", "basis": "runtime files changed", "evidence_anchor": "NoOfficeDemandFix/Mod.cs"}],
+                "supported_claims": [{"cluster": "runtime", "basis": "runtime files changed", "evidence_anchor": "ExampleProduct/Mod.cs"}],
                 "unsupported_claim_risks": ["defaults_thresholds"],
                 "testing_evidence_status": {"present": True, "has_exact_command": False, "status": "needs-recheck"},
                 "issue_ref_status": {"metadata_refs": ["9"], "body_refs": [], "matched_refs": [], "status": "missing-body-ref"},
@@ -153,7 +153,7 @@ def lint_payload() -> dict:
                 "ordered": True,
             },
             "section_rewrite_requirements": [{"section": "How", "reason": "Template guidance text is still present in `How`."}],
-            "supported_claims": [{"cluster": "runtime", "basis": "runtime files changed", "evidence_anchor": "NoOfficeDemandFix/Mod.cs"}],
+            "supported_claims": [{"cluster": "runtime", "basis": "runtime files changed", "evidence_anchor": "ExampleProduct/Mod.cs"}],
             "unsupported_claim_risks": ["defaults_thresholds"],
             "testing_evidence_status": {"present": True, "has_exact_command": False, "status": "needs-recheck"},
             "issue_ref_status": {"metadata_refs": ["9"], "body_refs": [], "matched_refs": [], "status": "missing-body-ref"},

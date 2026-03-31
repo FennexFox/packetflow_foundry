@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+﻿#!/usr/bin/env python3
 """Smoke-test the public-docs-sync workflow on a temp repository."""
 
 from __future__ import annotations
@@ -51,7 +51,8 @@ def write_json(path: Path, payload: dict) -> None:
 
 
 def create_repo(repo_root: Path) -> None:
-    (repo_root / "NoOfficeDemandFix").mkdir(parents=True, exist_ok=True)
+    (repo_root / "ExampleProduct").mkdir(parents=True, exist_ok=True)
+    (repo_root / ".codex" / "project" / "profiles" / "public-docs-sync").mkdir(parents=True, exist_ok=True)
     (repo_root / ".github" / "ISSUE_TEMPLATE").mkdir(parents=True, exist_ok=True)
     (repo_root / "docs").mkdir(parents=True, exist_ok=True)
 
@@ -80,6 +81,43 @@ def create_repo(repo_root: Path) -> None:
     (repo_root / ".github" / "software-investigation-workflow.md").write_text("# Workflow\n", encoding="utf-8")
     (repo_root / ".github" / "workflows").mkdir(exist_ok=True)
     (repo_root / ".github" / "workflows" / "release.yml").write_text("name: release\n", encoding="utf-8")
+    write_json(
+        repo_root / ".codex" / "project" / "profiles" / "public-docs-sync" / "profile.json",
+        {
+            "name": "public-docs-sync",
+            "summary": "smoke profile",
+            "bindings": {
+                "primary_readme_path": "README.md",
+                "publish_config_path": "ExampleProduct/Properties/PublishConfiguration.xml",
+                "settings_source_path": "ExampleProduct/Setting.cs",
+            },
+            "packet_defaults": {
+                "review_docs": {
+                    "claims_packet": [
+                        "README.md",
+                        "ExampleProduct/Properties/PublishConfiguration.xml",
+                    ]
+                },
+                "source_path_globs": {}
+            },
+            "extra": {
+                "public_docs_sync": {
+                    "audited_public_doc_inventory": [
+                        "README.md",
+                        "LOG_REPORTING.md",
+                        "PERF_REPORTING.md",
+                        "CONTRIBUTING.md",
+                        "MAINTAINING.md",
+                        ".github/pull_request_template.md",
+                        ".github/software-evidence-schema.md",
+                        ".github/software-investigation-workflow.md",
+                        ".github/workflows/release.yml",
+                        "ExampleProduct/Properties/PublishConfiguration.xml",
+                    ]
+                }
+            },
+        },
+    )
     (repo_root / ".github" / "ISSUE_TEMPLATE" / "bug_report.yml").write_text(
         "\n".join(
             [
@@ -95,7 +133,7 @@ def create_repo(repo_root: Path) -> None:
         encoding="utf-8",
     )
     (repo_root / "docs" / "guide.md").write_text("# Guide\n", encoding="utf-8")
-    (repo_root / "NoOfficeDemandFix" / "Setting.cs").write_text(
+    (repo_root / "ExampleProduct" / "Setting.cs").write_text(
         "\n".join(
             [
                 "public class Setting {",
@@ -111,9 +149,9 @@ def create_repo(repo_root: Path) -> None:
         ),
         encoding="utf-8",
     )
-    (repo_root / "NoOfficeDemandFix" / "Properties").mkdir(exist_ok=True)
-    (repo_root / "NoOfficeDemandFix" / "Properties" / "PublishConfiguration.xml").write_text(
-        "<Configuration><DisplayName Value=\"NoOfficeDemandFix\" /></Configuration>\n",
+    (repo_root / "ExampleProduct" / "Properties").mkdir(exist_ok=True)
+    (repo_root / "ExampleProduct" / "Properties" / "PublishConfiguration.xml").write_text(
+        "<Configuration><DisplayName Value=\"ExampleProduct\" /></Configuration>\n",
         encoding="utf-8",
     )
 
@@ -337,3 +375,5 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
+
+

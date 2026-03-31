@@ -28,19 +28,43 @@ def skill_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def default_repo_profile_path() -> Path:
+def retained_default_repo_profile_path() -> Path:
     return skill_root() / "profiles" / "default" / "profile.json"
 
 
-def resolve_profile_path(profile_path: str) -> Path:
+def project_local_profile_candidates(repo_root: Path) -> list[Path]:
+    repo_root = repo_root.resolve()
+    return [
+        repo_root / ".codex" / "project" / "profiles" / skill_root().name / "profile.json",
+        repo_root / ".codex" / "project" / "profiles" / "default" / "profile.json",
+    ]
+
+
+def default_repo_profile_path(repo_root: Path | None = None) -> Path:
+    if repo_root is not None:
+        for candidate in project_local_profile_candidates(repo_root):
+            if candidate.is_file():
+                return candidate.resolve()
+    return retained_default_repo_profile_path()
+
+
+def resolve_profile_path(profile_path: str | None, repo_root: Path | None = None) -> Path:
+    if not profile_path:
+        return default_repo_profile_path(repo_root)
+
     candidate = Path(profile_path)
-    if not candidate.is_absolute():
-        candidate = (skill_root() / candidate).resolve()
+    if candidate.is_absolute():
+        resolved_candidates = [candidate.resolve()]
     else:
-        candidate = candidate.resolve()
-    if not candidate.is_file():
-        raise SystemExit(f"[ERROR] Missing repo profile: {candidate}")
-    return candidate
+        resolved_candidates: list[Path] = []
+        if repo_root is not None:
+            resolved_candidates.append((repo_root / candidate).resolve())
+        resolved_candidates.append((skill_root() / candidate).resolve())
+    for resolved in resolved_candidates:
+        if resolved.is_file():
+            return resolved
+    searched = ", ".join(path.as_posix() for path in resolved_candidates)
+    raise SystemExit(f"[ERROR] Missing repo profile: {searched}")
 
 
 def load_repo_profile(path: Path) -> dict[str, Any]:
@@ -77,18 +101,24 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--output", default=None, help="Optional output file path. Prints JSON to stdout when omitted.")
     parser.add_argument(
         "--profile",
-        default=str(default_repo_profile_path()),
-        help="Path to the active repo profile JSON. Relative paths resolve from the skill root.",
+        default=None,
+        help=(
+            "Optional path to the active repo profile JSON. Relative paths resolve from the "
+            "repo root first, then the skill root. When omitted, the collector prefers "
+            "`.codex/project/profiles/<skill-name>/profile.json`, then "
+            "`.codex/project/profiles/default/profile.json`, then the retained default scaffold."
+        ),
     )
     return parser.parse_args()
 
 
 def main() -> int:
     args = parse_args()
-    profile_path = resolve_profile_path(args.profile)
+    repo_root = Path(args.repo_root).resolve()
+    profile_path = resolve_profile_path(args.profile, repo_root)
     repo_profile = load_repo_profile(profile_path)
     context = build_context(
-        repo_root=Path(args.repo_root).resolve(),
+        repo_root=repo_root,
         repo_slug=args.repo,
         base_ref=args.base,
         head_ref=args.head,

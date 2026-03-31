@@ -24,7 +24,7 @@ PUBLISH_XML = """<Configuration>
 </Configuration>
 """
 
-README_MD = """# NoOfficeDemandFix
+README_MD = """# ExampleProduct
 
 Intro text.
 
@@ -42,7 +42,7 @@ class ApplyReleaseCopyPlanTests(unittest.TestCase):
 
     def build_normalized_plan(self, tmp: Path, *, issue_action: dict | None = None) -> tuple[dict, Path, Path]:
         repo_root = tmp / "repo"
-        publish_path = repo_root / "NoOfficeDemandFix" / "Properties" / "PublishConfiguration.xml"
+        publish_path = repo_root / "ExampleProduct" / "Properties" / "PublishConfiguration.xml"
         readme_path = repo_root / "README.md"
         publish_path.parent.mkdir(parents=True, exist_ok=True)
         publish_path.write_text(PUBLISH_XML, encoding="utf-8")
@@ -88,13 +88,13 @@ class ApplyReleaseCopyPlanTests(unittest.TestCase):
             },
             "readme_update": {
                 "mode": "replace-sections",
-                "intro_text": "# NoOfficeDemandFix\n\nUpdated intro text.",
+                "intro_text": "# ExampleProduct\n\nUpdated intro text.",
                 "sections": {
                     "Current Release": "Updated release block.",
                     "Current Status": "Updated status block.",
                 },
             },
-            "issue_action": issue_action or {"mode": "noop", "title": "", "body_markdown": "", "project_mode": "auto-add-first", "project_title": "NoOfficeDemandFix Tracker"},
+            "issue_action": issue_action or {"mode": "noop", "title": "", "body_markdown": "", "project_mode": "auto-add-first", "project_title": "ExampleProduct Tracker"},
             "validated_existing_issue_snapshot": None,
             "validation_commands": ["git rev-parse --short HEAD"],
         }
@@ -189,7 +189,7 @@ class ApplyReleaseCopyPlanTests(unittest.TestCase):
                 "title": "[Release] v1.2.3",
                 "body_markdown": "Checklist body",
                 "project_mode": "auto-add-first",
-                "project_title": "NoOfficeDemandFix Tracker",
+                "project_title": "ExampleProduct Tracker",
             }
             normalized_plan, publish_path, readme_path = self.build_normalized_plan(tmp, issue_action=issue_action)
             validation = self.validation_payload(normalized_plan)
@@ -225,7 +225,7 @@ class ApplyReleaseCopyPlanTests(unittest.TestCase):
                 "title": "[Release] v1.2.3",
                 "body_markdown": "Checklist body",
                 "project_mode": "auto-add-first",
-                "project_title": "NoOfficeDemandFix Tracker",
+                "project_title": "ExampleProduct Tracker",
             }
             normalized_plan, publish_path, readme_path = self.build_normalized_plan(tmp, issue_action=issue_action)
             normalized_plan["validated_existing_issue_snapshot"] = {

@@ -55,8 +55,13 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--skip-plan-fixtures", action="store_true", help="Refresh only the live sample fixture.")
     parser.add_argument(
         "--profile",
-        default=str(default_repo_profile_path()),
-        help="Path to the active repo profile JSON.",
+        default=None,
+        help=(
+            "Optional path to the active repo profile JSON. Relative paths resolve from the "
+            "repo root first, then the skill root. When omitted, the collector prefers "
+            "`.codex/project/profiles/<skill-name>/profile.json`, then "
+            "`.codex/project/profiles/default/profile.json`, then the retained default scaffold."
+        ),
     )
     parser.add_argument("--state-file", help="Optional state marker path override.")
     parser.add_argument("--window-days", type=int, default=7, help="Window size to use when no state marker is reused.")
@@ -206,7 +211,7 @@ def collect_live_fixture_payload(
     window_days: int,
     now_utc: str | None,
 ) -> tuple[dict[str, Any], dict[str, dict[str, Any]], dict[str, Any]]:
-    profile_path = resolve_profile_path(profile)
+    profile_path = resolve_profile_path(profile, repo_root=repo_root)
     repo_profile = load_repo_profile(profile_path)
     runtime_settings = weekly_update_runtime_settings(repo_profile)
     verify_gh_auth(repo_root)

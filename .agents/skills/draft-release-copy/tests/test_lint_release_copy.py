@@ -69,14 +69,14 @@ class LintReleaseCopyTests(unittest.TestCase):
                 "status": "present",
             },
             "changed_files": [
-                "NoOfficeDemandFix/Setting.cs",
-                "NoOfficeDemandFix/Systems/OfficeDemandDiagnosticsSystem.cs",
-                "NoOfficeDemandFix/Systems/VirtualOfficeResourceBuyerFixSystem.cs",
+                "ExampleProduct/Setting.cs",
+                "ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs",
+                "ExampleProduct/Systems/VirtualOfficeResourceBuyerFixSystem.cs",
             ],
             "changed_file_stats": {
-                "NoOfficeDemandFix/Setting.cs": {"churn": 140},
-                "NoOfficeDemandFix/Systems/OfficeDemandDiagnosticsSystem.cs": {"churn": 160},
-                "NoOfficeDemandFix/Systems/VirtualOfficeResourceBuyerFixSystem.cs": {"churn": 150},
+                "ExampleProduct/Setting.cs": {"churn": 140},
+                "ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs": {"churn": 160},
+                "ExampleProduct/Systems/VirtualOfficeResourceBuyerFixSystem.cs": {"churn": 150},
             },
             "commit_subjects": [
                 "Tighten diagnostic flow for buyers",

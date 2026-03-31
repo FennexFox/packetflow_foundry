@@ -33,7 +33,7 @@ class LintPublicDocsSyncTests(unittest.TestCase):
     def test_lint_detects_settings_drift_and_broken_links(self) -> None:
         context = {
             "settings": {
-                "source_path": "NoOfficeDemandFix/Setting.cs",
+                "source_path": "ExampleProduct/Setting.cs",
                 "defaults": {"EnableThing": {"default": "true"}},
             },
             "readme": {

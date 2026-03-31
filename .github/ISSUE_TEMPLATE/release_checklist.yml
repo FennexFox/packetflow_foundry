@@ -7,7 +7,19 @@ body:
     id: version
     attributes:
       label: Target version
+      description: Confirm the release target matches `builders/packet-workflow/version.json`, `.codex/project/release/ReleaseConfiguration.xml`, and the planned `v*` tag.
       placeholder: e.g. v0.2.0
+    validations:
+      required: true
+  - type: textarea
+    id: baseline
+    attributes:
+      label: Release range / baseline
+      description: Document the comparison base for this release. For the first tagged release, call out the branch or revision range used until a prior `v*` tag exists.
+      placeholder: |
+        - prior release tag: v0.1.0 | none
+        - comparison range: v0.1.0..HEAD | master..develop
+        - first-release note: ...
     validations:
       required: true
   - type: textarea
@@ -55,6 +67,10 @@ body:
           - ...
         - manual verification:
           - ...
+        - version source alignment:
+          - `builders/packet-workflow/version.json` == `.codex/project/release/ReleaseConfiguration.xml` == planned tag
+        - release workflow / artifact expectation:
+          - source archives (`.tar.gz`, `.zip`) and `SHA256SUMS.txt`
     validations:
       required: true
   - type: checkboxes
@@ -62,15 +78,16 @@ body:
     attributes:
       label: Checklist
       options:
+        - label: First-release baseline or prior `v*` comparison range documented
         - label: Each release item is labeled as direct savings, measurement-enabling, or structural-only
         - label: Structural-only items are deferred or include a brief release justification
         - label: Measurement-enabling items name the target metric(s) they improve or make more trustworthy
         - label: Direct-savings items name the concrete savings path
         - label: Retained skills are only labeled direct savings when they add a concrete efficiency path or measurable reduction target
         - label: README and CONTRIBUTING reviewed against shipped behavior
-        - label: .github instructions and templates reviewed against the current workflow
+        - label: .github instructions, templates, and release workflow reviewed against the current publication path
         - label: Changes to core/contracts, core/templates, or core/defaults are paired with builder/test updates
         - label: Consumer or vendoring impact documented
         - label: Validation evidence captured
-        - label: Version and tag confirmed
+        - label: Target version matches builders/packet-workflow/version.json, ReleaseConfiguration ModVersion, and planned `v*` tag
         - label: Release notes reviewed

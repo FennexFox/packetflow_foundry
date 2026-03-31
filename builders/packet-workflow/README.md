@@ -13,6 +13,7 @@ Use this directory for:
 - builder-specific evaluation schema
 - scaffold generation scripts
 - builder tests
+- generated collectors should prefer `.codex/project/profiles/<skill-name>/profile.json`, then `.codex/project/profiles/default/profile.json`, before falling back to the retained skill-local profile scaffold
 
 Do not define contract semantics here first.
 - If validator/apply rules, stop taxonomy, common-path behavior, worker-family semantics, or profile boundaries change, update `core/` first.

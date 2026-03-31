@@ -56,7 +56,7 @@ def sample_context() -> dict[str, object]:
             ".github/ISSUE_TEMPLATE/bug_report.yml": {"kind": "yaml"},
         },
         "settings": {
-            "source_path": "NoOfficeDemandFix/Setting.cs",
+            "source_path": "ExampleProduct/Setting.cs",
             "defaults": {
                 "EnableThing": {
                     "default": "true",

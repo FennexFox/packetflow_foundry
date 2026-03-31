@@ -365,19 +365,43 @@ def skill_root() -> Path:
     return Path(__file__).resolve().parents[1]
 
 
-def default_repo_profile_path() -> Path:
+def retained_default_repo_profile_path() -> Path:
     return skill_root() / "profiles" / "default" / "profile.json"
 
 
-def resolve_profile_path(profile_path: str | None = None) -> Path:
-    candidate = Path(profile_path) if profile_path else default_repo_profile_path()
-    if not candidate.is_absolute():
-        candidate = (skill_root() / candidate).resolve()
+def project_local_profile_candidates(repo_root: Path) -> list[Path]:
+    repo_root = repo_root.resolve()
+    return [
+        repo_root / ".codex" / "project" / "profiles" / skill_root().name / "profile.json",
+        repo_root / ".codex" / "project" / "profiles" / "default" / "profile.json",
+    ]
+
+
+def default_repo_profile_path(repo_root: Path | None = None) -> Path:
+    if repo_root is not None:
+        for candidate in project_local_profile_candidates(repo_root):
+            if candidate.is_file():
+                return candidate.resolve()
+    return retained_default_repo_profile_path()
+
+
+def resolve_profile_path(profile_path: str | None = None, repo_root: Path | None = None) -> Path:
+    if not profile_path:
+        return default_repo_profile_path(repo_root)
+
+    candidate = Path(profile_path)
+    if candidate.is_absolute():
+        resolved_candidates = [candidate.resolve()]
     else:
-        candidate = candidate.resolve()
-    if not candidate.exists():
-        raise SystemExit(f"[ERROR] Missing repo profile: {candidate}")
-    return candidate
+        resolved_candidates: list[Path] = []
+        if repo_root is not None:
+            resolved_candidates.append((repo_root / candidate).resolve())
+        resolved_candidates.append((skill_root() / candidate).resolve())
+    for resolved in resolved_candidates:
+        if resolved.exists():
+            return resolved
+    searched = ", ".join(path.as_posix() for path in resolved_candidates)
+    raise SystemExit(f"[ERROR] Missing repo profile: {searched}")
 
 
 def load_repo_profile(path: Path) -> dict[str, Any]:
@@ -1197,7 +1221,7 @@ def collect_context(
     now_utc: str | None = None,
 ) -> dict[str, Any]:
     repo_path = resolve_repo_root(repo_root)
-    profile_path = resolve_profile_path(profile)
+    profile_path = resolve_profile_path(profile, repo_root=repo_path)
     repo_profile = load_repo_profile(profile_path)
     runtime_settings = weekly_update_runtime_settings(repo_profile)
     verify_gh_auth(repo_path)

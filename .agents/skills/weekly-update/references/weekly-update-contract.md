@@ -49,7 +49,8 @@ Token-efficiency counters belong only in these evaluation-side artifacts, not in
 ## Repo Profile Boundary
 
 - default retained profile: `profiles/default/profile.json`
-- project-local overrides should pass `--profile <profile-json>` into collect, smoke, and fixture-refresh entrypoints
+- preferred project-local override: `.codex/project/profiles/weekly-update/profile.json`
+- explicit `--profile <profile-json>` remains available for manual override, smoke, and fixture-refresh entrypoints
 - keep repo-specific conventions in `repo_profile.extra.weekly_update`
 - collected context, `orchestrator.json`, `global_packet.json`, and build-result artifacts should surface active profile metadata
 

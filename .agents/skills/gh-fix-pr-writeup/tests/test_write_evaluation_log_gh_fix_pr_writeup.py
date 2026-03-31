@@ -17,7 +17,7 @@ def context() -> dict:
     return {
         "repo_root": str(Path.cwd()),
         "repo_slug": "owner/repo",
-        "changed_files": ["README.md", "NoOfficeDemandFix/Systems/OfficeDemandDiagnosticsSystem.cs"],
+        "changed_files": ["README.md", "ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs"],
         "expected_template_sections": ["Why", "What changed", "How", "Risk / Rollback", "Testing"],
         "current_body_sections": ["Why", "What changed", "How", "Risk / Rollback", "Testing"],
         "pr": {

@@ -32,7 +32,7 @@ def collected_context(repo_root: Path, *, broad: bool = False) -> dict:
     )
     changed_files = [
         "README.md",
-        "NoOfficeDemandFix/Systems/OfficeDemandDiagnosticsSystem.cs",
+        "ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs",
     ]
     if broad:
         changed_files.extend(
@@ -41,9 +41,9 @@ def collected_context(repo_root: Path, *, broad: bool = False) -> dict:
                 ".github/workflows/release.yml",
                 "MAINTAINING.md",
                 "CONTRIBUTING.md",
-                "NoOfficeDemandFix/Setting.cs",
+                "ExampleProduct/Setting.cs",
                 "tests/test_writeup_rules.py",
-                "NoOfficeDemandFix/NoOfficeDemandFix.csproj",
+                "ExampleProduct/ExampleProduct.csproj",
                 "docs/faq.md",
                 ".github/scripts/check_release.py",
                 "README_ko.md",
@@ -51,10 +51,10 @@ def collected_context(repo_root: Path, *, broad: bool = False) -> dict:
                 "docs/usage.md",
                 "docs/testing.md",
                 ".github/ISSUE_TEMPLATE/bug_report.yml",
-                "NoOfficeDemandFix/Telemetry/Probe.cs",
-                "NoOfficeDemandFix/Mod.cs",
-                "NoOfficeDemandFix/Patches/Hook.cs",
-                "NoOfficeDemandFix/Properties/PublishConfiguration.xml",
+                "ExampleProduct/Telemetry/Probe.cs",
+                "ExampleProduct/Mod.cs",
+                "ExampleProduct/Patches/Hook.cs",
+                "ExampleProduct/Properties/PublishConfiguration.xml",
                 "tests/test_apply_guard.py",
                 "tests/test_build_packets.py",
                 "tests/test_lint.py",
@@ -75,11 +75,11 @@ def collected_context(repo_root: Path, *, broad: bool = False) -> dict:
         },
         "changed_files": changed_files,
         "changed_file_groups": {
-            "runtime": {"count": 2 if broad else 1, "sample_files": ["NoOfficeDemandFix/Systems/OfficeDemandDiagnosticsSystem.cs", *(["NoOfficeDemandFix/Setting.cs"] if broad else [])]},
+            "runtime": {"count": 2 if broad else 1, "sample_files": ["ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs", *(["ExampleProduct/Setting.cs"] if broad else [])]},
             "automation": {"count": 3 if broad else 0, "sample_files": [".github/instructions/pull-request.instructions.md", *([".github/workflows/release.yml"] if broad else [])]},
             "docs": {"count": 4 if broad else 1, "sample_files": ["README.md", *(["MAINTAINING.md"] if broad else [])]},
             "tests": {"count": 3 if broad else 0, "sample_files": ["tests/test_writeup_rules.py"] if broad else []},
-            "config": {"count": 1 if broad else 0, "sample_files": ["NoOfficeDemandFix/NoOfficeDemandFix.csproj"] if broad else []},
+            "config": {"count": 1 if broad else 0, "sample_files": ["ExampleProduct/ExampleProduct.csproj"] if broad else []},
             "other": {"count": 0, "sample_files": []},
         },
         "expected_template_sections": ["Why", "What changed", "How", "Risk / Rollback", "Testing"],

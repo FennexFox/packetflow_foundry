@@ -146,6 +146,10 @@ class ConsumerBootstrapTests(unittest.TestCase):
                 ".codex/project/profiles/default/profile.json",
                 codex_agents,
             )
+            self.assertIn(
+                ".codex/project/profiles/<skill-name>/profile.json",
+                codex_agents,
+            )
 
             profile = json.loads(
                 (repo / bootstrap.PROJECT_PROFILE_RELATIVE).read_text(encoding="utf-8")
@@ -160,6 +164,12 @@ class ConsumerBootstrapTests(unittest.TestCase):
             self.assertTrue(
                 any(
                     "not a reusable foundry overlay" in note
+                    for note in profile["notes"]
+                )
+            )
+            self.assertTrue(
+                any(
+                    ".codex/project/profiles/<skill-name>/profile.json" in note
                     for note in profile["notes"]
                 )
             )
@@ -249,6 +259,35 @@ class ConsumerBootstrapTests(unittest.TestCase):
             self.assertEqual(
                 reword_profile["profile_path"],
                 bootstrap.PROJECT_PROFILE_RELATIVE.as_posix(),
+            )
+
+    def test_skill_specific_project_profile_is_preferred_by_vendored_collector_logic(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(Path(tmp), vendor_skill_names=["vendor-skill"])
+            code, _, _, _ = run_bootstrap_main(repo)
+            self.assertEqual(code, 0)
+
+            skill_profile = (
+                repo
+                / ".codex"
+                / "project"
+                / "profiles"
+                / "reword-recent-commits"
+                / "profile.json"
+            )
+            skill_profile.parent.mkdir(parents=True, exist_ok=True)
+            skill_profile.write_text("{}", encoding="utf-8")
+
+            self.assertEqual(
+                reword_collect.default_repo_profile_path(repo),
+                skill_profile.resolve(),
+            )
+            self.assertEqual(
+                reword_collect.resolve_profile_path(
+                    ".codex/project/profiles/reword-recent-commits/profile.json",
+                    repo,
+                ),
+                skill_profile.resolve(),
             )
 
     def test_existing_root_skill_skips_vendor_bridge(self) -> None:
