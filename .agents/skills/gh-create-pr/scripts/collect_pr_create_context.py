@@ -9,7 +9,31 @@ import sys
 from pathlib import Path
 from typing import Any
 
-BUILDER_SCRIPTS_DIR = Path(__file__).resolve().parents[4] / "builders" / "packet-workflow" / "scripts"
+
+def resolve_builder_scripts_dir() -> Path:
+    script_path = Path(__file__).resolve()
+    searched: list[Path] = []
+    seen: set[Path] = set()
+    for base in script_path.parents:
+        for candidate in (
+            base / "builders" / "packet-workflow" / "scripts",
+            base / ".codex" / "vendor" / "packetflow_foundry" / "builders" / "packet-workflow" / "scripts",
+        ):
+            resolved = candidate.resolve()
+            if resolved in seen:
+                continue
+            seen.add(resolved)
+            searched.append(resolved)
+            if resolved.is_dir():
+                return resolved
+    search_list = ", ".join(path.as_posix() for path in searched)
+    raise SystemExit(
+        "[ERROR] Missing packet-workflow builder scripts. "
+        f"Searched: {search_list}"
+    )
+
+
+BUILDER_SCRIPTS_DIR = resolve_builder_scripts_dir()
 if str(BUILDER_SCRIPTS_DIR) not in sys.path:
     sys.path.append(str(BUILDER_SCRIPTS_DIR))
 
