@@ -49,6 +49,20 @@ PRs should describe:
 - whether vendored consumers need to do anything
 - what risks or rollback paths matter
 
+## Issues
+
+Prefer the repository issue templates:
+- Bug report -> `bug`
+- Feature request -> `enhancement`
+- Release checklist -> `release`
+
+Maintainers may add one `area:` label for the primary reusable foundry
+surface and may use `question`, `duplicate`, `invalid`, or `wontfix`
+for triage or disposition.
+
+See `MAINTAINING.md` for the canonical label taxonomy and maintenance
+rules.
+
 ## Change discipline
 
 Keep shared semantics authoritative in `core/`.
