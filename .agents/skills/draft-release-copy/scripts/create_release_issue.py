@@ -14,14 +14,17 @@ DEFAULT_PROJECT_TITLE = "Release Tracker"
 
 
 def run_command(args: list[str], cwd: Path, check: bool = True) -> str:
-    result = subprocess.run(
-        args,
-        cwd=str(cwd),
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            args,
+            cwd=str(cwd),
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"{args[0]} not found") from exc
     if check and result.returncode != 0:
         stderr = result.stderr.strip()
         stdout = result.stdout.strip()

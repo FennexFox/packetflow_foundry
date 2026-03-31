@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
@@ -40,6 +41,12 @@ class CollectPublicDocsSyncContextHelperTests(unittest.TestCase):
             "digest-1",
         )
         self.assertNotEqual(left, right)
+
+    def test_require_gh_auth_stops_cleanly_when_gh_is_missing(self) -> None:
+        with mock.patch.object(collector.subprocess, "run", side_effect=FileNotFoundError("gh")):
+            with self.assertRaises(SystemExit) as exc_info:
+                collector.require_gh_auth(Path("C:/repo"))
+        self.assertIn("gh auth is invalid", str(exc_info.exception))
 
 
 if __name__ == "__main__":

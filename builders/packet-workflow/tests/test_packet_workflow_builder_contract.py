@@ -250,6 +250,8 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                     str(spec_path),
                     "--output-dir",
                     str(output_root),
+                    "--managed-agents-dir",
+                    str(FIXTURE_AGENTS_DIR),
                 )
                 skill_dir = output_root / spec_path.parent.name
                 self.assertTrue((skill_dir / "references" / "core-contract.md").is_file())

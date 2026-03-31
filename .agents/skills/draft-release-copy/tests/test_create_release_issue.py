@@ -182,6 +182,35 @@ class CreateReleaseIssueTests(unittest.TestCase):
             self.assertIn("project scope is required but not available", stderr.getvalue())
             self.assertEqual(recorded_calls, [["gh", "auth", "status"]])
 
+    def test_require_scope_stops_cleanly_when_gh_is_missing(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            repo_root = tmp / "repo"
+            repo_root.mkdir()
+            body_path = tmp / "body.md"
+            body_path.write_text("# Body\n", encoding="utf-8")
+
+            stderr = io.StringIO()
+            with mock.patch.object(create_release_issue.subprocess, "run", side_effect=FileNotFoundError("gh")), mock.patch.object(
+                sys,
+                "argv",
+                [
+                    "create_release_issue.py",
+                    "--title",
+                    "[Release] v1.2.3",
+                    "--body-file",
+                    str(body_path),
+                    "--repo-root",
+                    str(repo_root),
+                    "--project-mode",
+                    "require-scope",
+                ],
+            ), redirect_stderr(stderr):
+                exit_code = create_release_issue.main()
+
+            self.assertEqual(exit_code, 1)
+            self.assertIn("project scope is required but not available", stderr.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

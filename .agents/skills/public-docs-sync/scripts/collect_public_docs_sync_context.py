@@ -849,15 +849,22 @@ def digest_comments(comments: list[dict[str, Any]], limit: int = 3) -> list[dict
 
 
 def ensure_gh_auth(repo_root: Path) -> dict[str, Any]:
-    result = subprocess.run(
-        ["gh", "auth", "status"],
-        cwd=repo_root,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        capture_output=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            ["gh", "auth", "status"],
+            cwd=repo_root,
+            text=True,
+            encoding="utf-8",
+            errors="replace",
+            capture_output=True,
+            check=False,
+        )
+    except FileNotFoundError:
+        return {
+            "ok": False,
+            "stdout": "",
+            "stderr": "gh not found",
+        }
     return {
         "ok": result.returncode == 0,
         "stdout": result.stdout.strip(),
