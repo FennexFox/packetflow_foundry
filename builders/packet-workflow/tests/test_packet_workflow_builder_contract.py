@@ -232,6 +232,7 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
         foundry_root = builder.foundry_root_dir()
         retained_specs = [
             foundry_root / ".agents" / "skills" / "draft-release-copy" / "builder-spec.json",
+            foundry_root / ".agents" / "skills" / "gh-create-pr" / "builder-spec.json",
             foundry_root / ".agents" / "skills" / "gh-address-review-threads" / "builder-spec.json",
             foundry_root / ".agents" / "skills" / "gh-fix-pr-writeup" / "builder-spec.json",
             foundry_root / ".agents" / "skills" / "git-split-and-commit" / "builder-spec.json",

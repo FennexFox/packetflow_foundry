@@ -1,0 +1,77 @@
+{
+  "bindings": {
+    "primary_readme_path": "README.md",
+    "publish_config_path": null,
+    "settings_source_path": null
+  },
+  "extra": {},
+  "lint_rules": {
+    "missing_review_docs_are_errors": false,
+    "require_readme_settings_table": false
+  },
+  "metadata": {
+    "versioning": {
+      "builder_family": "packet-workflow",
+      "builder_semver": "0.1.0",
+      "compatibility_epoch": 1,
+      "repo_profile_schema_version": 1
+    }
+  },
+  "name": "default",
+  "notes": [
+    "Keep template discovery paths, PR guidance locations, and repo-specific rule files in project-local profile data.",
+    "Do not place duplicate-check policy, title/body claim gates, or validator/apply semantics in the profile."
+  ],
+  "packet_defaults": {
+    "review_docs": {
+      "process": [
+        ".github/pull_request_template.md",
+        "CONTRIBUTING.md",
+        "MAINTAINING.md"
+      ],
+      "rules": [
+        ".github/pull_request_template.md",
+        "CONTRIBUTING.md",
+        "MAINTAINING.md"
+      ],
+      "runtime": [
+        "README.md"
+      ],
+      "testing": [
+        "README.md",
+        "CONTRIBUTING.md"
+      ]
+    },
+    "source_path_globs": {
+      "process": [
+        ".github/**",
+        "*.md",
+        "docs/**"
+      ],
+      "rules": [
+        ".github/**",
+        "*.md"
+      ],
+      "runtime": [
+        "src/**",
+        "lib/**",
+        "app/**",
+        "server/**",
+        "client/**"
+      ],
+      "testing": [
+        "tests/**",
+        "**/*test*.*"
+      ]
+    }
+  },
+  "profile_path": "profiles/default/profile.json",
+  "repo_match": {
+    "remote_patterns": [],
+    "root_markers": [
+      ".git",
+      "README.md"
+    ]
+  },
+  "summary": "Default reusable profile scaffold for guarded PR creation. Replace project-specific PR guidance bindings, review-doc lists, and repo-specific lint toggles when vendored."
+}
