@@ -70,7 +70,8 @@ def run_script(args: list[str], *, cwd: Path | None = None) -> subprocess.Comple
         stderr = (exc.stderr or "").strip()
         stdout = (exc.stdout or "").strip()
         details = "\n".join(part for part in (stderr, stdout) if part)
-        raise RuntimeError(f"Command failed: {' '.join(command)}{f'\\n{details}' if details else ''}") from exc
+        detail_suffix = f"\n{details}" if details else ""
+        raise RuntimeError(f"Command failed: {' '.join(command)}{detail_suffix}") from exc
 
 
 def read_json(path: Path) -> Any:

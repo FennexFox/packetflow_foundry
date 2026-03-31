@@ -348,12 +348,39 @@ def load_pr_metadata(repo_root: Path, repo_slug: str | None) -> dict[str, Any]:
     return run_json(args, cwd=repo_root)
 
 
+def parse_changed_files_output(output: str) -> list[str]:
+    return [line.strip().replace("\\", "/") for line in output.splitlines() if line.strip()]
+
+
+def is_diff_too_large_error(exc: RuntimeError) -> bool:
+    detail = str(exc)
+    return "PullRequest.diff too_large" in detail or "maximum number of lines" in detail
+
+
+def load_changed_files_via_api(repo_root: Path, repo_slug: str, pr_number: int) -> list[str]:
+    args = [
+        "gh",
+        "api",
+        f"repos/{repo_slug}/pulls/{pr_number}/files",
+        "--paginate",
+        "--jq",
+        ".[].filename",
+    ]
+    output = run_command(args, cwd=repo_root)
+    return parse_changed_files_output(output)
+
+
 def load_changed_files(repo_root: Path, repo_slug: str | None, pr_number: int) -> list[str]:
     args = ["gh", "pr", "diff", str(pr_number), "--name-only"]
     if repo_slug:
         args.extend(["--repo", repo_slug])
-    output = run_command(args, cwd=repo_root)
-    return [line.strip().replace("\\", "/") for line in output.splitlines() if line.strip()]
+    try:
+        output = run_command(args, cwd=repo_root)
+    except RuntimeError as exc:
+        if not repo_slug or not is_diff_too_large_error(exc):
+            raise
+        return load_changed_files_via_api(repo_root, repo_slug, pr_number)
+    return parse_changed_files_output(output)
 
 
 def load_local_diff_stat(repo_root: Path, base_ref: str | None, head_ref: str | None) -> str | None:

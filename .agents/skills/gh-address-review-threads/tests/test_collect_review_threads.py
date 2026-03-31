@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 TEST_DIR = Path(__file__).resolve().parent
@@ -16,6 +17,49 @@ from review_thread_test_support import comment  # noqa: E402
 
 
 class CollectReviewThreadsTests(unittest.TestCase):
+    def test_load_changed_files_uses_diff_output_when_available(self) -> None:
+        with mock.patch.object(
+            collect,
+            "run_command",
+            return_value="src/foo.py\nsrc/bar.py\n",
+        ) as run_command:
+            result = collect.load_changed_files(Path("."), "owner/repo", 7)
+
+        self.assertEqual(result, ["src/foo.py", "src/bar.py"])
+        run_command.assert_called_once_with(
+            ["gh", "pr", "diff", "7", "--name-only", "--repo", "owner/repo"],
+            cwd=Path("."),
+        )
+
+    def test_load_changed_files_falls_back_to_api_when_pr_diff_is_too_large(self) -> None:
+        with mock.patch.object(
+            collect,
+            "run_command",
+            side_effect=[
+                RuntimeError(
+                    "gh pr diff 7 --name-only --repo owner/repo: "
+                    "could not find pull request diff: HTTP 406: Sorry, the diff exceeded "
+                    "the maximum number of lines (20000)\nPullRequest.diff too_large"
+                ),
+                "src/foo.py\nsrc/bar.py\n",
+            ],
+        ) as run_command:
+            result = collect.load_changed_files(Path("."), "owner/repo", 7)
+
+        self.assertEqual(result, ["src/foo.py", "src/bar.py"])
+        self.assertEqual(run_command.call_count, 2)
+        self.assertEqual(
+            run_command.call_args_list[1].args[0],
+            [
+                "gh",
+                "api",
+                "repos/owner/repo/pulls/7/files",
+                "--paginate",
+                "--jq",
+                ".[].filename",
+            ],
+        )
+
     def test_build_reply_candidates_prefers_exact_managed_and_marks_duplicate_warning(self) -> None:
         comments = [
             comment(

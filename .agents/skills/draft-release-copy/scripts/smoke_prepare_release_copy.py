@@ -180,7 +180,8 @@ def run_command(args: list[str], *, cwd: Path) -> str:
     )
     if result.returncode != 0:
         details = "\n".join(part for part in ((result.stderr or "").strip(), (result.stdout or "").strip()) if part)
-        raise RuntimeError(f"Command failed: {' '.join(command)}{f'\\n{details}' if details else ''}")
+        detail_suffix = f"\n{details}" if details else ""
+        raise RuntimeError(f"Command failed: {' '.join(command)}{detail_suffix}")
     return result.stdout
 
 
