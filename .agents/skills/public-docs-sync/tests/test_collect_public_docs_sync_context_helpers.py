@@ -64,6 +64,12 @@ class CollectPublicDocsSyncContextHelperTests(unittest.TestCase):
         )
         self.assertIn("workflow_packet", artifact["packet_hints"])
 
+    def test_infer_repo_slug_accepts_dotted_repo_names(self) -> None:
+        self.assertEqual(
+            collector.infer_repo_slug("git@github.com:owner/my.repo.git"),
+            "owner/my.repo",
+        )
+
     def test_main_passes_repo_profile_into_github_evidence_collection(self) -> None:
         profile = {
             "name": "default",
@@ -144,6 +150,31 @@ class CollectPublicDocsSyncContextHelperTests(unittest.TestCase):
         self.assertIs(observed["relevant_ref"], relevant_ref)
         self.assertEqual(observed["public_doc_paths"], [])
         self.assertIs(observed["repo_profile"], profile)
+
+    def test_collect_github_evidence_fails_closed_when_required_slug_is_missing(self) -> None:
+        with self.assertRaises(SystemExit) as exc_info:
+            collector.collect_github_evidence(
+                Path("C:/repo"),
+                {"repo_slug": ""},
+                {"requires_github_evidence": True, "primary_pr_number": 1},
+                [],
+                {},
+            )
+
+        self.assertIn("repository slug could not be inferred", str(exc_info.exception))
+
+    def test_collect_github_evidence_allows_missing_slug_when_not_required(self) -> None:
+        evidence = collector.collect_github_evidence(
+            Path("C:/repo"),
+            {"repo_slug": ""},
+            {"requires_github_evidence": False, "primary_pr_number": None},
+            [],
+            {},
+        )
+
+        self.assertFalse(evidence["required"])
+        self.assertFalse(evidence["enabled"])
+        self.assertIsNone(evidence["repo_slug"])
 
 
 if __name__ == "__main__":

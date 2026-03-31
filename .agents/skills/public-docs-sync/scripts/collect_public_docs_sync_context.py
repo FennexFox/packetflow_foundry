@@ -76,7 +76,7 @@ DISCUSSION_URL_RE = re.compile(
     r"https://github\.com/(?P<slug>[^/\s]+/[^/\s]+)/discussions/(?P<number>\d+)",
     re.IGNORECASE,
 )
-REPO_SLUG_RE = re.compile(r"github\.com[:/](?P<slug>[^/]+/[^/.]+)(?:\.git)?$", re.IGNORECASE)
+REPO_SLUG_RE = re.compile(r"github\.com[:/](?P<slug>[^/]+/[^/]+?)(?:\.git)?$", re.IGNORECASE)
 PACKET_KEYWORDS = {
     "claims_packet": [
         "setting",
@@ -1499,10 +1499,11 @@ def collect_github_evidence(
     public_doc_paths: list[str],
     repo_profile: dict[str, Any],
 ) -> dict[str, Any]:
+    required = bool(relevant_ref.get("requires_github_evidence"))
     evidence = {
         "enabled": False,
         "auth_policy": GITHUB_AUTH_POLICY,
-        "required": False,
+        "required": required,
         "auth_status": None,
         "repo_slug": identity["repo_slug"] or None,
         "primary_pr": None,
@@ -1515,9 +1516,12 @@ def collect_github_evidence(
         "digest": None,
     }
     if not identity["repo_slug"]:
+        if required:
+            raise SystemExit(
+                "[ERROR] The selected relevant ref requires GitHub evidence, but the repository slug could not be inferred."
+            )
         return evidence
 
-    evidence["required"] = bool(relevant_ref.get("requires_github_evidence"))
     if not evidence["required"]:
         return evidence
 

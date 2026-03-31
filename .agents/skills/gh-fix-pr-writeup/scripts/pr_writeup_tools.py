@@ -77,7 +77,7 @@ def infer_repo_slug(repo_root: Path) -> str | None:
     if not remote:
         return None
 
-    match = re.search(r"github\.com[:/](?P<slug>[^/]+/[^/.]+)(?:\.git)?$", remote)
+    match = re.search(r"github\.com[:/](?P<slug>[^/]+/[^/]+?)(?:\.git)?$", remote)
     return match.group("slug") if match else None
 
 

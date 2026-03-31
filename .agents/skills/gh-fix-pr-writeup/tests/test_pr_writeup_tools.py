@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import subprocess
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -15,6 +16,20 @@ import pr_writeup_tools as tools  # noqa: E402
 
 
 class PrWriteupToolsTests(unittest.TestCase):
+    def test_infer_repo_slug_accepts_dotted_repo_names(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_root), check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "remote", "add", "origin", "git@github.com:owner/my.repo.git"],
+                cwd=str(repo_root),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            self.assertEqual(tools.infer_repo_slug(repo_root), "owner/my.repo")
+
     def test_run_command_wraps_missing_executable(self) -> None:
         with mock.patch.object(tools.subprocess, "run", side_effect=FileNotFoundError("gh")):
             with self.assertRaises(RuntimeError) as exc_info:
