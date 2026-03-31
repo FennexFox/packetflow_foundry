@@ -48,6 +48,21 @@ class CollectPublicDocsSyncContextHelperTests(unittest.TestCase):
                 collector.require_gh_auth(Path("C:/repo"))
         self.assertIn("gh auth is invalid", str(exc_info.exception))
 
+    def test_build_artifact_entry_uses_repo_profile_for_path_packet_hints(self) -> None:
+        profile = collector.load_repo_profile(collector.default_repo_profile_path())
+        artifact = collector.build_artifact_entry(
+            artifact_type="pull_request",
+            identifier="PR #1",
+            title="docs: update workflow docs",
+            body=None,
+            url="https://example.invalid/pr/1",
+            comment_digests=[],
+            changed_paths=["CONTRIBUTING.md"],
+            public_doc_paths=["CONTRIBUTING.md"],
+            repo_profile=profile,
+        )
+        self.assertIn("workflow_packet", artifact["packet_hints"])
+
 
 if __name__ == "__main__":
     unittest.main()

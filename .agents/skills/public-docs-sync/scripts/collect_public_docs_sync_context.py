@@ -1283,10 +1283,14 @@ def packet_hints_from_text(text: str) -> set[str]:
     return packets
 
 
-def packet_hints_from_paths(paths: list[str], public_doc_paths: list[str]) -> set[str]:
+def packet_hints_from_paths(
+    paths: list[str],
+    public_doc_paths: list[str],
+    repo_profile: dict[str, Any],
+) -> set[str]:
     packets: set[str] = set()
     for path in paths:
-        packets.update(packet_for_path(path, public_doc_paths))
+        packets.update(packet_for_path(path, public_doc_paths, repo_profile))
     return packets
 
 
@@ -1471,9 +1475,10 @@ def build_artifact_entry(
     comment_digests: list[dict[str, Any]],
     changed_paths: list[str],
     public_doc_paths: list[str],
+    repo_profile: dict[str, Any],
 ) -> dict[str, Any]:
     comment_text = " ".join(str(item.get("body_excerpt") or "") for item in comment_digests)
-    packet_hints = packet_hints_from_paths(changed_paths, public_doc_paths)
+    packet_hints = packet_hints_from_paths(changed_paths, public_doc_paths, repo_profile)
     packet_hints.update(packet_hints_from_text(" ".join([title or "", body or "", comment_text])))
     return {
         "artifact_type": artifact_type,
@@ -1536,6 +1541,7 @@ def collect_github_evidence(
         comment_digests=pr.get("comments", []),
         changed_paths=pr_files,
         public_doc_paths=public_doc_paths,
+        repo_profile=repo_profile,
     )
     evidence["artifacts"].append(pr_artifact)
     evidence["comment_digests"].extend(pr_artifact["comment_digests"])
@@ -1568,6 +1574,7 @@ def collect_github_evidence(
             comment_digests=issue.get("comments", []),
             changed_paths=[],
             public_doc_paths=public_doc_paths,
+            repo_profile=repo_profile,
         )
         evidence["artifacts"].append(issue_artifact)
         evidence["comment_digests"].extend(issue_artifact["comment_digests"])
@@ -1608,6 +1615,7 @@ def collect_github_evidence(
             comment_digests=discussion.get("comments", []),
             changed_paths=[],
             public_doc_paths=public_doc_paths,
+            repo_profile=repo_profile,
         )
         evidence["artifacts"].append(discussion_artifact)
         evidence["comment_digests"].extend(discussion_artifact["comment_digests"])
