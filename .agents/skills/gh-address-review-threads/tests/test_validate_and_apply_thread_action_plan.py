@@ -21,6 +21,12 @@ from thread_action_contract import build_context_fingerprint, validate_thread_ac
 
 
 class ValidateAndApplyThreadActionPlanTests(unittest.TestCase):
+    def test_run_json_wraps_missing_executable(self) -> None:
+        with patch.object(apply_plan.subprocess, "run", side_effect=FileNotFoundError("gh")):
+            with self.assertRaises(RuntimeError) as exc_info:
+                apply_plan.run_json(["gh", "api", "graphql"], cwd=Path("."))
+        self.assertEqual(str(exc_info.exception), "gh executable not found")
+
     def test_validator_sorts_actions_and_ignores_unknown_fields(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)

@@ -86,11 +86,15 @@ def main() -> int:
 
     profile_path = resolve_profile_path(args.profile)
     repo_profile = load_repo_profile(profile_path)
-    context = build_context(
-        pr_number=args.pr_number,
-        repo_root=Path(args.repo_root).resolve(),
-        repo_slug=args.repo,
-    )
+    try:
+        context = build_context(
+            pr_number=args.pr_number,
+            repo_root=Path(args.repo_root).resolve(),
+            repo_slug=args.repo,
+        )
+    except RuntimeError as exc:
+        print(f"collect_pr_context.py: {exc}", file=sys.stderr)
+        return 1
     context["repo_profile_name"] = repo_profile.get("name")
     context["repo_profile_path"] = profile_path.as_posix()
     context["repo_profile_summary"] = repo_profile.get("summary")

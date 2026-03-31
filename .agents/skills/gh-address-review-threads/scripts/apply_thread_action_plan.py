@@ -75,13 +75,17 @@ def decode_text(data: bytes) -> str:
 
 
 def run_json(args: list[str], cwd: Path, stdin_text: str | None = None) -> dict[str, Any]:
-    result = subprocess.run(
-        args,
-        cwd=str(cwd),
-        input=(stdin_text.encode("utf-8") if stdin_text is not None else None),
-        capture_output=True,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            args,
+            cwd=str(cwd),
+            input=(stdin_text.encode("utf-8") if stdin_text is not None else None),
+            capture_output=True,
+            check=False,
+        )
+    except FileNotFoundError as exc:
+        command_name = args[0] if args else "command"
+        raise RuntimeError(f"{command_name} executable not found") from exc
     if result.returncode != 0:
         stderr = decode_text(result.stderr).strip()
         stdout = decode_text(result.stdout).strip()

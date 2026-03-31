@@ -3,6 +3,7 @@ from __future__ import annotations
 import sys
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
@@ -13,6 +14,12 @@ import pr_writeup_tools as tools  # noqa: E402
 
 
 class PrWriteupToolsTests(unittest.TestCase):
+    def test_run_command_wraps_missing_executable(self) -> None:
+        with mock.patch.object(tools.subprocess, "run", side_effect=FileNotFoundError("gh")):
+            with self.assertRaises(RuntimeError) as exc_info:
+                tools.run_command(["gh", "auth", "status"], cwd=Path("C:/repo"))
+        self.assertEqual(str(exc_info.exception), "gh executable not found")
+
     def test_classify_changed_files_and_summary_cover_expected_groups(self) -> None:
         groups = tools.classify_changed_files(
             [

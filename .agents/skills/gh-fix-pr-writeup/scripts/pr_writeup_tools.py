@@ -44,14 +44,18 @@ def run_command(args: list[str], cwd: Path) -> str:
     stubbed = maybe_run_stubbed_gh(args)
     if stubbed is not None:
         return stubbed
-    completed = subprocess.run(
-        args,
-        cwd=str(cwd),
-        check=True,
-        capture_output=True,
-        text=True,
-        encoding="utf-8",
-    )
+    try:
+        completed = subprocess.run(
+            args,
+            cwd=str(cwd),
+            check=True,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+        )
+    except FileNotFoundError as exc:
+        command_name = args[0] if args else "command"
+        raise RuntimeError(f"{command_name} executable not found") from exc
     return completed.stdout
 
 
