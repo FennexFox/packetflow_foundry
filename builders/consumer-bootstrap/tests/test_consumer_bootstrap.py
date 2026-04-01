@@ -804,6 +804,40 @@ class ConsumerBootstrapTests(unittest.TestCase):
             )
             self.assertFalse((repo / bootstrap.BRIDGE_STATE_RELATIVE).exists())
 
+    def test_copy_rejects_linked_skill_root_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["vendor-skill"],
+            )
+            linked_root = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".agents"
+                / "skills"
+                / "vendor-skill"
+            )
+            real_has_reparse_point = bootstrap.path_has_reparse_point
+
+            def fake_has_reparse_point(path: Path) -> bool:
+                if path == linked_root:
+                    return True
+                return real_has_reparse_point(path)
+
+            with mock.patch.object(bootstrap, "path_has_reparse_point", fake_has_reparse_point):
+                code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 1)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertNotIn("copied skill bridge:", stdout)
+            self.assertIn("unsupported linked directory", stderr)
+            self.assertFalse(
+                (repo / bootstrap.ROOT_SKILLS_RELATIVE / "vendor-skill").exists()
+            )
+            self.assertFalse((repo / bootstrap.BRIDGE_STATE_RELATIVE).exists())
+
     def test_copy_rejects_symlinked_agent_source_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = create_consumer_repo(
@@ -905,7 +939,7 @@ class ConsumerBootstrapTests(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertEqual(symlink_mock.call_count, 0)
             self.assertNotIn("copied skill bridge:", stdout)
-            self.assertIn("must resolve inside the repository root", stderr)
+            self.assertIn("resolves outside the skill root", stderr)
             self.assertFalse(
                 (repo / bootstrap.ROOT_SKILLS_RELATIVE / "vendor-skill").exists()
             )

@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import shutil
+import stat
 import sys
 from pathlib import Path
 from typing import TypeAlias, TypedDict
@@ -459,9 +460,53 @@ def iter_skill_directories(root: Path) -> dict[str, Path]:
         return {}
     skills: dict[str, Path] = {}
     for child in sorted(root.iterdir(), key=lambda entry: entry.name):
+        if child.is_dir():
+            validate_managed_source_directory(
+                child,
+                source_root=root,
+                bridge_kind="skill",
+                root_label="skill root",
+            )
         if child.is_dir() and (child / "SKILL.md").is_file():
             skills[child.name] = child
     return skills
+
+
+def path_has_reparse_point(path: Path) -> bool:
+    try:
+        file_attributes = getattr(path.lstat(), "st_file_attributes", 0)
+    except OSError:
+        return False
+    reparse_flag = getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+    return bool(reparse_flag and file_attributes & reparse_flag)
+
+
+def validate_managed_source_directory(
+    path: Path,
+    *,
+    source_root: Path,
+    bridge_kind: str,
+    root_label: str,
+) -> None:
+    if path.is_symlink() or path_has_reparse_point(path):
+        raise RuntimeError(
+            f"Managed {bridge_kind} bridge source contains unsupported linked directory: "
+            f"{path.as_posix()}."
+        )
+    try:
+        resolved_path = path.resolve()
+    except OSError as exc:
+        raise RuntimeError(
+            f"Failed to resolve managed {bridge_kind} bridge source: "
+            f"{path.as_posix()}."
+        ) from exc
+    try:
+        resolved_path.relative_to(source_root.resolve())
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Managed {bridge_kind} bridge source resolves outside the {root_label}: "
+            f"{path.as_posix()}."
+        ) from exc
 
 
 def validate_managed_source_file(
@@ -789,6 +834,12 @@ def sync_managed_directory_copy(
     bridge_name: str,
     state_group: dict[str, object],
 ) -> tuple[str, str, str | None]:
+    validate_managed_source_directory(
+        source_root,
+        source_root=source_root,
+        bridge_kind="skill",
+        root_label="skill root",
+    )
     relative_repo_path(source_root, repo_root)
     copied_files = build_skill_bridge_files(repo_root, source_root, target_root)
     state_entry = build_directory_copy_state_entry(
