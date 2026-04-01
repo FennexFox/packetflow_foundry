@@ -3,6 +3,7 @@ from __future__ import annotations
 import contextlib
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -108,6 +109,49 @@ class RewordHeadCommitDriverTests(unittest.TestCase):
         apply_result = load_json(Path(summary["apply_result_path"]))
         self.assertTrue(apply_result["amend_succeeded"])
         self.assertTrue(apply_result["tree_unchanged"])
+
+    def test_apply_exports_committer_identity_for_amend(self) -> None:
+        _temp_dir, repo = self.seed_repo()
+        run_git(repo, "config", "--unset", "user.name")
+        run_git(repo, "config", "--unset", "user.email")
+        message_path = repo / ".codex" / "tmp" / "packet-workflow" / "reword-head-commit" / "message.txt"
+        message_path.parent.mkdir(parents=True, exist_ok=True)
+        message_path.write_text("fix(app): rename seed\n", encoding="utf-8")
+
+        captured_env: dict[str, str] = {}
+
+        def fake_git_result(
+            repo_root: Path,
+            args: list[str],
+            *,
+            env: dict[str, str] | None = None,
+        ) -> subprocess.CompletedProcess[str]:
+            captured_env.clear()
+            captured_env.update(env or {})
+            self.assertEqual(args[:2], ["commit", "--amend"])
+            return subprocess.CompletedProcess(["git", *args], 0, "", "")
+
+        with mock.patch.object(reword_head_commit, "git_result", side_effect=fake_git_result):
+            exit_code, summary = self.run_driver(
+                "--repo",
+                str(repo),
+                "--message-file",
+                str(message_path),
+                "--apply",
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(summary["status"], "ok")
+        apply_result = load_json(Path(summary["apply_result_path"]))
+        self.assertTrue(apply_result["amend_succeeded"])
+        head_commit = run_git(repo, "rev-parse", "HEAD")
+        expected_identity = run_git(repo, "show", "-s", "--format=%an|%ae|%aI", head_commit).split("|")
+        self.assertEqual(captured_env["GIT_AUTHOR_NAME"], expected_identity[0])
+        self.assertEqual(captured_env["GIT_AUTHOR_EMAIL"], expected_identity[1])
+        self.assertEqual(captured_env["GIT_AUTHOR_DATE"], expected_identity[2])
+        self.assertEqual(captured_env["GIT_COMMITTER_NAME"], expected_identity[0])
+        self.assertEqual(captured_env["GIT_COMMITTER_EMAIL"], expected_identity[1])
+        self.assertEqual(captured_env["GIT_COMMITTER_DATE"], expected_identity[2])
 
     def test_express_path_rejects_non_explicit_rules(self) -> None:
         temp_dir, repo = make_repo()

@@ -315,6 +315,9 @@ def apply_message(
     env["GIT_AUTHOR_NAME"] = str(commit.get("author_name") or "")
     env["GIT_AUTHOR_EMAIL"] = str(commit.get("author_email") or "")
     env["GIT_AUTHOR_DATE"] = str(commit.get("author_date") or "")
+    env["GIT_COMMITTER_NAME"] = str(commit.get("author_name") or "")
+    env["GIT_COMMITTER_EMAIL"] = str(commit.get("author_email") or "")
+    env["GIT_COMMITTER_DATE"] = str(commit.get("author_date") or "")
     amend = git_result(
         repo_root,
         ["commit", "--amend", "--no-gpg-sign", "--allow-empty", "-F", str(message_path)],
