@@ -215,6 +215,26 @@ class ApplyCommitPlanContractTests(unittest.TestCase):
 
         mocked_rollback.assert_called_once_with(Path("C:/repo"), "abc123")
 
+    def test_stage_commit_does_not_stage_supporting_paths(self) -> None:
+        commit = {
+            "whole_file_paths": ["src/app.py"],
+            "untracked_paths": ["src/new_file.py"],
+            "supporting_paths": ["docs/context.md"],
+            "selected_hunk_ids": [],
+            "split_paths": [],
+        }
+
+        with patch.object(apply_commit, "run_git") as mocked_run_git:
+            apply_commit.stage_commit(Path("C:/repo"), commit, {})
+
+        self.assertEqual(
+            [call.args[1] for call in mocked_run_git.call_args_list],
+            [
+                ["add", "--all", "--", "src/app.py"],
+                ["add", "--all", "--", "src/new_file.py"],
+            ],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

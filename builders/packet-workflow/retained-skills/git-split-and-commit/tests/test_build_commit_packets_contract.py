@@ -178,7 +178,12 @@ class BuildCommitPacketsContractTest(unittest.TestCase):
         )
         self.assertEqual(
             global_packet["domain_overlay"]["alias_notes"],
-            {"supporting_paths": "Current domain aliases assume file/path-oriented evidence first."},
+            {
+                "supporting_paths": (
+                    "Current domain aliases assume file/path-oriented evidence first; "
+                    "`supporting_paths` is evidence-only and does not claim path ownership."
+                )
+            },
         )
         self.assertEqual(global_packet["common_path_contract"]["goal"], "Draft commit-plan.json without raw diff rereads on the common path.")
 

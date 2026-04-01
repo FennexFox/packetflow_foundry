@@ -94,7 +94,7 @@ Read `references/architecture-rationale.md` before changing packet metadata, del
 - `ambiguity`
 - `confidence`
 - `reread_control`
-- Current domain aliases assume file/path-oriented evidence first, so `supporting_paths` should stay path-shaped unless the contract is deliberately expanded.
+- Current domain aliases assume file/path-oriented evidence first, so `supporting_paths` should stay path-shaped, evidence-only, and outside path ownership unless the contract is deliberately expanded.
 - Read `references/delegation-playbook.md` when `review_mode` is not `local-only`.
 
 ## Scripts

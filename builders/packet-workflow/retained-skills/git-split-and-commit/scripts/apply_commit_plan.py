@@ -263,7 +263,8 @@ def rollback_created_commits(repo_root: Path, original_head: str) -> None:
 
 
 def stage_commit(repo_root: Path, commit: dict[str, Any], hunk_lookup: dict[str, dict[str, Any]]) -> None:
-    for path in string_list(commit.get("whole_file_paths")) + string_list(commit.get("supporting_paths")) + string_list(commit.get("untracked_paths")):
+    # `supporting_paths` are evidence references and do not participate in staging ownership.
+    for path in string_list(commit.get("whole_file_paths")) + string_list(commit.get("untracked_paths")):
         run_git(repo_root, ["add", "--all", "--", path])
 
     selected_hunk_ids = string_list(commit.get("selected_hunk_ids"))

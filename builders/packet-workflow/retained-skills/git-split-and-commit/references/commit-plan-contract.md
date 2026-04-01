@@ -62,7 +62,7 @@ Commit-entry fields:
   - `untracked_paths`
   - `split_paths`
   - `selected_hunk_ids`
-  - `supporting_paths` (assume file/path-oriented evidence first unless the contract is explicitly widened)
+  - `supporting_paths` (assume file/path-oriented evidence first unless the contract is explicitly widened; evidence-only and not path ownership)
   - `targeted_checks`
   - `confidence`
 - allowed
@@ -119,7 +119,7 @@ Each item in `commits` must include:
 - `untracked_paths`
 - `split_paths`
 - `selected_hunk_ids`
-- `supporting_paths` (assume file/path-oriented evidence first unless the contract is explicitly widened)
+- `supporting_paths` (assume file/path-oriented evidence first unless the contract is explicitly widened; evidence-only and not path ownership)
 - `targeted_checks`
 - `confidence`
 
@@ -128,6 +128,8 @@ Each item in `commits` must include:
 - Every changed path must appear exactly once across:
   - one commit entry, or
   - `omitted_paths`
+- Only `whole_file_paths`, `untracked_paths`, and `split_paths` satisfy path coverage and ownership.
+- `supporting_paths` may reference changed paths as supporting evidence, but does not satisfy path coverage and must not affect staging ownership.
 - `untracked_paths` must contain only untracked files.
 - `split_paths` must contain only tracked modified text files marked split-eligible in `worktree.json`.
 - Every `selected_hunk_id` must belong to one file in `split_paths`.
