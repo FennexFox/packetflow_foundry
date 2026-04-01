@@ -244,6 +244,21 @@ class RewordHeadCommitDriverTests(unittest.TestCase):
         self.assertEqual(apply_result["status"], "blocked")
         self.assertIsNone(apply_result["operation"]["new_subject"])
 
+    def test_invalid_apply_does_not_report_attempted_amend(self) -> None:
+        _temp_dir, repo = self.seed_repo()
+
+        exit_code, summary = self.run_driver("--repo", str(repo), "--message", "", "--apply")
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(summary["status"], "invalid")
+        apply_result = load_json(Path(summary["apply_result_path"]))
+        eval_log = load_json(Path(summary["evaluation_log_path"]))
+        self.assertTrue(apply_result["apply_requested"])
+        self.assertFalse(apply_result["apply_attempted"])
+        self.assertEqual(apply_result["mutation_type"], "none")
+        self.assertFalse(eval_log["safety"]["apply_attempted"])
+        self.assertEqual(eval_log["safety"]["mutation_type"], "none")
+
     def test_relative_message_file_is_resolved_from_repo_root(self) -> None:
         _temp_dir, repo = self.seed_repo()
         message_path = repo / ".codex" / "tmp" / "packet-workflow" / "reword-head-commit" / "message.txt"

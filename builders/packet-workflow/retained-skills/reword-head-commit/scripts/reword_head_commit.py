@@ -200,6 +200,8 @@ def base_apply_result(
     return {
         "status": "dry-run" if dry_run else "pending",
         "dry_run": dry_run,
+        "apply_requested": not dry_run,
+        "apply_attempted": False,
         "amend_succeeded": None if dry_run else False,
         "validation_boundary_enforced": True,
         "branch": context.get("branch"),
@@ -216,6 +218,7 @@ def base_apply_result(
             "new_subject": subject or None,
             "has_body": bool(body.strip()),
         },
+        "mutation_type": "none",
         "ref_updated": False,
         "tree_unchanged": None,
         "error_message": None,
@@ -321,6 +324,8 @@ def apply_message(
     env["GIT_COMMITTER_NAME"] = committer_name
     env["GIT_COMMITTER_EMAIL"] = committer_email
     env["GIT_COMMITTER_DATE"] = committer_date
+    result["apply_attempted"] = True
+    result["mutation_type"] = "amend_head_commit"
     amend = git_result(
         repo_root,
         ["commit", "--amend", "--no-gpg-sign", "--allow-empty", "-F", str(message_path)],
@@ -374,9 +379,9 @@ def evaluation_log(
         "safety": {
             "validation_run": True,
             "validation_passed": bool(validation.get("valid")),
-            "apply_attempted": not bool(apply_result.get("dry_run")),
+            "apply_attempted": bool(apply_result.get("apply_attempted")),
             "apply_succeeded": bool(apply_result.get("amend_succeeded")),
-            "mutation_type": "amend_head_commit" if not bool(apply_result.get("dry_run")) else "none",
+            "mutation_type": str(apply_result.get("mutation_type") or "none"),
             "fingerprint_match": bool(validation.get("fingerprint_match")),
             "force_push_likely": bool(apply_result.get("force_push_likely")),
         },
