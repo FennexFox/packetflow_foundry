@@ -62,6 +62,18 @@ def completion_body(packet: dict[str, Any]) -> str:
     return f"{first_sentence} Validation: {validation_text}."
 
 
+def complete_reply_action(packet: dict[str, Any]) -> dict[str, Any]:
+    complete_basis = ((packet.get("reply_update_basis") or {}).get("complete") or {})
+    mode = str(complete_basis.get("mode") or "").strip()
+    comment_id = str(complete_basis.get("comment_id") or "").strip()
+    if mode == "update":
+        action = {"complete_mode": "update"}
+        if comment_id:
+            action["complete_comment_id"] = comment_id
+        return action
+    return {"complete_mode": "add"}
+
+
 def decision_for_thread(thread: dict[str, Any], packet: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
     thread_id = str(thread.get("thread_id") or "").strip()
     if not thread_id:
@@ -90,7 +102,7 @@ def decision_for_thread(thread: dict[str, Any], packet: dict[str, Any]) -> tuple
 
     if verdict == "auto-accept":
         action["decision"] = "accept"
-        action["complete_mode"] = "add"
+        action.update(complete_reply_action(packet))
         action["complete_body"] = completion_body(packet)
         action["resolve_after_complete"] = True
         return action, candidate

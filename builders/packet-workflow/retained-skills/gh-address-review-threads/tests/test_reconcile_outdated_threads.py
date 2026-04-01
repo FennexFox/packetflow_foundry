@@ -27,8 +27,9 @@ def packet_for_thread(
     verdict_reason: str,
     area: str,
     validation_commands: list[str],
+    reply_update_basis: dict[str, object] | None = None,
 ) -> dict[str, object]:
-    return {
+    packet = {
         "thread": thread,
         "transitioned_to_outdated": transitioned_to_outdated,
         "outdated_recheck": {
@@ -41,6 +42,9 @@ def packet_for_thread(
             "verdict_reason": verdict_reason,
         },
     }
+    if reply_update_basis is not None:
+        packet["reply_update_basis"] = reply_update_basis
+    return packet
 
 
 class ReconcileOutdatedThreadsTests(unittest.TestCase):
@@ -144,6 +148,63 @@ class ReconcileOutdatedThreadsTests(unittest.TestCase):
             self.assertEqual(action["decision"], "accept")
             self.assertTrue(action["resolve_after_complete"])
             self.assertIn("requested change", action["complete_body"])
+
+    def test_reconcile_auto_accept_updates_existing_completion_reply(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            thread = review_thread(
+                thread_id="t-1",
+                path="docs/guide.md",
+                line=2,
+                reviewer_login="reviewer-a",
+                reviewer_body="Please use the current wording.",
+            )
+            context = context_with_threads(tmp, [thread])
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            context_path = tmp / "context.json"
+            packet_dir = tmp / "packets"
+            output_path = tmp / "plan.json"
+            packet_dir.mkdir()
+            write_json(context_path, context)
+            write_json(
+                packet_dir / "thread-01.json",
+                packet_for_thread(
+                    thread,
+                    transitioned_to_outdated=True,
+                    resolution_verdict="auto-accept",
+                    verdict_reason="accepted_same_run_with_current_head_evidence",
+                    area="docs",
+                    validation_commands=["python -m pytest tests/test_docs.py"],
+                    reply_update_basis={
+                        "complete": {
+                            "mode": "update",
+                            "comment_id": "comment-123",
+                            "reason": "managed_complete_reply_exists",
+                            "managed": True,
+                            "adopted_unmarked_reply": False,
+                        }
+                    },
+                ),
+            )
+
+            argv = [
+                "reconcile_outdated_threads.py",
+                "--context",
+                str(context_path),
+                "--packet-dir",
+                str(packet_dir),
+                "--output",
+                str(output_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                self.assertEqual(reconcile.main(), 0)
+
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+            action = payload["thread_actions"][0]
+            self.assertEqual(action["decision"], "accept")
+            self.assertEqual(action["complete_mode"], "update")
+            self.assertEqual(action["complete_comment_id"], "comment-123")
+            self.assertTrue(action["resolve_after_complete"])
 
     def test_reconcile_leaves_missing_validation_candidate_ambiguous(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
