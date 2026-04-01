@@ -308,6 +308,9 @@ def apply_message(
     commit = list(context.get("commits", []))[0]
     old_head = run_git(repo_root, ["rev-parse", "HEAD"]).strip()
     old_tree = run_git(repo_root, ["show", "-s", "--format=%T", old_head]).strip()
+    committer_name = run_git(repo_root, ["show", "-s", "--format=%cn", old_head]).strip()
+    committer_email = run_git(repo_root, ["show", "-s", "--format=%ce", old_head]).strip()
+    committer_date = run_git(repo_root, ["show", "-s", "--format=%cI", old_head]).strip()
     message_path = artifact_root / MESSAGE_COPY_FILE
     message_path.write_text(str(action.get("new_message") or "").strip("\n") + "\n", encoding="utf-8")
 
@@ -315,9 +318,9 @@ def apply_message(
     env["GIT_AUTHOR_NAME"] = str(commit.get("author_name") or "")
     env["GIT_AUTHOR_EMAIL"] = str(commit.get("author_email") or "")
     env["GIT_AUTHOR_DATE"] = str(commit.get("author_date") or "")
-    env["GIT_COMMITTER_NAME"] = str(commit.get("author_name") or "")
-    env["GIT_COMMITTER_EMAIL"] = str(commit.get("author_email") or "")
-    env["GIT_COMMITTER_DATE"] = str(commit.get("author_date") or "")
+    env["GIT_COMMITTER_NAME"] = committer_name
+    env["GIT_COMMITTER_EMAIL"] = committer_email
+    env["GIT_COMMITTER_DATE"] = committer_date
     amend = git_result(
         repo_root,
         ["commit", "--amend", "--no-gpg-sign", "--allow-empty", "-F", str(message_path)],

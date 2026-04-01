@@ -88,6 +88,7 @@ class RewordHeadCommitDriverTests(unittest.TestCase):
         old_parent = run_git(repo, "show", "-s", "--format=%P", old_head)
         old_tree = run_git(repo, "show", "-s", "--format=%T", old_head)
         old_author = run_git(repo, "show", "-s", "--format=%an|%ae|%aI", old_head)
+        old_committer = run_git(repo, "show", "-s", "--format=%cn|%ce|%cI", old_head)
         message_path = repo / ".codex" / "tmp" / "packet-workflow" / "reword-head-commit" / "message.txt"
         message_path.parent.mkdir(parents=True, exist_ok=True)
         message_path.write_text(
@@ -105,6 +106,7 @@ class RewordHeadCommitDriverTests(unittest.TestCase):
         self.assertEqual(run_git(repo, "show", "-s", "--format=%P", new_head), old_parent)
         self.assertEqual(run_git(repo, "show", "-s", "--format=%T", new_head), old_tree)
         self.assertEqual(run_git(repo, "show", "-s", "--format=%an|%ae|%aI", new_head), old_author)
+        self.assertEqual(run_git(repo, "show", "-s", "--format=%cn|%ce|%cI", new_head), old_committer)
         self.assertEqual(run_git(repo, "show", "-s", "--format=%B", new_head), "fix(app): rename seed\n\n- clarify the head commit message")
         apply_result = load_json(Path(summary["apply_result_path"]))
         self.assertTrue(apply_result["amend_succeeded"])
@@ -112,11 +114,21 @@ class RewordHeadCommitDriverTests(unittest.TestCase):
 
     def test_apply_exports_committer_identity_for_amend(self) -> None:
         _temp_dir, repo = self.seed_repo()
-        run_git(repo, "config", "--unset", "user.name")
-        run_git(repo, "config", "--unset", "user.email")
+        commit_file(
+            repo,
+            "src/committer.py",
+            "print('committer')\n",
+            "fix(app): add committer coverage",
+            author_name="Author",
+            author_email="author@example.com",
+            author_date="2026-03-28T00:00:00Z",
+            committer_name="Committer",
+            committer_email="committer@example.com",
+            committer_date="2026-03-29T00:00:00Z",
+        )
         message_path = repo / ".codex" / "tmp" / "packet-workflow" / "reword-head-commit" / "message.txt"
         message_path.parent.mkdir(parents=True, exist_ok=True)
-        message_path.write_text("fix(app): rename seed\n", encoding="utf-8")
+        message_path.write_text("fix(app): rename committer coverage\n", encoding="utf-8")
 
         captured_env: dict[str, str] = {}
 
@@ -145,13 +157,43 @@ class RewordHeadCommitDriverTests(unittest.TestCase):
         apply_result = load_json(Path(summary["apply_result_path"]))
         self.assertTrue(apply_result["amend_succeeded"])
         head_commit = run_git(repo, "rev-parse", "HEAD")
-        expected_identity = run_git(repo, "show", "-s", "--format=%an|%ae|%aI", head_commit).split("|")
-        self.assertEqual(captured_env["GIT_AUTHOR_NAME"], expected_identity[0])
-        self.assertEqual(captured_env["GIT_AUTHOR_EMAIL"], expected_identity[1])
-        self.assertEqual(captured_env["GIT_AUTHOR_DATE"], expected_identity[2])
-        self.assertEqual(captured_env["GIT_COMMITTER_NAME"], expected_identity[0])
-        self.assertEqual(captured_env["GIT_COMMITTER_EMAIL"], expected_identity[1])
-        self.assertEqual(captured_env["GIT_COMMITTER_DATE"], expected_identity[2])
+        expected_author = run_git(repo, "show", "-s", "--format=%an|%ae|%aI", head_commit).split("|")
+        expected_committer = run_git(repo, "show", "-s", "--format=%cn|%ce|%cI", head_commit).split("|")
+        self.assertEqual(captured_env["GIT_AUTHOR_NAME"], expected_author[0])
+        self.assertEqual(captured_env["GIT_AUTHOR_EMAIL"], expected_author[1])
+        self.assertEqual(captured_env["GIT_AUTHOR_DATE"], expected_author[2])
+        self.assertEqual(captured_env["GIT_COMMITTER_NAME"], expected_committer[0])
+        self.assertEqual(captured_env["GIT_COMMITTER_EMAIL"], expected_committer[1])
+        self.assertEqual(captured_env["GIT_COMMITTER_DATE"], expected_committer[2])
+
+    def test_apply_preserves_distinct_committer_metadata(self) -> None:
+        _temp_dir, repo = self.seed_repo()
+        old_head = commit_file(
+            repo,
+            "src/committer.py",
+            "print('committer')\n",
+            "fix(app): add committer coverage",
+            author_name="Author",
+            author_email="author@example.com",
+            author_date="2026-03-28T00:00:00Z",
+            committer_name="Committer",
+            committer_email="committer@example.com",
+            committer_date="2026-03-29T00:00:00Z",
+        )
+        old_author = run_git(repo, "show", "-s", "--format=%an|%ae|%aI", old_head)
+        old_committer = run_git(repo, "show", "-s", "--format=%cn|%ce|%cI", old_head)
+        message_path = repo / ".codex" / "tmp" / "packet-workflow" / "reword-head-commit" / "message.txt"
+        message_path.parent.mkdir(parents=True, exist_ok=True)
+        message_path.write_text("fix(app): rename committer coverage\n", encoding="utf-8")
+
+        exit_code, summary = self.run_driver("--repo", str(repo), "--message-file", str(message_path), "--apply")
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(summary["status"], "ok")
+        new_head = summary["new_head"]
+        self.assertIsInstance(new_head, str)
+        self.assertEqual(run_git(repo, "show", "-s", "--format=%an|%ae|%aI", new_head), old_author)
+        self.assertEqual(run_git(repo, "show", "-s", "--format=%cn|%ce|%cI", new_head), old_committer)
 
     def test_express_path_rejects_non_explicit_rules(self) -> None:
         temp_dir, repo = make_repo()

@@ -68,6 +68,9 @@ def commit_file(
     author_name: str = "Codex",
     author_email: str = "codex@example.com",
     author_date: str = "2026-03-27T00:00:00Z",
+    committer_name: str | None = None,
+    committer_email: str | None = None,
+    committer_date: str | None = None,
 ) -> str:
     path = repo / rel_path
     path.parent.mkdir(parents=True, exist_ok=True)
@@ -77,9 +80,9 @@ def commit_file(
     env["GIT_AUTHOR_NAME"] = author_name
     env["GIT_AUTHOR_EMAIL"] = author_email
     env["GIT_AUTHOR_DATE"] = author_date
-    env["GIT_COMMITTER_NAME"] = author_name
-    env["GIT_COMMITTER_EMAIL"] = author_email
-    env["GIT_COMMITTER_DATE"] = author_date
+    env["GIT_COMMITTER_NAME"] = committer_name or author_name
+    env["GIT_COMMITTER_EMAIL"] = committer_email or author_email
+    env["GIT_COMMITTER_DATE"] = committer_date or author_date
     run_git(repo, "commit", "--no-gpg-sign", "-m", message, env=env)
     return run_git(repo, "rev-parse", "HEAD")
 
