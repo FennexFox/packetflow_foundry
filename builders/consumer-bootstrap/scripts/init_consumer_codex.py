@@ -11,7 +11,7 @@ import shutil
 import stat
 import sys
 from pathlib import Path
-from typing import TypeAlias, TypedDict
+from typing import NotRequired, TypeAlias, TypedDict
 
 
 FOUNDRY_KEYWORDS = (
@@ -54,6 +54,31 @@ BridgeEvent: TypeAlias = tuple[str, str]
 class BridgeReport(TypedDict):
     events: list[BridgeEvent]
     notices: list[str]
+
+
+class HashState(TypedDict):
+    sha256: str
+    raw_sha256: str
+    lf_sha256: str
+
+
+class ValidatedHashState(TypedDict):
+    raw_sha256: str
+    lf_sha256: NotRequired[str]
+
+
+class FileCopyStateEntry(TypedDict):
+    type: str
+    source: str
+    sha256: str
+    raw_sha256: str
+    lf_sha256: str
+
+
+class DirectoryCopyStateEntry(TypedDict):
+    type: str
+    source: str
+    files: dict[str, HashState]
 
 
 def parse_args() -> argparse.Namespace:
@@ -142,6 +167,23 @@ def sha256_digest(content: bytes) -> str:
 
 def sha256_path(path: Path) -> str:
     return sha256_digest(path.read_bytes())
+
+
+def normalize_lf_bytes(content: bytes) -> bytes:
+    return content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+
+
+def hash_state_from_bytes(content: bytes) -> HashState:
+    raw_sha256 = sha256_digest(content)
+    return {
+        "sha256": raw_sha256,
+        "raw_sha256": raw_sha256,
+        "lf_sha256": sha256_digest(normalize_lf_bytes(content)),
+    }
+
+
+def hash_state_from_path(path: Path) -> HashState:
+    return hash_state_from_bytes(path.read_bytes())
 
 
 def relative_repo_path(path: Path, repo_root: Path) -> str:
@@ -243,6 +285,13 @@ def render_agents_block() -> str:
                 "Bootstrap writes managed copies of vendored wrappers there "
                 "while reusable retained kernels stay under "
                 "`.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/`."
+            ),
+            (
+                "- Entries that consumer bootstrap copied from the vendor subtree "
+                "into `.codex/agents/` or `.agents/skills/` are managed bootstrap "
+                "artifacts. Update the vendor source or replace them with a "
+                "project-local entry, then rerun bootstrap instead of patching the "
+                "copied artifact in place."
             ),
             (
                 "- Rerun consumer bootstrap after updating the vendor subtree "
@@ -704,11 +753,15 @@ def bridge_state_group(
     return group
 
 
-def build_file_copy_state_entry(repo_root: Path, source_path: Path) -> dict[str, str]:
+def build_file_copy_state_entry(repo_root: Path, source_path: Path) -> FileCopyStateEntry:
+    source_bytes = source_path.read_bytes()
+    hash_state = hash_state_from_bytes(source_bytes)
     return {
         "type": "file-copy",
         "source": relative_repo_path(source_path, repo_root),
-        "sha256": sha256_path(source_path),
+        "sha256": hash_state["sha256"],
+        "raw_sha256": hash_state["raw_sha256"],
+        "lf_sha256": hash_state["lf_sha256"],
     }
 
 
@@ -716,12 +769,12 @@ def build_directory_copy_state_entry(
     repo_root: Path,
     source_root: Path,
     copied_files: dict[str, bytes],
-) -> dict[str, object]:
+) -> DirectoryCopyStateEntry:
     return {
         "type": "directory-copy",
         "source": relative_repo_path(source_root, repo_root),
         "files": {
-            relative_path: {"sha256": sha256_digest(content)}
+            relative_path: hash_state_from_bytes(content)
             for relative_path, content in copied_files.items()
         },
     }
@@ -731,35 +784,75 @@ def validate_file_copy_state_entry(
     entry: object,
     *,
     bridge_name: str,
-) -> str:
+) -> ValidatedHashState:
     if not isinstance(entry, dict) or entry.get("type") != "file-copy":
         raise RuntimeError(f"Malformed managed file copy state for {bridge_name}.")
-    expected_hash = entry.get("sha256")
-    if not isinstance(expected_hash, str):
+    raw_sha256 = entry.get("raw_sha256")
+    if raw_sha256 is None:
+        raw_sha256 = entry.get("sha256")
+    if not isinstance(raw_sha256, str):
         raise RuntimeError(f"Malformed managed file copy state for {bridge_name}.")
-    return expected_hash
+    validated: ValidatedHashState = {"raw_sha256": raw_sha256}
+    lf_sha256 = entry.get("lf_sha256")
+    if lf_sha256 is not None:
+        if not isinstance(lf_sha256, str):
+            raise RuntimeError(f"Malformed managed file copy state for {bridge_name}.")
+        validated["lf_sha256"] = lf_sha256
+    return validated
 
 
 def validate_directory_copy_state_entry(
     entry: object,
     *,
     bridge_name: str,
-) -> dict[str, str]:
+) -> dict[str, ValidatedHashState]:
     if not isinstance(entry, dict) or entry.get("type") != "directory-copy":
         raise RuntimeError(f"Malformed managed directory copy state for {bridge_name}.")
     raw_files = entry.get("files")
     if not isinstance(raw_files, dict):
         raise RuntimeError(f"Malformed managed directory copy state for {bridge_name}.")
 
-    validated: dict[str, str] = {}
+    validated: dict[str, ValidatedHashState] = {}
     for relative_path, metadata in raw_files.items():
         if not isinstance(relative_path, str) or not isinstance(metadata, dict):
             raise RuntimeError(f"Malformed managed directory copy state for {bridge_name}.")
-        expected_hash = metadata.get("sha256")
-        if not isinstance(expected_hash, str):
+        raw_sha256 = metadata.get("raw_sha256")
+        if raw_sha256 is None:
+            raw_sha256 = metadata.get("sha256")
+        if not isinstance(raw_sha256, str):
             raise RuntimeError(f"Malformed managed directory copy state for {bridge_name}.")
-        validated[relative_path] = expected_hash
+        validated_hashes: ValidatedHashState = {"raw_sha256": raw_sha256}
+        lf_sha256 = metadata.get("lf_sha256")
+        if lf_sha256 is not None:
+            if not isinstance(lf_sha256, str):
+                raise RuntimeError(
+                    f"Malformed managed directory copy state for {bridge_name}."
+                )
+            validated_hashes["lf_sha256"] = lf_sha256
+        validated[relative_path] = validated_hashes
     return validated
+
+
+def hash_matches_expected(
+    current_hashes: HashState,
+    expected_hashes: ValidatedHashState,
+) -> bool:
+    expected_lf_sha256 = expected_hashes.get("lf_sha256")
+    if expected_lf_sha256 is not None:
+        return current_hashes["lf_sha256"] == expected_lf_sha256
+    return current_hashes["raw_sha256"] == expected_hashes["raw_sha256"]
+
+
+def legacy_hash_matches_peer(
+    current_hashes: HashState,
+    expected_hashes: ValidatedHashState,
+    peer_hashes: HashState | None,
+) -> bool:
+    return (
+        "lf_sha256" not in expected_hashes
+        and peer_hashes is not None
+        and current_hashes["lf_sha256"] == peer_hashes["lf_sha256"]
+    )
 
 
 def sync_directory_copy(
@@ -789,10 +882,14 @@ def sync_managed_file_copy(
     state_group: dict[str, object],
 ) -> tuple[str, str, str | None]:
     state_entry = build_file_copy_state_entry(repo_root, source_path)
-    source_hash = str(state_entry["sha256"])
+    source_hashes: HashState = {
+        "sha256": str(state_entry["sha256"]),
+        "raw_sha256": str(state_entry["raw_sha256"]),
+        "lf_sha256": str(state_entry["lf_sha256"]),
+    }
     entry = state_group.get(bridge_name)
     if entry is not None:
-        expected_hash = validate_file_copy_state_entry(entry, bridge_name=bridge_name)
+        expected_hashes = validate_file_copy_state_entry(entry, bridge_name=bridge_name)
         existed_before = target_path.exists()
         if target_path.exists():
             if target_path.is_symlink() or not target_path.is_file():
@@ -807,8 +904,12 @@ def sync_managed_file_copy(
                         f"{target_path.as_posix()}. Remove it to resume bootstrap refreshes."
                     ),
                 )
-            current_hash = sha256_path(target_path)
-            if current_hash != expected_hash:
+            current_hashes = hash_state_from_path(target_path)
+            if not hash_matches_expected(current_hashes, expected_hashes) and not legacy_hash_matches_peer(
+                current_hashes,
+                expected_hashes,
+                source_hashes,
+            ):
                 return (
                     "skipped",
                     (
@@ -820,7 +921,13 @@ def sync_managed_file_copy(
                         f"overwritten: {target_path.as_posix()}."
                     ),
                 )
-            if source_hash == expected_hash:
+            if hash_matches_expected(source_hashes, expected_hashes) or legacy_hash_matches_peer(
+                source_hashes,
+                expected_hashes,
+                current_hashes,
+            ):
+                if "lf_sha256" not in expected_hashes:
+                    state_group[bridge_name] = state_entry
                 return "unchanged", target_path.as_posix(), None
 
         write_bytes(target_path, source_path.read_bytes())
@@ -854,6 +961,14 @@ def sync_managed_directory_copy(
         source_root,
         copied_files,
     )
+    source_hashes: dict[str, HashState] = {
+        relative_path: {
+            "sha256": str(metadata["sha256"]),
+            "raw_sha256": str(metadata["raw_sha256"]),
+            "lf_sha256": str(metadata["lf_sha256"]),
+        }
+        for relative_path, metadata in state_entry["files"].items()
+    }
     entry = state_group.get(bridge_name)
     if entry is not None:
         expected_hashes = validate_directory_copy_state_entry(entry, bridge_name=bridge_name)
@@ -872,6 +987,7 @@ def sync_managed_directory_copy(
                 )
 
             target_files = iter_relative_files(target_root)
+            target_hashes: dict[str, HashState] = {}
             for relative_path, target_file in target_files.items():
                 if target_file.is_symlink() or not target_file.is_file():
                     return (
@@ -898,7 +1014,16 @@ def sync_managed_directory_copy(
                             f"overwritten: {target_root.as_posix()}."
                         ),
                     )
-                if sha256_path(target_file) != expected_hash:
+                current_hashes = hash_state_from_path(target_file)
+                target_hashes[relative_path] = current_hashes
+                if not hash_matches_expected(
+                    current_hashes,
+                    expected_hash,
+                ) and not legacy_hash_matches_peer(
+                    current_hashes,
+                    expected_hash,
+                    source_hashes.get(relative_path),
+                ):
                     return (
                         "skipped",
                         (
@@ -911,11 +1036,25 @@ def sync_managed_directory_copy(
                         ),
                     )
 
-            copied_hashes = {
-                relative_path: sha256_digest(content)
-                for relative_path, content in copied_files.items()
-            }
-            if copied_hashes == expected_hashes and set(target_files) == set(expected_hashes):
+            source_matches_expected = set(source_hashes) == set(expected_hashes)
+            if source_matches_expected:
+                for relative_path, source_file_hashes in source_hashes.items():
+                    expected_hash = expected_hashes[relative_path]
+                    if hash_matches_expected(
+                        source_file_hashes,
+                        expected_hash,
+                    ) or legacy_hash_matches_peer(
+                        source_file_hashes,
+                        expected_hash,
+                        target_hashes.get(relative_path),
+                    ):
+                        continue
+                    source_matches_expected = False
+                    break
+
+            if source_matches_expected and set(target_files) == set(expected_hashes):
+                if any("lf_sha256" not in hashes for hashes in expected_hashes.values()):
+                    state_group[bridge_name] = state_entry
                 return "unchanged", target_root.as_posix(), None
 
             sync_directory_copy(
@@ -942,7 +1081,7 @@ def prune_stale_managed_file_copy(
     if entry is None:
         return "unchanged", target_path.as_posix(), None
 
-    expected_hash = validate_file_copy_state_entry(entry, bridge_name=bridge_name)
+    expected_hashes = validate_file_copy_state_entry(entry, bridge_name=bridge_name)
     if not target_path.exists():
         state_group.pop(bridge_name, None)
         return "unchanged", target_path.as_posix(), None
@@ -960,8 +1099,8 @@ def prune_stale_managed_file_copy(
             ),
         )
 
-    current_hash = sha256_path(target_path)
-    if current_hash != expected_hash:
+    current_hashes = hash_state_from_path(target_path)
+    if not hash_matches_expected(current_hashes, expected_hashes):
         return (
             "skipped",
             (
@@ -1036,7 +1175,8 @@ def prune_stale_managed_directory_copy(
                     f"and was not removed: {target_root.as_posix()}."
                 ),
             )
-        if sha256_path(target_file) != expected_hashes[relative_path]:
+        current_hashes = hash_state_from_path(target_file)
+        if not hash_matches_expected(current_hashes, expected_hashes[relative_path]):
             return (
                 "skipped",
                 (

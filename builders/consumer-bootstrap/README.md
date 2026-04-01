@@ -15,7 +15,15 @@ Usage:
 Bridge mode note:
 - bootstrap now writes managed copies for agent and skill bridges by default
 - rerun bootstrap after updating `.codex/vendor/packetflow_foundry` to refresh managed copies that were not modified locally
+- bootstrap tracks both raw and LF-normalized hashes in `bridge-state.json` so CRLF/LF-only drift does not force a refresh or local-modification skip
 - `--bridge-mode copy-on-fail` remains accepted as a deprecated compatibility alias for `copy`
+
+Recommended vendor update flow:
+- `git subtree pull --prefix=.codex/vendor/packetflow_foundry packetflow_foundry <upstream-branch> --squash`
+- rerun `python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py`
+- run the relevant consumer smoke test(s)
+- inspect the resulting diff
+- commit the subtree update and bootstrap refresh together
 
 Behavior:
 - creates or appends repo-root `.gitignore` with `.codex/tmp/`
@@ -24,10 +32,12 @@ Behavior:
 - reserves `.codex/project/profiles/<skill-name>/profile.json` for skill-specific project-local overrides
 - ensures repo-root `.codex/agents/` exists as the consumer subagent discovery surface
 - copies vendored foundry agent TOMLs from `.codex/vendor/packetflow_foundry/.codex/agents/<agent>.toml` into repo-root `.codex/agents/<agent>.toml`
+- bootstrap-copied entries under `.codex/agents/` are managed bootstrap artifacts; update the vendor source or replace them with a project-local entry, then rerun bootstrap instead of patching the copied artifact in place
 - skips agent bridge creation when a root `.codex/agents/<agent>.toml` entry already exists
 - copies legacy `.codex/project/agents/<agent>.toml` only as a migration shim and emits a deprecation notice
 - ensures repo-root `.agents/skills/` exists as the consumer discovery surface
 - copies vendored foundry thin wrappers into repo-root `.agents/skills/<skill-name>` and rewrites wrapper `SKILL.md` references so retained kernels still resolve under `.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/<skill-name>`
+- bootstrap-copied entries under `.agents/skills/` are managed bootstrap artifacts; update the vendor source or replace them with a project-local entry, then rerun bootstrap instead of patching the copied artifact in place
 - skips bridge creation when a root `.agents/skills/<skill-name>` entry already exists
 - copies legacy `.codex/project/skills/<skill-name>` only as a migration shim and emits a deprecation notice
 - creates or appends `.codex/AGENTS.md`

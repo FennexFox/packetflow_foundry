@@ -167,6 +167,16 @@ def relative_files(root: Path) -> list[str]:
     )
 
 
+def rewrite_line_endings(path: Path, newline: bytes) -> None:
+    content = path.read_bytes()
+    normalized = content.replace(b"\r\n", b"\n").replace(b"\r", b"\n")
+    path.write_bytes(normalized.replace(b"\n", newline))
+
+
+def alternate_newline(content: bytes) -> bytes:
+    return b"\n" if b"\r\n" in content else b"\r\n"
+
+
 class ConsumerBootstrapTests(unittest.TestCase):
     def test_script_compiles(self) -> None:
         py_compile.compile(
@@ -597,8 +607,19 @@ class ConsumerBootstrapTests(unittest.TestCase):
                 (repo / bootstrap.BRIDGE_STATE_RELATIVE).read_text(encoding="utf-8")
             )
             self.assertEqual(bridge_state["kind"], bootstrap.BRIDGE_STATE_KIND)
+            self.assertEqual(bridge_state["version"], bootstrap.BRIDGE_STATE_VERSION)
             self.assertIn("vendor-agent.toml", bridge_state["agents"])
             self.assertIn("vendor-skill", bridge_state["skills"])
+            self.assertIn("raw_sha256", bridge_state["agents"]["vendor-agent.toml"])
+            self.assertIn("lf_sha256", bridge_state["agents"]["vendor-agent.toml"])
+            self.assertIn(
+                "raw_sha256",
+                bridge_state["skills"]["vendor-skill"]["files"]["SKILL.md"],
+            )
+            self.assertIn(
+                "lf_sha256",
+                bridge_state["skills"]["vendor-skill"]["files"]["SKILL.md"],
+            )
 
     def test_copy_refreshes_managed_copies_when_vendor_changes(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -654,6 +675,39 @@ class ConsumerBootstrapTests(unittest.TestCase):
                 copied_skill.read_text(encoding="utf-8"),
                 'display_name: "Updated"\n',
             )
+
+    def test_copy_ignores_line_ending_only_target_changes_on_rerun(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["vendor-skill"],
+                vendor_agent_names=["vendor-agent"],
+            )
+
+            first_code, _, _, _ = run_bootstrap_main(repo)
+            self.assertEqual(first_code, 0)
+
+            copied_agent = repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE / "vendor-agent.toml"
+            copied_skill = (
+                repo / bootstrap.ROOT_SKILLS_RELATIVE / "vendor-skill" / "agents" / "openai.yaml"
+            )
+
+            rewrite_line_endings(copied_agent, alternate_newline(copied_agent.read_bytes()))
+            rewrite_line_endings(copied_skill, alternate_newline(copied_skill.read_bytes()))
+            expected_agent_bytes = copied_agent.read_bytes()
+            expected_skill_bytes = copied_skill.read_bytes()
+
+            code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertNotIn("refreshed copied agent bridge:", stdout)
+            self.assertNotIn("refreshed copied skill bridge:", stdout)
+            self.assertNotIn("skipped agent bridge:", stdout)
+            self.assertNotIn("skipped skill bridge:", stdout)
+            self.assertEqual(stderr.strip(), "")
+            self.assertEqual(copied_agent.read_bytes(), expected_agent_bytes)
+            self.assertEqual(copied_skill.read_bytes(), expected_skill_bytes)
 
     def test_sync_managed_file_copy_recreates_missing_target_once(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1359,21 +1413,21 @@ class ConsumerBootstrapTests(unittest.TestCase):
             shutil.rmtree(vendor_skill)
 
             real_is_symlink = Path.is_symlink
-            real_sha256_path = bootstrap.sha256_path
+            real_hash_state_from_path = bootstrap.hash_state_from_path
 
             def fake_is_symlink(path: Path) -> bool:
                 if path == copied_skill:
                     return True
                 return real_is_symlink(path)
 
-            def fake_sha256_path(path: Path) -> str:
+            def fake_hash_state_from_path(path: Path) -> dict[str, str]:
                 if path == copied_skill:
                     raise OSError("symlink targets should not be hashed during prune")
-                return real_sha256_path(path)
+                return real_hash_state_from_path(path)
 
             with (
                 mock.patch.object(Path, "is_symlink", fake_is_symlink),
-                mock.patch.object(bootstrap, "sha256_path", fake_sha256_path),
+                mock.patch.object(bootstrap, "hash_state_from_path", fake_hash_state_from_path),
             ):
                 code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
 
@@ -1386,6 +1440,81 @@ class ConsumerBootstrapTests(unittest.TestCase):
                 (repo / bootstrap.BRIDGE_STATE_RELATIVE).read_text(encoding="utf-8")
             )
             self.assertIn("vendor-skill", bridge_state["skills"])
+
+    def test_copy_migrates_legacy_hash_state_for_line_ending_only_source_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["vendor-skill"],
+                vendor_agent_names=["vendor-agent"],
+            )
+
+            first_code, _, _, _ = run_bootstrap_main(repo)
+            self.assertEqual(first_code, 0)
+
+            state_path = repo / bootstrap.BRIDGE_STATE_RELATIVE
+            bridge_state = json.loads(state_path.read_text(encoding="utf-8"))
+            agent_state = bridge_state["agents"]["vendor-agent.toml"]
+            agent_state.pop("raw_sha256", None)
+            agent_state.pop("lf_sha256", None)
+            for metadata in bridge_state["skills"]["vendor-skill"]["files"].values():
+                metadata.pop("raw_sha256", None)
+                metadata.pop("lf_sha256", None)
+            state_path.write_text(json.dumps(bridge_state, indent=2), encoding="utf-8")
+
+            vendor_agent = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".codex"
+                / "agents"
+                / "vendor-agent.toml"
+            )
+            vendor_skill = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".agents"
+                / "skills"
+                / "vendor-skill"
+                / "agents"
+                / "openai.yaml"
+            )
+            copied_agent = repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE / "vendor-agent.toml"
+            copied_skill = (
+                repo / bootstrap.ROOT_SKILLS_RELATIVE / "vendor-skill" / "agents" / "openai.yaml"
+            )
+            expected_agent_bytes = copied_agent.read_bytes()
+            expected_skill_bytes = copied_skill.read_bytes()
+
+            rewrite_line_endings(vendor_agent, alternate_newline(vendor_agent.read_bytes()))
+            rewrite_line_endings(vendor_skill, alternate_newline(vendor_skill.read_bytes()))
+
+            code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertNotIn("refreshed copied agent bridge:", stdout)
+            self.assertNotIn("refreshed copied skill bridge:", stdout)
+            self.assertNotIn("skipped agent bridge:", stdout)
+            self.assertNotIn("skipped skill bridge:", stdout)
+            self.assertEqual(stderr.strip(), "")
+            self.assertEqual(copied_agent.read_bytes(), expected_agent_bytes)
+            self.assertEqual(copied_skill.read_bytes(), expected_skill_bytes)
+
+            migrated_state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertIn("raw_sha256", migrated_state["agents"]["vendor-agent.toml"])
+            self.assertIn("lf_sha256", migrated_state["agents"]["vendor-agent.toml"])
+            self.assertIn(
+                "raw_sha256",
+                migrated_state["skills"]["vendor-skill"]["files"]["agents/openai.yaml"],
+            )
+            self.assertIn(
+                "lf_sha256",
+                migrated_state["skills"]["vendor-skill"]["files"]["agents/openai.yaml"],
+            )
 
     def test_missing_vendor_subtree_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

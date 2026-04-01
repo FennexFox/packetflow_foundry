@@ -125,8 +125,21 @@ python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init
 ```
 
 Bootstrap now writes managed copies into repo-root `.codex/agents/` and `.agents/skills/`.
+Those bootstrap-copied entries are managed artifacts only when they came from the
+vendor subtree; do not patch those copied artifacts in place. Update the vendor source
+or replace the entry with a project-local one, then rerun bootstrap.
 After updating `.codex/vendor/packetflow_foundry`, rerun the same bootstrap command to
 refresh those managed copies while leaving locally modified copies untouched.
+
+Recommended update flow:
+
+```text
+git subtree pull --prefix=.codex/vendor/packetflow_foundry packetflow_foundry <upstream-branch> --squash
+python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py
+<run the relevant consumer smoke test(s)>
+git diff
+git commit
+```
 
 Bootstrap behavior:
 - repo-root `.gitignore` is created or appended so `.codex/tmp/` stays ignored
@@ -140,6 +153,7 @@ Bootstrap behavior:
 - vendored foundry thin skill wrappers are copied into root `.agents/skills/` unless a root entry already exists
 - copied skill wrappers keep resolving authoritative retained kernels from `.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/`
 - rerunning bootstrap refreshes managed copies that still match the last managed state
+- `bridge-state.json` stores both raw and LF-normalized hashes so CRLF/LF-only drift does not trigger a refresh or local-modification warning
 - `--bridge-mode copy-on-fail` is retained only as a deprecated compatibility alias for `copy`
 - legacy `.codex/project/agents/` entries are bridged only as a migration shim and should be moved to `.codex/agents/`
 - legacy `.codex/project/skills/` entries are bridged only as a migration shim and should be moved to root `.agents/skills/`
