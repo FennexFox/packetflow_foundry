@@ -38,6 +38,50 @@ from review_thread_packet_contract import (
 SNIPPET_RADIUS = 12
 DIFF_SNIPPET_CHAR_LIMIT = 2200
 DIFF_HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@", re.MULTILINE)
+REQUEST_ANCHOR_RE = re.compile(r"`([^`]+)`|\"([^\"]+)\"|'([^']+)'")
+REQUEST_ANCHOR_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "as",
+        "at",
+        "be",
+        "by",
+        "change",
+        "clarify",
+        "consider",
+        "ensure",
+        "fix",
+        "for",
+        "from",
+        "here",
+        "in",
+        "into",
+        "it",
+        "keep",
+        "less",
+        "make",
+        "more",
+        "of",
+        "on",
+        "or",
+        "please",
+        "prefer",
+        "remove",
+        "rename",
+        "switch",
+        "that",
+        "the",
+        "there",
+        "this",
+        "tighten",
+        "to",
+        "update",
+        "use",
+        "with",
+    }
+)
 GENERATED_FILE_PATTERNS = (
     re.compile(r"(^|/)(bin|obj|dist|build|coverage|generated|gen)/"),
     re.compile(r"\.(g|generated)\.[^.]+$"),
@@ -297,6 +341,13 @@ def normalized_headline(body: str) -> str:
     return clean_headline_line(body)[:160]
 
 
+def normalize_text_for_matching(text: str | None) -> str:
+    if not text:
+        return ""
+    normalized_lines = [clean_headline_line(line) for line in str(text).splitlines()]
+    return " ".join(line for line in normalized_lines if line).strip()
+
+
 def reviewer_headline(thread: dict[str, Any]) -> str:
     reviewer_comment = thread.get("reviewer_comment") or {}
     return normalized_headline(str(reviewer_comment.get("body") or ""))
@@ -317,6 +368,47 @@ def list_of_strings(value: Any) -> list[str]:
     if isinstance(value, str):
         return [value.strip()] if value.strip() else []
     return [str(value).strip()] if str(value).strip() else []
+
+
+def match_terms(text: str | None) -> list[str]:
+    normalized = normalize_text_for_matching(text)
+    terms: list[str] = []
+    for raw_token in re.findall(r"[a-z0-9_./-]+", normalized):
+        token = raw_token.strip(".-/")
+        if len(token) >= 3 and token not in REQUEST_ANCHOR_STOPWORDS:
+            terms.append(token)
+    return terms
+
+
+def request_anchor_evidence(
+    reviewer_body: str,
+    *,
+    snippet: str | None,
+    diff_snippet: str | None,
+) -> tuple[bool, list[str], list[str], list[str]]:
+    evidence_text = normalize_text_for_matching("\n".join(part for part in (snippet, diff_snippet) if part))
+    if not evidence_text:
+        return False, [], [], []
+
+    exact_anchors = [
+        normalized
+        for normalized in (
+            normalize_text_for_matching(next(group for group in match.groups() if group))
+            for match in REQUEST_ANCHOR_RE.finditer(reviewer_body)
+        )
+        if normalized
+    ]
+    matched_exact_anchors = [anchor for anchor in exact_anchors if anchor in evidence_text]
+    if exact_anchors:
+        return bool(matched_exact_anchors), exact_anchors, matched_exact_anchors, []
+
+    requested_terms = sorted(dict.fromkeys(match_terms(reviewer_body)))
+    if len(requested_terms) < 2:
+        return False, [], [], requested_terms
+
+    evidence_terms = set(match_terms(evidence_text))
+    matched_terms = [term for term in requested_terms if term in evidence_terms]
+    return len(matched_terms) >= 2, [], [], matched_terms
 
 
 def comment_summary(comment: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -437,6 +529,14 @@ def build_outdated_recheck(
         previous_thread=previous_thread,
         current_thread=thread,
     )
+    reviewer_body = str(
+        (thread.get("reviewer_comment") or previous_thread.get("reviewer_comment") or {}).get("body") or ""
+    ).strip()
+    request_anchor_visible, exact_anchors, matched_exact_anchors, matched_terms = request_anchor_evidence(
+        reviewer_body,
+        snippet=file_context.get("snippet"),
+        diff_snippet=file_context.get("diff_snippet"),
+    )
 
     if accepted_thread is None:
         verdict = "still-applies"
@@ -453,6 +553,9 @@ def build_outdated_recheck(
     elif not current_head_visible:
         verdict = "ambiguous"
         verdict_reason = "missing_current_head_evidence"
+    elif not request_anchor_visible:
+        verdict = "ambiguous"
+        verdict_reason = "missing_request_anchor_evidence"
     else:
         verdict = "auto-accept"
         verdict_reason = "accepted_same_run_with_current_head_evidence"
@@ -489,6 +592,10 @@ def build_outdated_recheck(
             "snippet": file_context.get("snippet"),
             "diff_snippet": file_context.get("diff_snippet"),
             "evidence_visible": current_head_visible,
+            "request_anchor_visible": request_anchor_visible,
+            "exact_request_anchors": exact_anchors,
+            "matched_exact_request_anchors": matched_exact_anchors,
+            "matched_request_terms": matched_terms,
         },
         "resolution_verdict": verdict,
         "verdict_reason": verdict_reason,

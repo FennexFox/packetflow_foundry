@@ -508,6 +508,113 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertEqual(build_result["outdated_auto_resolve_candidates"], 0)
             self.assertEqual(build_result["outdated_recheck_ambiguous"], 1)
 
+    def test_same_run_outdated_transition_requires_request_anchor_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            previous_threads = [
+                review_thread(
+                    thread_id="t-1",
+                    path="docs/guide.md",
+                    line=2,
+                    reviewer_login="reviewer-a",
+                    reviewer_body="Please use the current wording.",
+                )
+            ]
+            current_threads = [
+                review_thread(
+                    thread_id="t-1",
+                    path="docs/guide.md",
+                    line=2,
+                    reviewer_login="reviewer-a",
+                    reviewer_body="Please use the current wording.",
+                    is_outdated=True,
+                )
+            ]
+            previous_context = context_with_threads(tmp, previous_threads)
+            current_context = context_with_threads(tmp, current_threads)
+            repo_root = Path(current_context["repo_root"])
+            (repo_root / "docs" / "guide.md").write_text(
+                "# Guide\nFresh intro\n",
+                encoding="utf-8",
+            )
+            for context in (previous_context, current_context):
+                context["changed_files"] = ["docs/guide.md"]
+                context["changed_file_groups"]["runtime"] = {"count": 0, "sample_files": []}
+                context["changed_file_groups"]["docs"] = {
+                    "count": 1,
+                    "sample_files": ["docs/guide.md"],
+                }
+                context["context_fingerprint"] = build_context_fingerprint(context)
+
+            previous_context_path = tmp / "previous-context.json"
+            context_path = tmp / "context.json"
+            reconciliation_input_path = tmp / "reconciliation-input.json"
+            output_dir = tmp / "packets"
+            build_result_path = tmp / "build-result.json"
+            write_json(previous_context_path, previous_context)
+            write_json(context_path, current_context)
+            write_json(
+                reconciliation_input_path,
+                {
+                    "accepted_threads": [
+                        {
+                            "thread_id": "t-1",
+                            "validation_commands": ["python -m pytest tests/test_docs.py"],
+                        }
+                    ]
+                },
+            )
+
+            argv = [
+                "build_review_packets.py",
+                "--context",
+                str(context_path),
+                "--previous-context",
+                str(previous_context_path),
+                "--reconciliation-input",
+                str(reconciliation_input_path),
+                "--repo-root",
+                current_context["repo_root"],
+                "--output-dir",
+                str(output_dir),
+                "--result-output",
+                str(build_result_path),
+            ]
+
+            def fake_diff_snippet(
+                repo_root: Path,
+                base_ref: str | None,
+                head_ref: str | None,
+                path: str,
+                line_number: int | None,
+                cache: dict[str, str | None],
+            ) -> str | None:
+                if path == "docs/guide.md":
+                    return "@@ -1,2 +1,2 @@\n # Guide\n-Old intro\n+Fresh intro\n"
+                return None
+
+            with patch.object(sys, "argv", argv), patch.object(
+                packets,
+                "diff_snippet_for_path",
+                side_effect=fake_diff_snippet,
+            ):
+                self.assertEqual(packets.main(), 0)
+
+            transitioned_packet = json.loads((output_dir / "thread-01.json").read_text(encoding="utf-8"))
+            build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(transitioned_packet["outdated_recheck"]["resolution_verdict"], "ambiguous")
+            self.assertEqual(
+                transitioned_packet["outdated_recheck"]["verdict_reason"],
+                "missing_request_anchor_evidence",
+            )
+            self.assertTrue(transitioned_packet["outdated_recheck"]["current_head_evidence"]["evidence_visible"])
+            self.assertFalse(
+                transitioned_packet["outdated_recheck"]["current_head_evidence"]["request_anchor_visible"]
+            )
+            self.assertEqual(build_result["outdated_auto_resolve_candidates"], 0)
+            self.assertEqual(build_result["outdated_recheck_ambiguous"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()
