@@ -10,6 +10,11 @@ Usage:
 - `python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py`
 - `python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py --repo-root <project-root>`
 
+Windows note:
+- this helper creates filesystem symlinks for agent and skill bridges
+- run it from an elevated PowerShell window (`Run as Administrator`) unless Windows Developer Mode is enabled
+- without symlink permission, bootstrap can create early scaffold outputs and then abort on the first bridge
+
 Behavior:
 - creates `.codex/project/profiles/default/profile.json`
 - reserves `.codex/project/profiles/<skill-name>/profile.json` for skill-specific project-local overrides
@@ -26,4 +31,4 @@ Behavior:
 - appends a short PacketFlow Foundry note to root `AGENTS.md` only when that file already exists
 - keeps `AGENTS.md` handling append-only
 - aborts the entire run when any tracked non-`AGENTS.md` scaffold output already exists
-- aborts on symlink creation failure instead of copying skills
+- aborts on symlink creation failure instead of silently copying bridges

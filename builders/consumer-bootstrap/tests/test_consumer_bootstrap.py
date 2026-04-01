@@ -457,6 +457,7 @@ class ConsumerBootstrapTests(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertIn("Failed to create directory symlink", stderr)
             self.assertIn("Enable Windows Developer Mode", stderr)
+            self.assertIn("elevated PowerShell", stderr)
 
     def test_missing_vendor_subtree_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

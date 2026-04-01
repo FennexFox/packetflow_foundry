@@ -309,8 +309,9 @@ def create_symlink(link_path: Path, source_path: Path, *, is_directory: bool) ->
         raise RuntimeError(
             f"Failed to create {kind} symlink "
             f"{link_path.as_posix()} -> {source_path.as_posix()}. "
-            "Enable Windows Developer Mode or run the bootstrap with permissions "
-            "that allow symbolic links."
+            "Enable Windows Developer Mode or rerun bootstrap from an elevated "
+            "PowerShell window (Run as Administrator). Otherwise run with "
+            "permissions that allow symbolic links."
         ) from exc
     return f"{link_path.as_posix()} -> {source_path.as_posix()}"
 

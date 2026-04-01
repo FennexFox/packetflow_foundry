@@ -124,6 +124,10 @@ git subtree add --prefix=.codex/vendor/packetflow_foundry packetflow_foundry mas
 python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py
 ```
 
+On Windows, bootstrap creates filesystem symlinks for `.codex/agents/` and `.agents/skills/`.
+Run it from an elevated PowerShell window (`Run as Administrator`) unless Windows Developer
+Mode is enabled.
+
 Bootstrap behavior:
 - root `AGENTS.md` and `.codex/AGENTS.md` are append-only targets
 - repo-root `.codex/agents/` is the canonical project-scoped subagent discovery surface
