@@ -1,0 +1,4 @@
+interface:
+  display_name: "Reword Head Commit"
+  short_description: "Rewrite only the current HEAD commit message"
+  default_prompt: "Use $reword-head-commit to rewrite only the current HEAD commit message to the repo rules."

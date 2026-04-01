@@ -1,6 +1,6 @@
 ---
 name: reword-recent-commits
-description: Rewrite or reword the latest n Git commit messages to the active repository's commit-message rules. Use when Codex needs to inspect repo-specific commit guidance, draft replacement commit messages for recent local commits, and optionally apply the rewrite safely without hand-driving an interactive rebase. Keep orchestration, final message synthesis, confirmation, and ref updates local while offloading narrow read-only packet analysis to gpt-5.4-mini workers when the rewrite spans multiple commits or areas.
+description: Rewrite or reword a recent range of Git commit messages to the active repository's commit-message rules. Use when Codex needs replay-style safety, packet/audit artifacts, or anything broader than a trivial HEAD-only amend path.
 ---
 
 # Reword Recent Commits
@@ -18,8 +18,18 @@ Boundary:
 - Keep reusable packet-workflow semantics in `references/core-contract.md`.
 - Keep default repo bindings and review-doc ownership in `profiles/default/profile.json`.
 - Keep vendored repo overrides data-only in `.codex/project/profiles/`.
+- Keep the trivial HEAD-only amend path in `reword-head-commit`; this skill
+  remains the fuller replay-based workflow.
 
 Read `references/architecture-note.md` before changing the packet/result model or the flat/generic contract.
+
+## Decision Guide
+
+- Use `reword-head-commit` when the target is exactly `HEAD`, the worktree is
+  clean, repo guidance is explicit, and no packet/audit trail is needed.
+- Use `reword-recent-commits` when `count > 1`, the target is not exactly
+  `HEAD`, the repo rules are only derived or fallback, or replay-style safety
+  is preferred over a direct amend.
 
 ## Execution Roots
 
@@ -40,13 +50,15 @@ Read `references/architecture-note.md` before changing the packet/result model o
 - Add `--apply` only after confirmation. Without `--apply`, the driver validates and runs `apply_reword_plan.py --dry-run`.
 - Use `--temp-root <path>` when `git worktree add` needs a known-writable parent path. Resolution order is `--temp-root`, then `REWORD_RECENT_COMMITS_TEMP_ROOT`, then `~/.codex/tmp/packet-workflow/reword-recent-commits/temp/<repo-name>`.
 - Artifacts default to `<repo-root>/.codex/tmp/packet-workflow/reword-recent-commits/<run-id>`, and the workflow excludes the managed `.codex/tmp/` prefix from dirty-worktree checks.
+- Keep any repo-local temporary, helper, or ad hoc input file for this workflow under `<repo-root>/.codex/tmp/` rather than the repo root or another tracked directory.
 - Read `<artifact-root>/packets/orchestrator.json` first.
 - Keep `<artifact-root>/packets/global_packet.json` in view before reading any focused packet.
 - Read `rules_packet.json` locally before drafting, then keep `rules_packet.json + one commit packet at a time` as the common path.
 - Re-check `rules_packet.json` immediately before confirming the final replacement messages.
 
 2. Follow the review mode from `orchestrator.json`.
-- `local-only`: keep the rewrite fully local.
+- `local-only`: keep the rewrite fully local, but still run the same
+  collect/build/validate/apply driver path. This is not an amend fast path.
 - `targeted-delegation`: use the routed mini workers for `rules_packet.json` and the commit packets.
 - `broad-delegation`: use the routed mini workers and add QA only when findings conflict or the rewrite spans many areas.
 - Treat `packet_worker_map` as the routing authority and `preferred_worker_families` as explanatory metadata.
