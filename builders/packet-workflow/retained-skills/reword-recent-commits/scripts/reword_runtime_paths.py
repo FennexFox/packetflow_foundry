@@ -13,6 +13,7 @@ from typing import Mapping
 
 
 ARTIFACT_NAMESPACE = Path(".codex") / "tmp" / "packet-workflow" / "reword-recent-commits"
+CODEX_TMP_NAMESPACE = Path(".codex") / "tmp"
 SMOKE_ROOT_RELATIVE = ARTIFACT_NAMESPACE / "smoke"
 EXCLUDE_PATTERN = ".codex/tmp/"
 TEMP_ROOT_ENV_VAR = "REWORD_RECENT_COMMITS_TEMP_ROOT"
@@ -50,6 +51,25 @@ def resolve_runtime_namespace_root(repo_root: Path) -> Path:
     return resolve_repo_path(repo_root, ARTIFACT_NAMESPACE)
 
 
+def resolve_repo_codex_tmp_root(repo_root: Path) -> Path:
+    return resolve_repo_path(repo_root, CODEX_TMP_NAMESPACE)
+
+
+def enforce_repo_local_codex_tmp_path(repo_root: Path, path: Path, *, label: str) -> Path:
+    resolved = path.expanduser().resolve()
+    repo_root_resolved = resolve_repo_root(repo_root)
+    try:
+        resolved.relative_to(repo_root_resolved)
+    except ValueError:
+        return resolved
+    repo_codex_tmp = resolve_repo_codex_tmp_root(repo_root_resolved)
+    try:
+        resolved.relative_to(repo_codex_tmp)
+    except ValueError as exc:
+        raise RuntimeError(f"{label} paths inside the repo must live under .codex/tmp/") from exc
+    return resolved
+
+
 def resolve_smoke_root(workspace_root: Path | None = None) -> Path:
     base_root = workspace_root.resolve() if workspace_root is not None else Path.cwd().resolve()
     smoke_root = (base_root / SMOKE_ROOT_RELATIVE).resolve()
@@ -75,7 +95,7 @@ def resolve_artifact_root(
     artifacts_dir: Path | None = None,
 ) -> Path:
     if artifacts_dir is not None:
-        return artifacts_dir.expanduser().resolve()
+        return enforce_repo_local_codex_tmp_path(repo_root, artifacts_dir, label="artifacts-dir")
     return (resolve_runtime_namespace_root(repo_root) / run_id).resolve()
 
 
@@ -87,7 +107,7 @@ def resolve_existing_artifact_root(
 ) -> Path:
     if artifacts_dir is not None:
         return resolve_artifact_root(repo_root, run_id="unused", artifacts_dir=artifacts_dir)
-    return messages_file.resolve().parent
+    return enforce_repo_local_codex_tmp_path(repo_root, messages_file, label="messages-file").parent
 
 
 def build_run_id(now: datetime | None = None) -> str:
@@ -102,11 +122,17 @@ def resolve_temp_root(
     env: Mapping[str, str] | None = None,
 ) -> tuple[Path, str]:
     if cli_temp_root is not None:
-        return cli_temp_root.expanduser().resolve(), "cli"
+        resolved = cli_temp_root.expanduser().resolve()
+        if repo_root is not None:
+            resolved = enforce_repo_local_codex_tmp_path(repo_root, resolved, label="temp-root")
+        return resolved, "cli"
     environment = env if env is not None else os.environ
     env_value = str(environment.get(TEMP_ROOT_ENV_VAR) or "").strip()
     if env_value:
-        return Path(env_value).expanduser().resolve(), "env"
+        resolved = Path(env_value).expanduser().resolve()
+        if repo_root is not None:
+            resolved = enforce_repo_local_codex_tmp_path(repo_root, resolved, label=TEMP_ROOT_ENV_VAR)
+        return resolved, "env"
     base_root = resolve_repo_root(repo_root) if repo_root is not None else Path.cwd().resolve()
     return (
         Path.home()

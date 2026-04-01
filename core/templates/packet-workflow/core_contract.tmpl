@@ -22,6 +22,15 @@ Consumer repos should prefer `.codex/project/profiles/__SKILL_NAME__/profile.jso
 __TASK_PACKET_BULLETS__
 __PROFILE_RUNTIME_ARTIFACTS__
 
+## Shared Repo-Local Temporary File Policy
+
+- Use `.codex/tmp/` as the canonical gitignored repo-local scratch tree for
+  temporary, helper, runtime-artifact, and ad hoc operator-input files.
+- If a transient file must live inside the repo, place it under `.codex/tmp/`
+  rather than the repo root or another tracked directory.
+- Evaluation logs may default outside the repo under `~/.codex/tmp/`; if a
+  repo-local fallback is required, keep it under `.codex/tmp/` as well.
+
 Review mode overrides inherited by default:
 __REVIEW_MODE_OVERRIDES_BULLETS__
 

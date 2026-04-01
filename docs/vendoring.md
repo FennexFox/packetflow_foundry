@@ -47,6 +47,7 @@ refresh those managed copies while leaving locally modified copies untouched.
 
 Bootstrap notes:
 - repo-root `.gitignore` is created or appended so `.codex/tmp/` stays ignored
+- repo-local temporary, helper, scratch, and ad hoc operator-input files belong under `.codex/tmp/`, not at repo root or in tracked source directories
 - root `AGENTS.md` and `.codex/AGENTS.md` are append-only targets
 - repo-root `.codex/agents/` is the canonical consumer subagent location
 - `.codex/project/profiles/default/profile.json` is a project-local scaffold, not a reusable foundry overlay

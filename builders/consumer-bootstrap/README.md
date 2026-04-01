@@ -19,6 +19,7 @@ Bridge mode note:
 
 Behavior:
 - creates or appends repo-root `.gitignore` with `.codex/tmp/`
+- reserves `.codex/tmp/` as the repo-local scratch tree for temporary, helper, runtime-artifact, and ad hoc operator-input files that are not meant to be tracked
 - creates `.codex/project/profiles/default/profile.json`
 - reserves `.codex/project/profiles/<skill-name>/profile.json` for skill-specific project-local overrides
 - ensures repo-root `.codex/agents/` exists as the consumer subagent discovery surface

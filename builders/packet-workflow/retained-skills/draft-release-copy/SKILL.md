@@ -119,7 +119,7 @@ This is a packet-driven repo workflow skill:
 - Use `phase` updates for deterministic lint, validate, and apply results when those outputs exist.
 - Use `finalize` after the run to merge token usage, actual worker mix, final usability, outputs, and notes.
 - Keep the evaluation log at the contract-default outside-repo path unless you intentionally need the gitignored `.codex/tmp/` fallback.
-- Keep packet artifacts and other helper temp files under the fixed gitignored `.codex/tmp/packet-workflow/` root.
+- Keep any repo-local temporary, helper, scratch, or ad hoc input file under the fixed gitignored `.codex/tmp/` tree; packet artifacts stay under `.codex/tmp/packet-workflow/`.
 - Read `references/evaluation-log-contract.md` for the shared envelope and `references/release_copy-evaluation-contract.md` for workflow-specific fields.
 
 ## Scripts

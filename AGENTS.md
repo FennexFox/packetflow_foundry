@@ -20,6 +20,10 @@ Repo-specific profiles belong in `.codex/project/profiles/`, repo-specific skill
   - This is the reusable default set shipped by the foundry, not a claim that every consumer project must use only these agents.
   - When vendored, bridge the foundry defaults into the consumer repo-root `.codex/agents/`.
   - Legacy `.codex/project/agents/` entries are migration-only and should move to `.codex/agents/`.
+- `.codex/tmp/`
+  - Gitignored repo-local scratch tree for temporary, helper, runtime-artifact, and ad hoc operator-input files that are not meant to be tracked.
+  - If a workflow needs a repo-local temp file, keep it under `.codex/tmp/` rather than the repo root or another tracked directory.
+  - Packet-workflow artifacts belong under `.codex/tmp/packet-workflow/`; repo-local evaluation-log fallbacks belong under `.codex/tmp/evaluation_logs/`.
 - `core/`
   - Authoritative home for cross-project behavior semantics, contracts, templates, and shared defaults.
 - `profiles/`

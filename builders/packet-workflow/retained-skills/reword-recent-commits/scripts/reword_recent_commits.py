@@ -13,6 +13,7 @@ from typing import Any
 
 from reword_runtime_paths import (
     build_run_id,
+    enforce_repo_local_codex_tmp_path,
     ensure_repo_codex_tmp_excluded,
     resolve_artifact_root,
     resolve_existing_artifact_root,
@@ -426,12 +427,28 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repo", type=Path, default=Path.cwd(), help="Repository path. Defaults to the current directory.")
     parser.add_argument("--count", type=int, help="Number of recent commits to reword.")
     parser.add_argument("--prepare-only", action="store_true", help="Collect artifacts and write message-template.json.")
-    parser.add_argument("--messages-file", type=Path, help="Path to a filled message-template JSON payload.")
+    parser.add_argument(
+        "--messages-file",
+        type=Path,
+        help="Path to a filled message-template JSON payload. Repo-local temp inputs must live under .codex/tmp/.",
+    )
     parser.add_argument("--dry-run", action="store_true", help="Validate and run apply_reword_plan.py in dry-run mode.")
     parser.add_argument("--apply", action="store_true", help="Apply the validated rewrite plan.")
-    parser.add_argument("--artifacts-dir", type=Path, help="Optional artifact directory override.")
-    parser.add_argument("--temp-root", type=Path, help="Optional temp worktree parent directory override.")
-    parser.add_argument("--final-observations", type=Path, help="Optional JSON payload merged before evaluation finalize.")
+    parser.add_argument(
+        "--artifacts-dir",
+        type=Path,
+        help="Optional artifact directory override. Repo-local overrides must live under .codex/tmp/.",
+    )
+    parser.add_argument(
+        "--temp-root",
+        type=Path,
+        help="Optional temp worktree parent directory override. Repo-local overrides must live under .codex/tmp/.",
+    )
+    parser.add_argument(
+        "--final-observations",
+        type=Path,
+        help="Optional JSON payload merged before evaluation finalize. Repo-local ad hoc inputs must live under .codex/tmp/.",
+    )
     return parser.parse_args()
 
 
@@ -483,29 +500,45 @@ def main() -> int:
         validate_args(args)
         repo_root = resolve_repo_root(Path(args.repo).resolve())
         ensure_repo_codex_tmp_excluded(repo_root)
+        artifacts_dir = (
+            enforce_repo_local_codex_tmp_path(repo_root, args.artifacts_dir, label="artifacts-dir")
+            if args.artifacts_dir
+            else None
+        )
+        temp_root = (
+            enforce_repo_local_codex_tmp_path(repo_root, args.temp_root, label="temp-root")
+            if args.temp_root
+            else None
+        )
+        final_observations = (
+            enforce_repo_local_codex_tmp_path(repo_root, args.final_observations, label="final-observations")
+            if args.final_observations
+            else None
+        )
         if args.prepare_only:
             artifact_root = resolve_artifact_root(
                 repo_root,
                 run_id=build_run_id(),
-                artifacts_dir=args.artifacts_dir,
+                artifacts_dir=artifacts_dir,
             )
             emit(prepare(repo_root, int(args.count), artifact_root))
             return 0
 
         assert args.messages_file is not None
+        messages_file = enforce_repo_local_codex_tmp_path(repo_root, args.messages_file, label="messages-file")
         artifact_root = resolve_existing_artifact_root(
             repo_root,
-            messages_file=args.messages_file,
-            artifacts_dir=args.artifacts_dir,
+            messages_file=messages_file,
+            artifacts_dir=artifacts_dir,
         )
         summary = execute_messages_flow(
             repo_root,
             artifact_root,
-            args.messages_file.resolve(),
+            messages_file,
             apply_changes=bool(args.apply),
             dry_run_requested=bool(args.dry_run),
-            temp_root=args.temp_root,
-            final_observations=args.final_observations.resolve() if args.final_observations else None,
+            temp_root=temp_root,
+            final_observations=final_observations,
         )
         emit(summary)
         return 0 if summary["status"] in {"ok", "dry-run"} else 1

@@ -735,10 +735,19 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 "~/.codex/tmp/evaluation_logs/packet-explorer-smoke/<run-id>.json",
                 skill_md,
             )
+            self.assertIn(
+                "temporary, helper, scratch, or ad hoc operator-input file",
+                skill_md,
+            )
             self.assertIn(".codex/tmp/", skill_md)
             self.assertIn("profiles/sample-repo/profile.json", core_contract)
             self.assertIn(".codex/project/profiles/packet-explorer-smoke/profile.json", core_contract)
             self.assertIn("data-only", core_contract)
+            self.assertIn("## Shared Repo-Local Temporary File Policy", core_contract)
+            self.assertIn(
+                "transient file must live inside the repo, place it under `.codex/tmp/`",
+                core_contract,
+            )
             self.assertIn('display_name: "Packet Explorer Smoke"', agents_yaml)
             self.assertEqual(profile_json["name"], "sample-repo")
             self.assertEqual(
