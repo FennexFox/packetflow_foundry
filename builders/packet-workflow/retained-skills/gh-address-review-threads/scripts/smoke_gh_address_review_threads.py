@@ -86,6 +86,21 @@ def run_json(args: list[str], *, cwd: Path) -> dict[str, Any]:
     return json.loads(output)
 
 
+def run_git(repo_root: Path, *args: str) -> str:
+    result = subprocess.run(
+        ["git", *args],
+        cwd=str(repo_root),
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "git failed")
+    return result.stdout.strip()
+
+
 def read_json(path: Path) -> dict[str, Any]:
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
@@ -175,9 +190,19 @@ def build_synthetic_context(temp_dir: Path) -> tuple[Path, Path, Path, Path]:
         "\n".join(["## Why", "## What changed", "## Testing"]),
         encoding="utf-8",
     )
+    run_git(repo_root, "init", "-b", "main")
+    run_git(repo_root, "config", "user.name", "Codex")
+    run_git(repo_root, "config", "user.email", "codex@example.com")
     (repo_root / "src" / "app.py").write_text("one\ntwo\nthree\nfour\nfive\n", encoding="utf-8")
     (repo_root / "src" / "helper.py").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
-    (repo_root / "docs" / "guide.md").write_text("# Guide\nOriginal wording\nCurrent wording\n", encoding="utf-8")
+    (repo_root / "docs" / "guide.md").write_text("# Guide\nOriginal wording\n", encoding="utf-8")
+    run_git(repo_root, "add", ".")
+    run_git(repo_root, "commit", "--no-gpg-sign", "-m", "fix(repo): seed synthetic review context")
+    run_git(repo_root, "checkout", "-b", "feature/packets")
+    (repo_root / "src" / "helper.py").write_text("alpha\nbeta updated\ngamma\n", encoding="utf-8")
+    (repo_root / "docs" / "guide.md").write_text("# Guide\nCurrent wording\n", encoding="utf-8")
+    run_git(repo_root, "add", "src/helper.py", "docs/guide.md")
+    run_git(repo_root, "commit", "--no-gpg-sign", "-m", "fix(app): apply accepted review changes")
 
     base_context = {
         "repo_root": str(repo_root),
@@ -189,7 +214,7 @@ def build_synthetic_context(temp_dir: Path) -> tuple[Path, Path, Path, Path]:
             "title": "Synthetic review-thread smoke",
             "url": "https://example.invalid/pr/11",
             "state": "OPEN",
-            "headRefName": "feature/synthetic-smoke",
+            "headRefName": "feature/packets",
             "baseRefName": "main",
             "body": synthetic_pr_body(),
             "closingIssuesReferences": [{"number": 55}],

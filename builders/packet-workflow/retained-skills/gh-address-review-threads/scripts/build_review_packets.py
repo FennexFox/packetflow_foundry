@@ -37,6 +37,7 @@ from review_thread_packet_contract import (
 
 SNIPPET_RADIUS = 12
 DIFF_SNIPPET_CHAR_LIMIT = 2200
+DIFF_HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@", re.MULTILINE)
 GENERATED_FILE_PATTERNS = (
     re.compile(r"(^|/)(bin|obj|dist|build|coverage|generated|gen)/"),
     re.compile(r"\.(g|generated)\.[^.]+$"),
@@ -253,8 +254,7 @@ def diff_snippet_for_path(
     if line_number is None or len(full_diff) <= DIFF_SNIPPET_CHAR_LIMIT:
         cache[path] = full_diff[:DIFF_SNIPPET_CHAR_LIMIT].rstrip()
         return cache[path]
-    hunk_pattern = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@", re.MULTILINE)
-    matches = list(hunk_pattern.finditer(full_diff))
+    matches = list(DIFF_HUNK_HEADER_RE.finditer(full_diff))
     selected = None
     for index, match in enumerate(matches):
         start = int(match.group("start"))
@@ -394,6 +394,35 @@ def transitioned_to_outdated(
     return bool(current_thread.get("is_outdated"))
 
 
+def diff_hunk_covers_thread_location(
+    diff_snippet: str | None,
+    *,
+    previous_thread: dict[str, Any],
+    current_thread: dict[str, Any],
+) -> bool:
+    if not isinstance(diff_snippet, str) or not diff_snippet.strip():
+        return False
+    candidate_lines = {
+        int(value)
+        for value in (
+            current_thread.get("line"),
+            current_thread.get("original_line"),
+            previous_thread.get("line"),
+            previous_thread.get("original_line"),
+        )
+        if isinstance(value, int) and value > 0
+    }
+    if not candidate_lines:
+        return False
+    for match in DIFF_HUNK_HEADER_RE.finditer(diff_snippet):
+        start = int(match.group("start"))
+        count = int(match.group("count") or "1")
+        end = start + max(count, 1) + 3
+        if any(start - 3 <= line_number <= end for line_number in candidate_lines):
+            return True
+    return False
+
+
 def build_outdated_recheck(
     *,
     thread: dict[str, Any],
@@ -403,7 +432,11 @@ def build_outdated_recheck(
     accepted_thread: dict[str, Any] | None,
 ) -> dict[str, Any]:
     validation_commands = list(accepted_thread.get("validation_commands") or []) if accepted_thread else []
-    current_head_visible = bool((file_context.get("snippet") or "").strip() or (file_context.get("diff_snippet") or "").strip())
+    current_head_visible = diff_hunk_covers_thread_location(
+        file_context.get("diff_snippet"),
+        previous_thread=previous_thread,
+        current_thread=thread,
+    )
 
     if accepted_thread is None:
         verdict = "still-applies"
