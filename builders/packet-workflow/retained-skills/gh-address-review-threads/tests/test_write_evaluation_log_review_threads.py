@@ -52,6 +52,8 @@ class WriteEvaluationLogReviewThreadsTests(unittest.TestCase):
                 "common_path_sufficient": True,
                 "thread_batch_count": 1,
                 "singleton_thread_packet_count": 2,
+                "outdated_transition_candidates": 1,
+                "outdated_recheck_ambiguous": 1,
                 "thread_counts": {"unresolved": 3, "unresolved_outdated": 1},
                 "packet_metrics_file": str(packet_metrics_path),
             }
@@ -66,6 +68,8 @@ class WriteEvaluationLogReviewThreadsTests(unittest.TestCase):
             self.assertEqual(log["baseline"]["estimated_local_only_tokens"], 600)
             self.assertEqual(log["baseline"]["estimated_token_savings"], 350)
             self.assertEqual(log["skill_specific"]["data"]["packet_count"], 4)
+            self.assertEqual(log["skill_specific"]["data"]["outdated_transition_candidates"], 1)
+            self.assertEqual(log["skill_specific"]["data"]["outdated_recheck_ambiguous"], 1)
             self.assertEqual(log["skill_specific"]["data"]["estimated_packet_tokens"], 250)
             self.assertEqual(log["skill_specific"]["data"]["estimated_delegation_savings"], 350)
             self.assertTrue(log["skill_specific"]["data"]["common_path_sufficient"])
@@ -98,6 +102,11 @@ class WriteEvaluationLogReviewThreadsTests(unittest.TestCase):
                     "threads_deferred": 0,
                     "threads_defer_outdated": 2,
                 },
+                "reconciliation_summary": {
+                    "outdated_transition_candidates": 1,
+                    "outdated_auto_resolved": 1,
+                    "outdated_recheck_ambiguous": 0,
+                },
             }
 
             eval_log.apply_phase_update(log, "apply", result, duration=0.5)
@@ -108,6 +117,9 @@ class WriteEvaluationLogReviewThreadsTests(unittest.TestCase):
             self.assertEqual(log["skill_specific"]["data"]["skipped_outdated_count"], 2)
             self.assertEqual(log["skill_specific"]["data"]["invalid_complete_count"], 1)
             self.assertEqual(log["skill_specific"]["data"]["resolve_after_complete_count"], 1)
+            self.assertEqual(log["skill_specific"]["data"]["outdated_transition_candidates"], 1)
+            self.assertEqual(log["skill_specific"]["data"]["outdated_auto_resolved"], 1)
+            self.assertEqual(log["skill_specific"]["data"]["outdated_recheck_ambiguous"], 0)
             self.assertEqual(log["skill_specific"]["data"]["threads_resolved"], 1)
 
 

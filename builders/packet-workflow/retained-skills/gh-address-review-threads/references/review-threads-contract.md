@@ -118,6 +118,10 @@ Keep shared workflow facts here:
 - PR identity and URL
 - reply marker policy
 - outdated-thread policy
+- `same_run_reconciliation`
+  - whether post-push same-run reconciliation is enabled
+  - transitioned thread ids
+  - counts for transitioned candidates, auto-resolve candidates, and ambiguous rechecks
 - code-change delegation guardrails
 - disallowed claims
 - diff summary and review overrides
@@ -140,6 +144,16 @@ Each `thread-*.json` packet keeps:
 - `ownership_summary`
 - `reply_update_basis`
 - `quality_escape_hints`
+- `transitioned_to_outdated` when the thread was unresolved and non-outdated before this run's push, then unresolved and outdated after the push
+- `outdated_recheck` for same-run transitioned outdated threads:
+  - `previous_snapshot`
+  - `original_request`
+  - `same_run_acceptance`
+  - `validation_provenance`
+  - `current_head_evidence`
+  - `resolution_verdict`
+  - `verdict_reason`
+  - `auto_resolution_candidate`
 
 Each `thread-batch-*.json` packet keeps:
 - batch identity and clustering reason
@@ -158,7 +172,7 @@ Each `thread-batch-*.json` packet keeps:
   - `thread-batch-*.json`
   - `thread-*.json`
 - eval-side artifacts:
-  - build result JSON for review mode, worker derivation, packet/thread counts, override signals, and `common_path_sufficient`
+  - build result JSON for review mode, worker derivation, packet/thread counts, override signals, `common_path_sufficient`, and same-run outdated-transition counters
   - `packet_metrics.json` for size and token-proxy metrics only
 - do not duplicate token-efficiency counters into runtime packets
 
@@ -184,6 +198,7 @@ Each `thread-batch-*.json` packet keeps:
   - note the remaining caveat only if it matters
 
 Resolve only accepted threads after the relevant change is pushed and validation is complete.
+Same-run outdated transitions may reuse the normal accepted completion-and-resolve path only when `current HEAD` already proves the request is satisfied.
 
 ## Thread Action Validation
 

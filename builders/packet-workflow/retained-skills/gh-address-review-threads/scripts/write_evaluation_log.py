@@ -381,6 +381,9 @@ def skill_specific_data(
             "threads_defer_outdated": None,
             "threads_resolved": None,
             "outdated_threads_seen": safe_int(counts.get("unresolved_outdated")) or 0,
+            "outdated_transition_candidates": 0,
+            "outdated_auto_resolved": 0,
+            "outdated_recheck_ambiguous": 0,
             "marker_conflicts": len(orchestrator.get("marker_conflicts", [])),
             "marker_conflicts_warning": safe_int((marker_summary.get("by_severity") or {}).get("warning")) or 0,
             "marker_conflicts_adoption_blocking": safe_int((marker_summary.get("by_severity") or {}).get("adoption-blocking")) or 0,
@@ -786,6 +789,12 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
         singleton_count = safe_int(result.get("singleton_thread_packet_count"))
         if singleton_count is not None:
             skill_data["singleton_thread_packet_count"] = singleton_count
+        outdated_transition_candidates = safe_int(result.get("outdated_transition_candidates"))
+        if outdated_transition_candidates is not None:
+            skill_data["outdated_transition_candidates"] = outdated_transition_candidates
+        outdated_recheck_ambiguous = safe_int(result.get("outdated_recheck_ambiguous"))
+        if outdated_recheck_ambiguous is not None:
+            skill_data["outdated_recheck_ambiguous"] = outdated_recheck_ambiguous
         packet_metrics = load_packet_metrics_from_build_result(result)
         packet_count = safe_int(packet_metrics.get("packet_count"))
         if packet_count is not None:
@@ -902,6 +911,16 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
         if isinstance(secondary, list):
             outputs["secondary_artifacts"] = secondary
         merge_skill_counters(skill_data, result.get("counters"))
+        reconciliation_summary = result.get("reconciliation_summary")
+        if isinstance(reconciliation_summary, dict):
+            for key in (
+                "outdated_transition_candidates",
+                "outdated_auto_resolved",
+                "outdated_recheck_ambiguous",
+            ):
+                value = safe_int(reconciliation_summary.get(key))
+                if value is not None:
+                    skill_data[key] = value
 
         stop_reasons = result.get("stop_reasons") or []
         if isinstance(stop_reasons, list) and stop_reasons:
@@ -937,6 +956,9 @@ def merge_skill_counters(skill_data: dict[str, Any], counters: Any) -> None:
         "threads_rejected",
         "threads_deferred",
         "threads_defer_outdated",
+        "outdated_transition_candidates",
+        "outdated_auto_resolved",
+        "outdated_recheck_ambiguous",
     ):
         value = safe_int(counters.get(key))
         if value is not None:

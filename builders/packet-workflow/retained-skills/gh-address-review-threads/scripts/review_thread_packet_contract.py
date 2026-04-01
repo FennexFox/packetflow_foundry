@@ -195,6 +195,10 @@ def build_result_payload(
     common_path_sufficient: bool,
     common_path_failures: list[dict[str, Any]],
     thread_counts: dict[str, Any],
+    same_run_reconciliation_enabled: bool,
+    outdated_transition_candidates: int,
+    outdated_auto_resolve_candidates: int,
+    outdated_recheck_ambiguous: int,
     packet_metrics_path: str,
 ) -> dict[str, Any]:
     return {
@@ -209,5 +213,9 @@ def build_result_payload(
         "common_path_sufficient": common_path_sufficient,
         "common_path_failures": common_path_failures,
         "thread_counts": thread_counts,
+        "same_run_reconciliation_enabled": same_run_reconciliation_enabled,
+        "outdated_transition_candidates": outdated_transition_candidates,
+        "outdated_auto_resolve_candidates": outdated_auto_resolve_candidates,
+        "outdated_recheck_ambiguous": outdated_recheck_ambiguous,
         "packet_metrics_file": packet_metrics_path,
     }

@@ -21,6 +21,9 @@ Recommended fields:
 - `threads_defer_outdated`
 - `threads_resolved`
 - `outdated_threads_seen`
+- `outdated_transition_candidates`
+- `outdated_auto_resolved`
+- `outdated_recheck_ambiguous`
 - `marker_conflicts`
 - `marker_conflicts_warning`
 - `marker_conflicts_adoption_blocking`
@@ -55,6 +58,12 @@ Track the per-run decision counts separately from the raw thread total.
 
 - `outdated_threads_seen`
   - count unresolved outdated threads surfaced by collection
+- `outdated_transition_candidates`
+  - count unresolved threads that were non-outdated before this run's push and outdated after the push
+- `outdated_auto_resolved`
+  - count transitioned outdated threads that reused the normal accepted completion-and-resolve path
+- `outdated_recheck_ambiguous`
+  - count transitioned outdated threads that stayed unresolved because current-`HEAD` proof was missing or unclear
 - `marker_conflicts`
   - count threads with existing managed-reply marker conflicts
 - `marker_conflicts_warning`
@@ -81,5 +90,7 @@ Track the per-run decision counts separately from the raw thread total.
 - Prefer counts, booleans, enums, and short reason lists over free-form summaries.
 - Keep the contract aligned with the local reply markers, per-thread decision model, and push-before-complete rule.
 - Build-phase review mode, worker derivation, packet/thread counts, and `common_path_sufficient` come from the build result JSON.
+- Same-run outdated-transition candidate and ambiguous-recheck counts may come from the build result JSON.
+- Final same-run outdated auto-resolve counts come from the apply result `reconciliation_summary`.
 - Size and token-proxy metrics come only from `packet_metrics.json`.
 - `packet_metrics.json` is evaluation-only and must not be treated as a runtime routing source.

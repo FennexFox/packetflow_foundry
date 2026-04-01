@@ -281,6 +281,85 @@ class ValidateAndApplyThreadActionPlanTests(unittest.TestCase):
                 with self.assertRaises(RuntimeError):
                     apply_plan.main()
 
+    def test_validator_and_apply_preserve_reconciliation_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            threads = [
+                review_thread(thread_id="t-1", path="src/app.py", line=10, reviewer_login="reviewer-a", reviewer_body="Please rename this.")
+            ]
+            context = context_with_threads(tmp, threads)
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            context_path = tmp / "context.json"
+            raw_plan_path = tmp / "raw-plan.json"
+            validated_path = tmp / "validated.json"
+            dry_run_path = tmp / "dry-run.json"
+            write_json(context_path, context)
+            write_json(
+                raw_plan_path,
+                {
+                    "context_fingerprint": context["context_fingerprint"],
+                    "thread_actions": [
+                        {
+                            "thread_id": "t-1",
+                            "decision": "accept",
+                            "complete_mode": "add",
+                            "complete_body": "Current HEAD already covers the requested change.",
+                            "resolve_after_complete": True,
+                        }
+                    ],
+                    "reconciliation_summary": {
+                        "outdated_transition_candidates": 1,
+                        "outdated_auto_resolved": 1,
+                        "outdated_recheck_ambiguous": 0,
+                        "outdated_still_applicable": 0,
+                    },
+                },
+            )
+
+            argv = [
+                "validate_thread_action_plan.py",
+                "--context",
+                str(context_path),
+                "--plan",
+                str(raw_plan_path),
+                "--phase",
+                "complete",
+                "--output",
+                str(validated_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                self.assertEqual(validate_plan.main(), 0)
+
+            validated = json.loads(validated_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                validated["reconciliation_summary"],
+                {
+                    "outdated_transition_candidates": 1,
+                    "outdated_auto_resolved": 1,
+                    "outdated_recheck_ambiguous": 0,
+                    "outdated_still_applicable": 0,
+                },
+            )
+
+            argv = [
+                "apply_thread_action_plan.py",
+                "--context",
+                str(context_path),
+                "--plan",
+                str(validated_path),
+                "--phase",
+                "complete",
+                "--dry-run",
+                "--result-output",
+                str(dry_run_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                self.assertEqual(apply_plan.main(), 0)
+
+            dry_run = json.loads(dry_run_path.read_text(encoding="utf-8"))
+            self.assertEqual(dry_run["reconciliation_summary"]["outdated_auto_resolved"], 1)
+            self.assertEqual(dry_run["reconciliation_summary"]["outdated_transition_candidates"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

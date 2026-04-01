@@ -309,6 +309,16 @@ def safe_excerpt(text: str | None, limit: int = 220) -> str:
     return compact[: limit - 3] + "..." if len(compact) > limit else compact
 
 
+def list_of_strings(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else []
+    return [str(value).strip()] if str(value).strip() else []
+
+
 def comment_summary(comment: dict[str, Any] | None) -> dict[str, Any] | None:
     if not comment:
         return None
@@ -328,6 +338,129 @@ def packet_name(prefix: str, index: int) -> str:
 
 def candidate_decision(thread: dict[str, Any]) -> str:
     return "defer-outdated" if thread.get("is_outdated") else "accept"
+
+
+def load_reconciliation_input(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        return {
+            "default_validation_commands": [],
+            "accepted_threads": {},
+        }
+
+    payload = load_json(path)
+    if not isinstance(payload, dict):
+        raise RuntimeError("reconciliation input must be a JSON object")
+
+    default_validation_commands = list_of_strings(payload.get("default_validation_commands"))
+    accepted_threads: dict[str, dict[str, Any]] = {}
+    for item in payload.get("accepted_threads") or []:
+        if not isinstance(item, dict):
+            raise RuntimeError("accepted_threads entries must be JSON objects")
+        thread_id = str(item.get("thread_id") or "").strip()
+        if not thread_id:
+            raise RuntimeError("accepted_threads entries must include thread_id")
+        validation_commands = list_of_strings(item.get("validation_commands")) or list(default_validation_commands)
+        accepted_threads[thread_id] = {
+            "thread_id": thread_id,
+            "validation_commands": validation_commands,
+        }
+
+    return {
+        "default_validation_commands": default_validation_commands,
+        "accepted_threads": accepted_threads,
+    }
+
+
+def previous_thread_lookup(previous_context: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    if not isinstance(previous_context, dict):
+        return {}
+    return {
+        str(thread.get("thread_id") or ""): thread
+        for thread in previous_context.get("threads", [])
+        if isinstance(thread, dict) and str(thread.get("thread_id") or "").strip()
+    }
+
+
+def transitioned_to_outdated(
+    previous_thread: dict[str, Any] | None,
+    current_thread: dict[str, Any],
+) -> bool:
+    if not previous_thread:
+        return False
+    if bool(previous_thread.get("is_resolved")) or bool(current_thread.get("is_resolved")):
+        return False
+    if bool(previous_thread.get("is_outdated")):
+        return False
+    return bool(current_thread.get("is_outdated"))
+
+
+def build_outdated_recheck(
+    *,
+    thread: dict[str, Any],
+    previous_thread: dict[str, Any],
+    file_context: dict[str, Any],
+    area: str,
+    accepted_thread: dict[str, Any] | None,
+) -> dict[str, Any]:
+    validation_commands = list(accepted_thread.get("validation_commands") or []) if accepted_thread else []
+    current_head_visible = bool((file_context.get("snippet") or "").strip() or (file_context.get("diff_snippet") or "").strip())
+
+    if accepted_thread is None:
+        verdict = "still-applies"
+        verdict_reason = "thread_was_not_accepted_before_push"
+    elif not validation_commands:
+        verdict = "ambiguous"
+        verdict_reason = "missing_validation_provenance"
+    elif area not in {"docs", "runtime", "tests"}:
+        verdict = "ambiguous"
+        verdict_reason = "unsupported_area_for_auto_resolve"
+    elif not bool(file_context.get("path_exists")):
+        verdict = "ambiguous"
+        verdict_reason = "path_missing_in_current_head"
+    elif not current_head_visible:
+        verdict = "ambiguous"
+        verdict_reason = "missing_current_head_evidence"
+    else:
+        verdict = "auto-accept"
+        verdict_reason = "accepted_same_run_with_current_head_evidence"
+
+    return {
+        "previous_snapshot": {
+            "path": str(previous_thread.get("path") or ""),
+            "line": previous_thread.get("line"),
+            "original_line": previous_thread.get("original_line"),
+            "is_outdated": bool(previous_thread.get("is_outdated")),
+            "is_resolved": bool(previous_thread.get("is_resolved")),
+        },
+        "original_request": {
+            "reviewer_login": str(thread.get("reviewer_login") or previous_thread.get("reviewer_login") or ""),
+            "reviewer_body": str(
+                (thread.get("reviewer_comment") or previous_thread.get("reviewer_comment") or {}).get("body") or ""
+            ).strip(),
+            "latest_reviewer_comment_at": str(
+                thread.get("latest_reviewer_comment_at") or previous_thread.get("latest_reviewer_comment_at") or ""
+            ).strip(),
+        },
+        "same_run_acceptance": {
+            "accepted_in_previous_plan": accepted_thread is not None,
+        },
+        "validation_provenance": {
+            "commands": validation_commands,
+        },
+        "current_head_evidence": {
+            "path": str(thread.get("path") or ""),
+            "line": thread.get("line"),
+            "original_line": thread.get("original_line"),
+            "path_exists": bool(file_context.get("path_exists")),
+            "area": area,
+            "snippet": file_context.get("snippet"),
+            "diff_snippet": file_context.get("diff_snippet"),
+            "evidence_visible": current_head_visible,
+        },
+        "resolution_verdict": verdict,
+        "verdict_reason": verdict_reason,
+        "auto_resolution_candidate": verdict == "auto-accept",
+    }
 
 
 def code_change_policy(path: str) -> dict[str, Any]:
@@ -350,7 +483,7 @@ def validation_candidates_for_path(path: str, area: str, *, is_outdated: bool) -
             {
                 "kind": "outdated-default",
                 "path": path,
-                "basis": "Default to defer-outdated unless current HEAD proves the issue still applies.",
+                "basis": "Default to defer-outdated unless current HEAD proves the issue still applies or same-run reconciliation proves the accepted fix already covers it.",
             }
         ]
     if area in {"runtime", "tests"}:
@@ -434,7 +567,7 @@ def quality_escape_hints(
 ) -> list[str]:
     hints: list[str] = []
     if is_outdated:
-        hints.append("Outdated threads stay defer-outdated by default; only reopen the issue after checking current HEAD.")
+        hints.append("Outdated threads stay defer-outdated by default; only reopen after checking current HEAD, except for same-run transitioned threads with proven accepted fixes.")
     if "missing_required_evidence" in quality_basis.get("explicit_reread_reasons", []):
         hints.append(f"Treat missing evidence for {path or '<unknown>'} as a reread trigger only if the packet cannot support a local decision.")
     if "ownership_ambiguity" in quality_basis.get("explicit_reread_reasons", []):
@@ -565,10 +698,22 @@ def main() -> int:
     parser.add_argument("--context", type=Path, required=True, help="Path to JSON from collect_review_threads.py")
     parser.add_argument("--repo-root", type=Path, required=True, help="Repository root")
     parser.add_argument("--output-dir", type=Path, required=True, help="Directory for generated packets")
+    parser.add_argument(
+        "--previous-context",
+        type=Path,
+        help="Optional pre-push context JSON used to detect same-run outdated transitions.",
+    )
+    parser.add_argument(
+        "--reconciliation-input",
+        type=Path,
+        help="Optional JSON describing accepted same-run threads and validation provenance.",
+    )
     parser.add_argument("--result-output", type=Path, help="Optional path to write the eval-side build result JSON.")
     args = parser.parse_args()
 
     context = load_json(args.context)
+    previous_context = load_json(args.previous_context) if args.previous_context else None
+    reconciliation_input = load_reconciliation_input(args.reconciliation_input)
     repo_root = args.repo_root.resolve()
     output_dir = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -659,7 +804,7 @@ def main() -> int:
         "outdated_policy": {
             "default_decision": "defer-outdated",
             "code_change_default": "Do not assign implementation work to outdated threads by default.",
-            "auto_resolve": "Never auto-resolve outdated threads.",
+            "auto_resolve": "Only same-run outdated transitions may auto-resolve after current HEAD proof and real validation evidence.",
             "upgrade_rule": "Upgrade an outdated thread to accept only after verifying against the current HEAD that the issue still applies.",
             "completion_reply_default": "Do not post a completion reply for outdated threads unless they were upgraded to accept and fixed.",
         },
@@ -720,6 +865,9 @@ def main() -> int:
     diff_cache: dict[str, str | None] = {}
     packet_quality_records: list[dict[str, Any]] = []
     runtime_payloads: dict[str, Any] = {}
+    previous_threads = previous_thread_lookup(previous_context)
+    transitioned_outdated_ids: set[str] = set()
+    outdated_recheck_records: list[dict[str, Any]] = []
 
     for batch_index, batch in enumerate(batches, start=1):
         batch_id = f"batch-{batch_index:02d}"
@@ -881,6 +1029,27 @@ def main() -> int:
             "adjudication_basis": quality_basis,
             "reply_update_basis_policy": "Advisory only; record explicit allowed reread reasons or stops before leaving the packet-first path.",
         }
+        previous_thread = previous_threads.get(str(thread["thread_id"]))
+        if transitioned_to_outdated(previous_thread, thread):
+            accepted_thread = reconciliation_input["accepted_threads"].get(str(thread["thread_id"]))
+            recheck = build_outdated_recheck(
+                thread=thread,
+                previous_thread=previous_thread,
+                file_context=file_context,
+                area=area,
+                accepted_thread=accepted_thread,
+            )
+            transitioned_outdated_ids.add(str(thread["thread_id"]))
+            packet["transitioned_to_outdated"] = True
+            packet["thread"]["transitioned_to_outdated"] = True
+            packet["outdated_recheck"] = recheck
+            outdated_recheck_records.append(
+                {
+                    "thread_id": str(thread["thread_id"]),
+                    "resolution_verdict": recheck["resolution_verdict"],
+                    "auto_resolution_candidate": bool(recheck["auto_resolution_candidate"]),
+                }
+            )
         normalized_conflicts = normalize_marker_conflicts(thread)
         if normalized_conflicts:
             packet["marker_conflicts"] = normalized_conflicts
@@ -958,6 +1127,17 @@ def main() -> int:
         "derived_worker_fields": ["recommended_workers", "optional_workers"],
     }
     global_packet["marker_conflict_summary"] = marker_conflict_summary(unresolved_threads)
+    global_packet["same_run_reconciliation"] = {
+        "enabled": args.previous_context is not None,
+        "transitioned_to_outdated_thread_ids": sorted(transitioned_outdated_ids),
+        "outdated_transition_candidates": len(transitioned_outdated_ids),
+        "outdated_auto_resolve_candidates": sum(
+            1 for item in outdated_recheck_records if bool(item["auto_resolution_candidate"])
+        ),
+        "outdated_recheck_ambiguous": sum(
+            1 for item in outdated_recheck_records if item["resolution_verdict"] == "ambiguous"
+        ),
+    }
     write_json(output_dir / global_packet_name, global_packet)
     runtime_payloads[global_packet_name] = global_packet
 
@@ -1001,6 +1181,7 @@ def main() -> int:
         },
         "review_mode_overrides": override_signals,
         "marker_conflict_summary": marker_conflict_summary(unresolved_threads),
+        "same_run_reconciliation": global_packet["same_run_reconciliation"],
         "thread_batches": {
             batch_id: [thread_id for thread_id, assigned_batch in thread_to_batch.items() if assigned_batch == batch_id]
             for batch_id in sorted(set(thread_to_batch.values()))
@@ -1054,6 +1235,14 @@ def main() -> int:
         common_path_sufficient=common_path_sufficient,
         common_path_failures=common_path_failures,
         thread_counts=thread_counts,
+        same_run_reconciliation_enabled=args.previous_context is not None,
+        outdated_transition_candidates=len(transitioned_outdated_ids),
+        outdated_auto_resolve_candidates=sum(
+            1 for item in outdated_recheck_records if bool(item["auto_resolution_candidate"])
+        ),
+        outdated_recheck_ambiguous=sum(
+            1 for item in outdated_recheck_records if item["resolution_verdict"] == "ambiguous"
+        ),
         packet_metrics_path=str(packet_metrics_path),
     )
     if args.result_output is not None:

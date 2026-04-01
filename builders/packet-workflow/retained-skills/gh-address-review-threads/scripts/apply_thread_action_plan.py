@@ -257,6 +257,8 @@ def main() -> int:
             ],
             "mutation_type": operations[0]["operation"] if operations else None,
         }
+        if isinstance(validated.get("reconciliation_summary"), dict):
+            payload["reconciliation_summary"] = validated["reconciliation_summary"]
         write_json_output(args.result_output, payload)
         print(json.dumps(payload, indent=2, ensure_ascii=True))
         return 0
@@ -304,6 +306,8 @@ def main() -> int:
         ],
         "mutation_type": results[0]["operation"] if results else None,
     }
+    if isinstance(validated.get("reconciliation_summary"), dict):
+        payload["reconciliation_summary"] = validated["reconciliation_summary"]
     write_json_output(args.result_output, payload)
     print(json.dumps(payload, indent=2, ensure_ascii=True))
     return 0

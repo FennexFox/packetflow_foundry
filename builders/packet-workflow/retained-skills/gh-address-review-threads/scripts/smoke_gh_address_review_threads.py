@@ -163,19 +163,23 @@ def synthetic_thread(*, thread_id: str, path: str, line: int, reviewer_login: st
     }
 
 
-def build_synthetic_context(temp_dir: Path) -> tuple[Path, Path]:
+def build_synthetic_context(temp_dir: Path) -> tuple[Path, Path, Path, Path]:
     repo_root = temp_dir / "synthetic-repo"
+    previous_context_path = temp_dir / "previous-context.json"
     context_path = temp_dir / "context.json"
+    reconciliation_input_path = temp_dir / "reconciliation-input.json"
     (repo_root / ".github").mkdir(parents=True, exist_ok=True)
     (repo_root / "src").mkdir(parents=True, exist_ok=True)
+    (repo_root / "docs").mkdir(parents=True, exist_ok=True)
     (repo_root / ".github" / "pull_request_template.md").write_text(
         "\n".join(["## Why", "## What changed", "## Testing"]),
         encoding="utf-8",
     )
     (repo_root / "src" / "app.py").write_text("one\ntwo\nthree\nfour\nfive\n", encoding="utf-8")
     (repo_root / "src" / "helper.py").write_text("alpha\nbeta\ngamma\n", encoding="utf-8")
+    (repo_root / "docs" / "guide.md").write_text("# Guide\nOriginal wording\nCurrent wording\n", encoding="utf-8")
 
-    context = {
+    base_context = {
         "repo_root": str(repo_root),
         "repo_slug": "example/repo",
         "viewer_login": "codex",
@@ -190,11 +194,11 @@ def build_synthetic_context(temp_dir: Path) -> tuple[Path, Path]:
             "body": synthetic_pr_body(),
             "closingIssuesReferences": [{"number": 55}],
         },
-        "changed_files": ["src/app.py", "src/helper.py"],
+        "changed_files": ["docs/guide.md", "src/helper.py"],
         "changed_file_groups": {
-            "runtime": {"count": 2, "sample_files": ["src/app.py", "src/helper.py"]},
+            "runtime": {"count": 1, "sample_files": ["src/helper.py"]},
             "automation": {"count": 0, "sample_files": []},
-            "docs": {"count": 0, "sample_files": []},
+            "docs": {"count": 1, "sample_files": ["docs/guide.md"]},
             "tests": {"count": 0, "sample_files": []},
             "config": {"count": 0, "sample_files": []},
             "other": {"count": 0, "sample_files": []},
@@ -232,10 +236,10 @@ def build_synthetic_context(temp_dir: Path) -> tuple[Path, Path]:
         "threads": [
             synthetic_thread(
                 thread_id="t-1",
-                path="src/app.py",
+                path="docs/guide.md",
                 line=2,
                 reviewer_login="reviewer-a",
-                reviewer_body="Please tighten the naming here.",
+                reviewer_body="Please use the current wording in the guide.",
             ),
             synthetic_thread(
                 thread_id="t-2",
@@ -246,9 +250,25 @@ def build_synthetic_context(temp_dir: Path) -> tuple[Path, Path]:
             ),
         ],
     }
+    previous_context = json.loads(json.dumps(base_context))
+    context = json.loads(json.dumps(base_context))
+    context["threads"][0]["is_outdated"] = True
+    previous_context["context_fingerprint"] = build_context_fingerprint(previous_context)
     context["context_fingerprint"] = build_context_fingerprint(context)
+    write_json(previous_context_path, previous_context)
     write_json(context_path, context)
-    return repo_root, context_path
+    write_json(
+        reconciliation_input_path,
+        {
+            "accepted_threads": [
+                {
+                    "thread_id": "t-1",
+                    "validation_commands": ["python -m pytest tests/test_docs.py"],
+                }
+            ]
+        },
+    )
+    return repo_root, previous_context_path, context_path, reconciliation_input_path
 
 
 def ensure_gh_auth(repo_root: Path) -> bool:
@@ -326,7 +346,14 @@ def merge_eval_phase(log_path: Path, phase: str, result_path: Path, *, cwd: Path
     )
 
 
-def run_smoke_workflow(*, repo_root: Path, context_path: Path, temp_dir: Path) -> dict[str, Any]:
+def run_smoke_workflow(
+    *,
+    repo_root: Path,
+    context_path: Path,
+    temp_dir: Path,
+    previous_context_path: Path | None = None,
+    reconciliation_input_path: Path | None = None,
+) -> dict[str, Any]:
     packet_dir = temp_dir / "packets"
     build_result_path = temp_dir / "build-result.json"
     eval_log_path = temp_dir / "eval-log.json"
@@ -342,20 +369,22 @@ def run_smoke_workflow(*, repo_root: Path, context_path: Path, temp_dir: Path) -
     if counts["unresolved"] == 0:
         return summary("noop", "no_unresolved_threads", counts, "nothing_to_do", pr_url=context.get("pr", {}).get("url"))
 
-    run_script(
-        [
-            str(script_path("build_review_packets.py")),
-            "--context",
-            str(context_path),
-            "--repo-root",
-            str(repo_root),
-            "--output-dir",
-            str(packet_dir),
-            "--result-output",
-            str(build_result_path),
-        ],
-        cwd=repo_root,
-    )
+    build_args = [
+        str(script_path("build_review_packets.py")),
+        "--context",
+        str(context_path),
+        "--repo-root",
+        str(repo_root),
+        "--output-dir",
+        str(packet_dir),
+        "--result-output",
+        str(build_result_path),
+    ]
+    if previous_context_path is not None:
+        build_args.extend(["--previous-context", str(previous_context_path)])
+    if reconciliation_input_path is not None:
+        build_args.extend(["--reconciliation-input", str(reconciliation_input_path)])
+    run_script(build_args, cwd=repo_root)
     build_result = read_json(build_result_path)
 
     run_script(
@@ -406,7 +435,18 @@ def run_smoke_workflow(*, repo_root: Path, context_path: Path, temp_dir: Path) -
     )
     merge_eval_phase(eval_log_path, "apply", ack_result_path, cwd=repo_root)
 
-    write_json(complete_plan_path, build_safe_plan(context, phase="complete"))
+    run_script(
+        [
+            str(script_path("reconcile_outdated_threads.py")),
+            "--context",
+            str(context_path),
+            "--packet-dir",
+            str(packet_dir),
+            "--output",
+            str(complete_plan_path),
+        ],
+        cwd=repo_root,
+    )
     run_script(
         [
             str(script_path("validate_thread_action_plan.py")),
@@ -440,6 +480,8 @@ def run_smoke_workflow(*, repo_root: Path, context_path: Path, temp_dir: Path) -
     merge_eval_phase(eval_log_path, "apply", complete_result_path, cwd=repo_root)
 
     packet_metrics = read_json(packet_dir / "packet_metrics.json")
+    complete_result = read_json(complete_result_path)
+    reconciliation_summary = complete_result.get("reconciliation_summary") or {}
     return summary(
         "ok",
         None,
@@ -450,6 +492,15 @@ def run_smoke_workflow(*, repo_root: Path, context_path: Path, temp_dir: Path) -
         common_path_sufficient=build_result.get("common_path_sufficient"),
         estimated_packet_tokens=packet_metrics.get("estimated_packet_tokens"),
         estimated_delegation_savings=packet_metrics.get("estimated_delegation_savings"),
+        outdated_transition_candidates=reconciliation_summary.get(
+            "outdated_transition_candidates",
+            build_result.get("outdated_transition_candidates"),
+        ),
+        outdated_auto_resolved=reconciliation_summary.get("outdated_auto_resolved", 0),
+        outdated_recheck_ambiguous=reconciliation_summary.get(
+            "outdated_recheck_ambiguous",
+            build_result.get("outdated_recheck_ambiguous"),
+        ),
     )
 
 
@@ -460,8 +511,20 @@ def main() -> int:
     if args.synthetic:
         with tempfile.TemporaryDirectory(dir=temp_root, prefix="smoke-synthetic-") as temp_dir_name:
             temp_dir = Path(temp_dir_name)
-            repo_root, context_path = build_synthetic_context(temp_dir)
-            print(json.dumps(run_smoke_workflow(repo_root=repo_root, context_path=context_path, temp_dir=temp_dir), indent=2, ensure_ascii=True))
+            repo_root, previous_context_path, context_path, reconciliation_input_path = build_synthetic_context(temp_dir)
+            print(
+                json.dumps(
+                    run_smoke_workflow(
+                        repo_root=repo_root,
+                        context_path=context_path,
+                        temp_dir=temp_dir,
+                        previous_context_path=previous_context_path,
+                        reconciliation_input_path=reconciliation_input_path,
+                    ),
+                    indent=2,
+                    ensure_ascii=True,
+                )
+            )
             return 0
 
     repo_root = repo_root_path(args.repo_root)
