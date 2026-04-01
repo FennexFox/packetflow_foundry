@@ -128,7 +128,14 @@ On Windows, bootstrap creates filesystem symlinks for `.codex/agents/` and `.age
 Run it from an elevated PowerShell window (`Run as Administrator`) unless Windows Developer
 Mode is enabled.
 
+If you cannot grant symlink permission, run:
+
+```text
+python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py --bridge-mode copy-on-fail
+```
+
 Bootstrap behavior:
+- repo-root `.gitignore` is created or appended so `.codex/tmp/` stays ignored
 - root `AGENTS.md` and `.codex/AGENTS.md` are append-only targets
 - repo-root `.codex/agents/` is the canonical project-scoped subagent discovery surface
 - `.codex/project/profiles/default/profile.json` is a project-local scaffold, not a reusable foundry overlay
@@ -136,10 +143,12 @@ Bootstrap behavior:
 - repo-root `.agents/skills/` is the canonical discovery surface in the consumer repo
 - vendored foundry default agent TOMLs are bridged into repo-root `.codex/agents/` unless a root entry already exists
 - vendored foundry thin skill wrappers are bridged into root `.agents/skills/` with directory symlinks unless a root entry already exists
+- `--bridge-mode copy-on-fail` retries failed bridges as managed copies and refreshes them on later runs while they remain unchanged locally
 - bridged wrappers resolve their authoritative retained kernels under `.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/`
 - legacy `.codex/project/agents/` entries are bridged only as a migration shim and should be moved to `.codex/agents/`
 - legacy `.codex/project/skills/` entries are bridged only as a migration shim and should be moved to root `.agents/skills/`
-- if any non-`AGENTS.md` tracked bootstrap output already exists, the helper aborts without writing files
+- a compatible existing `.codex/project/profiles/default/profile.json` is left unchanged on rerun
+- conflicting non-`AGENTS.md` bootstrap outputs still cause the helper to abort without writing files
 
 See [docs/vendoring.md](./docs/vendoring.md) for the full model.
 

@@ -9,13 +9,16 @@ Primary entrypoint:
 Usage:
 - `python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py`
 - `python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py --repo-root <project-root>`
+- `python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py --bridge-mode copy-on-fail`
 
 Windows note:
 - this helper creates filesystem symlinks for agent and skill bridges
 - run it from an elevated PowerShell window (`Run as Administrator`) unless Windows Developer Mode is enabled
 - without symlink permission, bootstrap can create early scaffold outputs and then abort on the first bridge
+- if you cannot grant symlink permission, use `--bridge-mode copy-on-fail` to write managed copies instead
 
 Behavior:
+- creates or appends repo-root `.gitignore` with `.codex/tmp/`
 - creates `.codex/project/profiles/default/profile.json`
 - reserves `.codex/project/profiles/<skill-name>/profile.json` for skill-specific project-local overrides
 - ensures repo-root `.codex/agents/` exists as the consumer subagent discovery surface
@@ -30,5 +33,7 @@ Behavior:
 - creates or appends `.codex/AGENTS.md`
 - appends a short PacketFlow Foundry note to root `AGENTS.md` only when that file already exists
 - keeps `AGENTS.md` handling append-only
-- aborts the entire run when any tracked non-`AGENTS.md` scaffold output already exists
-- aborts on symlink creation failure instead of silently copying bridges
+- keeps a compatible existing `.codex/project/profiles/default/profile.json` unchanged on rerun
+- aborts when conflicting non-`AGENTS.md` scaffold output already exists
+- default `symlink` mode aborts on symlink creation failure instead of silently copying bridges
+- optional `--bridge-mode copy-on-fail` retries failed bridges as managed copies and refreshes them on later runs while they remain unchanged locally
