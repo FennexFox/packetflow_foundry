@@ -63,9 +63,11 @@ Boundary:
 - Same-run outdated transitions may auto-resolve only when the thread was non-outdated before this run's push, became outdated after the push, and current `HEAD` plus real validation evidence prove the accepted fix already covers the request.
 - If a transitioned outdated thread still applies against current `HEAD`, return it to the normal unresolved queue for another implementation pass in the same run.
 - If the same-run recheck is ambiguous, keep the thread `defer-outdated` and unresolved.
-- Draft acknowledgement replies locally, apply accepted fixes, validate them, then draft completion replies.
+- Draft acknowledgement replies locally, then post the normalized `ack` reply for every `accept`, `reject`, `defer`, or `defer-outdated` thread before starting implementation, validation, commits, or pushes for that thread.
+- Do not begin code edits for an accepted thread until its `ack` reply is posted unless GitHub mutation is temporarily blocked; if mutation is blocked, stop and report that blocker instead of silently proceeding.
+- After the `ack` reply is posted, apply accepted fixes, validate them, then draft completion replies.
 - Commit and push accepted work before posting a completion reply or resolving the thread.
-- Do not use a top-level PR comment unless the user asks for one.
+- If collected review feedback includes actionable review-body or top-level PR comments that do not have a replyable review thread, call out that they are non-thread findings and use a top-level PR comment only when needed to preserve the same ack-before-work / complete-after-push workflow.
 
 4. Respect reply and resolution rules.
 - Start acknowledgement replies with the exact ack marker on line 1.
@@ -75,6 +77,7 @@ Boundary:
 - Preserve still-accurate text when updating an existing reply.
 - During `ack`, you may adopt one recent unmarked self-authored reply after the latest reviewer comment.
 - During `complete`, never adopt an unmarked reply.
+- Do not treat a thread as handled if the code change landed but the `ack` reply was skipped; missing `ack` is a workflow failure that must be corrected explicitly.
 
 ## Packet Contract
 

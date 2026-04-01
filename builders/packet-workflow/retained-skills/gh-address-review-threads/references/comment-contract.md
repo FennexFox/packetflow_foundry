@@ -6,6 +6,7 @@ When updating an existing reply, preserve any still-accurate text and edit only 
 ## Acknowledgement Reply
 
 Start with the exact `ack` marker on line 1.
+Post the acknowledgement reply before any code edits, validation runs, commits, or pushes for that accepted/rejected/deferred item.
 
 Then include:
 - one short sentence summarizing what the reviewer is asking
@@ -16,6 +17,7 @@ Then include:
 ## Completion Reply
 
 Start with the exact `complete` marker on line 1.
+Post the completion reply only after the relevant fix is pushed to the PR branch.
 
 Then include:
 - one short sentence describing what changed
