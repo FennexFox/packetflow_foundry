@@ -13,6 +13,15 @@ Optional runtime additions:
 - `batch-packet-01.json` when grouped work items are justified
 - `synthesis_packet.json` only when the `packet-heavy-orchestrator` overlay is selected
 
+## Shared Repo-Local Temporary File Policy
+
+- Use `.codex/tmp/` as the canonical gitignored repo-local scratch tree for
+  temporary, helper, runtime-artifact, and ad hoc operator-input files.
+- If a transient file must live inside the repo, place it under `.codex/tmp/`
+  rather than the repo root or another tracked directory.
+- Evaluation logs may default outside the repo under `~/.codex/tmp/`; if a
+  repo-local fallback is required, keep it under `.codex/tmp/` as well.
+
 ## Shared Review Modes
 
 The shared modes are:

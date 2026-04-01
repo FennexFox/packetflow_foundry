@@ -36,12 +36,13 @@ Boundary:
 1. Collect structured context.
 - Run `gh auth status`.
 - If authentication fails, stop and tell the user to run `gh auth login`.
-- Run `<python-bin> -B <skill-dir>/scripts/collect_review_threads.py --repo <repo-root> --output <context-json>`.
-- Run `<python-bin> -B <skill-dir>/scripts/build_review_packets.py --context <context-json> --repo-root <repo-root> --output-dir <packet-dir> --result-output <packet-dir>/build-result.json`.
+- Before pushing accepted work, collect the pre-push snapshot with `<python-bin> -B <skill-dir>/scripts/collect_review_threads.py --repo <repo-root> --output <context-json>`.
+- Build the initial packets with `<python-bin> -B <skill-dir>/scripts/build_review_packets.py --context <context-json> --repo-root <repo-root> --output-dir <packet-dir> --result-output <packet-dir>/build-result.json`.
 - Draft a raw thread-actions plan locally.
 - Run `<python-bin> -B <skill-dir>/scripts/validate_thread_action_plan.py --context <context-json> --plan <raw-plan-json> --phase <ack|complete> --output <validated-plan-json>`.
 - Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <context-json> --orchestrator <packet-dir>/orchestrator.json --output <eval-log-json>`.
 - Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <eval-log-json> --phase build --result <packet-dir>/build-result.json`.
+- After accepted work is pushed, recollect a post-push snapshot, rebuild packets with `--previous-context <pre-push-context-json>` and `--reconciliation-input <reconciliation-json>`, then use `<python-bin> -B <skill-dir>/scripts/reconcile_outdated_threads.py --context <post-push-context-json> --packet-dir <packet-dir> --output <raw-complete-plan-json>` to seed the complete-phase plan.
 - Read `<packet-dir>/orchestrator.json` first.
 - Keep `<packet-dir>/global_packet.json` in view before reading any thread packet.
 - Before deciding a thread, read that packet's `discussion`, `existing_self_reply`, `reply_candidates`, `validation_candidates`, and `ownership_summary` or `shared_fix_surface`.
@@ -59,10 +60,14 @@ Boundary:
 3. Keep adjudication local.
 - Decide `accept`, `reject`, `defer`, or `defer-outdated` per unresolved thread locally.
 - Default outdated threads to `defer-outdated`.
-- Upgrade an outdated thread to `accept` only after confirming against current `HEAD` that the issue still applies.
-- Draft acknowledgement replies locally, apply accepted fixes, validate them, then draft completion replies.
+- Same-run outdated transitions may auto-resolve only when the thread was non-outdated before this run's push, became outdated after the push, and current `HEAD` plus real validation evidence prove the accepted fix already covers the request.
+- If a transitioned outdated thread still applies against current `HEAD`, return it to the normal unresolved queue for another implementation pass in the same run.
+- If the same-run recheck is ambiguous, keep the thread `defer-outdated` and unresolved.
+- Draft acknowledgement replies locally, then post the normalized `ack` reply for every `accept`, `reject`, `defer`, or `defer-outdated` thread before starting implementation, validation, commits, or pushes for that thread.
+- Do not begin code edits for an accepted thread until its `ack` reply is posted unless GitHub mutation is temporarily blocked; if mutation is blocked, stop and report that blocker instead of silently proceeding.
+- After the `ack` reply is posted, apply accepted fixes, validate them, then draft completion replies.
 - Commit and push accepted work before posting a completion reply or resolving the thread.
-- Do not use a top-level PR comment unless the user asks for one.
+- If collected review feedback includes actionable review-body or top-level PR comments that do not have a replyable review thread, call out that they are non-thread findings and use a top-level PR comment only when needed to preserve the same ack-before-work / complete-after-push workflow.
 
 4. Respect reply and resolution rules.
 - Start acknowledgement replies with the exact ack marker on line 1.
@@ -72,6 +77,7 @@ Boundary:
 - Preserve still-accurate text when updating an existing reply.
 - During `ack`, you may adopt one recent unmarked self-authored reply after the latest reviewer comment.
 - During `complete`, never adopt an unmarked reply.
+- Do not treat a thread as handled if the code change landed but the `ack` reply was skipped; missing `ack` is a workflow failure that must be corrected explicitly.
 
 ## Packet Contract
 
@@ -116,6 +122,10 @@ Boundary:
   - Collect PR metadata, changed files, diff stat, top-level comments, review submissions, unresolved and outdated review threads, and reply-update candidates.
 - `scripts/build_review_packets.py`
   - Split the collected context into `orchestrator.json`, `global_packet.json`, per-thread packets, clustered batch packets, `packet_metrics.json`, and an eval-side build result.
+  - When given `--previous-context` and `--reconciliation-input`, mark same-run non-outdated -> outdated transitions and attach conservative `outdated_recheck` evidence.
+- `scripts/reconcile_outdated_threads.py`
+  - Build a conservative complete-phase raw plan from post-push packets.
+  - Auto-upgrade only same-run outdated transitions with `resolution_verdict=auto-accept`; leave ambiguous transitions unresolved.
 - `scripts/validate_thread_action_plan.py`
   - Validate raw `thread_actions`, normalize them into deterministic order, enforce fallback and marker-conflict rules, and emit the canonical apply envelope.
 - `scripts/apply_thread_action_plan.py`
@@ -127,7 +137,7 @@ Boundary:
 - `scripts/smoke_gh_address_review_threads.py`
   - Operator-facing dry-run smoke path that emits a short `status/reason/thread_counts/next_action` summary.
   - Default mode targets the current-branch PR and blocks cleanly on missing auth, missing `gh`, no open PR, or no unresolved threads.
-  - `--synthetic` runs a self-contained temp-fixture smoke so maintainers can verify the full packet/build/validate/apply dry-run path without a live PR.
+  - `--synthetic` runs a self-contained temp-fixture smoke so maintainers can verify the full packet/build/reconcile/validate/apply dry-run path without a live PR.
 - `scripts/thread_action_contract.py`
   - Shared contract for `reply_candidates`, `marker_conflicts`, `thread_actions`, context fingerprints, and validator/apply normalization rules.
 

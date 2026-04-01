@@ -296,7 +296,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--plan", type=Path, required=True, help="Path to validated envelope from validate_reword_plan.py")
     parser.add_argument("--dry-run", action="store_true", help="Validate runtime safety and print planned operations without mutating refs")
     parser.add_argument("--result-output", type=Path, help="Optional path to write the JSON result payload.")
-    parser.add_argument("--temp-root", type=Path, help="Optional parent directory for the replay temp worktree.")
+    parser.add_argument(
+        "--temp-root",
+        type=Path,
+        help="Optional parent directory for the replay temp worktree. Repo-local overrides must live under .codex/tmp/.",
+    )
     return parser.parse_args()
 
 

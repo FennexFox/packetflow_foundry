@@ -124,18 +124,27 @@ git subtree add --prefix=.codex/vendor/packetflow_foundry packetflow_foundry mas
 python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py
 ```
 
+Bootstrap now writes managed copies into repo-root `.codex/agents/` and `.agents/skills/`.
+After updating `.codex/vendor/packetflow_foundry`, rerun the same bootstrap command to
+refresh those managed copies while leaving locally modified copies untouched.
+
 Bootstrap behavior:
+- repo-root `.gitignore` is created or appended so `.codex/tmp/` stays ignored
+- repo-local temporary, helper, scratch, and ad hoc operator-input files belong under `.codex/tmp/`, not at repo root or in tracked source directories
 - root `AGENTS.md` and `.codex/AGENTS.md` are append-only targets
 - repo-root `.codex/agents/` is the canonical project-scoped subagent discovery surface
 - `.codex/project/profiles/default/profile.json` is a project-local scaffold, not a reusable foundry overlay
 - skill-specific project-local overrides belong in `.codex/project/profiles/<skill-name>/profile.json`
 - repo-root `.agents/skills/` is the canonical discovery surface in the consumer repo
-- vendored foundry default agent TOMLs are bridged into repo-root `.codex/agents/` unless a root entry already exists
-- vendored foundry thin skill wrappers are bridged into root `.agents/skills/` with directory symlinks unless a root entry already exists
-- bridged wrappers resolve their authoritative retained kernels under `.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/`
+- vendored foundry default agent TOMLs are copied into repo-root `.codex/agents/` unless a root entry already exists
+- vendored foundry thin skill wrappers are copied into root `.agents/skills/` unless a root entry already exists
+- copied skill wrappers keep resolving authoritative retained kernels from `.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/`
+- rerunning bootstrap refreshes managed copies that still match the last managed state
+- `--bridge-mode copy-on-fail` is retained only as a deprecated compatibility alias for `copy`
 - legacy `.codex/project/agents/` entries are bridged only as a migration shim and should be moved to `.codex/agents/`
 - legacy `.codex/project/skills/` entries are bridged only as a migration shim and should be moved to root `.agents/skills/`
-- if any non-`AGENTS.md` tracked bootstrap output already exists, the helper aborts without writing files
+- a compatible existing `.codex/project/profiles/default/profile.json` is left unchanged on rerun
+- conflicting non-`AGENTS.md` bootstrap outputs still cause the helper to abort before creating or overwriting those managed artifacts, although append-only targets like `AGENTS.md` and `.gitignore` may already have been updated
 
 See [docs/vendoring.md](./docs/vendoring.md) for the full model.
 

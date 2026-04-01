@@ -37,6 +37,51 @@ from review_thread_packet_contract import (
 
 SNIPPET_RADIUS = 12
 DIFF_SNIPPET_CHAR_LIMIT = 2200
+DIFF_HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@", re.MULTILINE)
+REQUEST_ANCHOR_RE = re.compile(r"`([^`]+)`|\"([^\"]+)\"|'([^']+)'")
+REQUEST_ANCHOR_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "as",
+        "at",
+        "be",
+        "by",
+        "change",
+        "clarify",
+        "consider",
+        "ensure",
+        "fix",
+        "for",
+        "from",
+        "here",
+        "in",
+        "into",
+        "it",
+        "keep",
+        "less",
+        "make",
+        "more",
+        "of",
+        "on",
+        "or",
+        "please",
+        "prefer",
+        "remove",
+        "rename",
+        "switch",
+        "that",
+        "the",
+        "there",
+        "this",
+        "tighten",
+        "to",
+        "update",
+        "use",
+        "with",
+    }
+)
 GENERATED_FILE_PATTERNS = (
     re.compile(r"(^|/)(bin|obj|dist|build|coverage|generated|gen)/"),
     re.compile(r"\.(g|generated)\.[^.]+$"),
@@ -253,8 +298,7 @@ def diff_snippet_for_path(
     if line_number is None or len(full_diff) <= DIFF_SNIPPET_CHAR_LIMIT:
         cache[path] = full_diff[:DIFF_SNIPPET_CHAR_LIMIT].rstrip()
         return cache[path]
-    hunk_pattern = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@", re.MULTILINE)
-    matches = list(hunk_pattern.finditer(full_diff))
+    matches = list(DIFF_HUNK_HEADER_RE.finditer(full_diff))
     selected = None
     for index, match in enumerate(matches):
         start = int(match.group("start"))
@@ -297,6 +341,13 @@ def normalized_headline(body: str) -> str:
     return clean_headline_line(body)[:160]
 
 
+def normalize_text_for_matching(text: str | None) -> str:
+    if not text:
+        return ""
+    normalized_lines = [clean_headline_line(line) for line in str(text).splitlines()]
+    return " ".join(line for line in normalized_lines if line).strip()
+
+
 def reviewer_headline(thread: dict[str, Any]) -> str:
     reviewer_comment = thread.get("reviewer_comment") or {}
     return normalized_headline(str(reviewer_comment.get("body") or ""))
@@ -307,6 +358,57 @@ def safe_excerpt(text: str | None, limit: int = 220) -> str:
         return ""
     compact = re.sub(r"\s+", " ", text).strip()
     return compact[: limit - 3] + "..." if len(compact) > limit else compact
+
+
+def list_of_strings(value: Any) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, list):
+        return [str(item).strip() for item in value if str(item).strip()]
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else []
+    return [str(value).strip()] if str(value).strip() else []
+
+
+def match_terms(text: str | None) -> list[str]:
+    normalized = normalize_text_for_matching(text)
+    terms: list[str] = []
+    for raw_token in re.findall(r"[a-z0-9_./-]+", normalized):
+        token = raw_token.strip(".-/")
+        if len(token) >= 3 and token not in REQUEST_ANCHOR_STOPWORDS:
+            terms.append(token)
+    return terms
+
+
+def request_anchor_evidence(
+    reviewer_body: str,
+    *,
+    snippet: str | None,
+    diff_snippet: str | None,
+) -> tuple[bool, list[str], list[str], list[str]]:
+    evidence_text = normalize_text_for_matching("\n".join(part for part in (snippet, diff_snippet) if part))
+    if not evidence_text:
+        return False, [], [], []
+
+    exact_anchors = [
+        normalized
+        for normalized in (
+            normalize_text_for_matching(next(group for group in match.groups() if group))
+            for match in REQUEST_ANCHOR_RE.finditer(reviewer_body)
+        )
+        if normalized
+    ]
+    matched_exact_anchors = [anchor for anchor in exact_anchors if anchor in evidence_text]
+    if exact_anchors:
+        return bool(matched_exact_anchors), exact_anchors, matched_exact_anchors, []
+
+    requested_terms = sorted(dict.fromkeys(match_terms(reviewer_body)))
+    if len(requested_terms) < 2:
+        return False, [], [], requested_terms
+
+    evidence_terms = set(match_terms(evidence_text))
+    matched_terms = [term for term in requested_terms if term in evidence_terms]
+    return len(matched_terms) >= 2, [], [], matched_terms
 
 
 def comment_summary(comment: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -330,6 +432,177 @@ def candidate_decision(thread: dict[str, Any]) -> str:
     return "defer-outdated" if thread.get("is_outdated") else "accept"
 
 
+def load_reconciliation_input(path: Path | None) -> dict[str, Any]:
+    if path is None:
+        return {
+            "default_validation_commands": [],
+            "accepted_threads": {},
+        }
+
+    payload = load_json(path)
+    if not isinstance(payload, dict):
+        raise RuntimeError("reconciliation input must be a JSON object")
+
+    default_validation_commands = list_of_strings(payload.get("default_validation_commands"))
+    accepted_threads: dict[str, dict[str, Any]] = {}
+    for item in payload.get("accepted_threads") or []:
+        if not isinstance(item, dict):
+            raise RuntimeError("accepted_threads entries must be JSON objects")
+        thread_id = str(item.get("thread_id") or "").strip()
+        if not thread_id:
+            raise RuntimeError("accepted_threads entries must include thread_id")
+        validation_commands = list_of_strings(item.get("validation_commands")) or list(default_validation_commands)
+        accepted_threads[thread_id] = {
+            "thread_id": thread_id,
+            "validation_commands": validation_commands,
+        }
+
+    return {
+        "default_validation_commands": default_validation_commands,
+        "accepted_threads": accepted_threads,
+    }
+
+
+def previous_thread_lookup(previous_context: dict[str, Any] | None) -> dict[str, dict[str, Any]]:
+    if not isinstance(previous_context, dict):
+        return {}
+    return {
+        str(thread.get("thread_id") or ""): thread
+        for thread in previous_context.get("threads", [])
+        if isinstance(thread, dict) and str(thread.get("thread_id") or "").strip()
+    }
+
+
+def transitioned_to_outdated(
+    previous_thread: dict[str, Any] | None,
+    current_thread: dict[str, Any],
+) -> bool:
+    if not previous_thread:
+        return False
+    if bool(previous_thread.get("is_resolved")) or bool(current_thread.get("is_resolved")):
+        return False
+    if bool(previous_thread.get("is_outdated")):
+        return False
+    return bool(current_thread.get("is_outdated"))
+
+
+def diff_hunk_covers_thread_location(
+    diff_snippet: str | None,
+    *,
+    previous_thread: dict[str, Any],
+    current_thread: dict[str, Any],
+) -> bool:
+    if not isinstance(diff_snippet, str) or not diff_snippet.strip():
+        return False
+    candidate_lines = {
+        int(value)
+        for value in (
+            current_thread.get("line"),
+            current_thread.get("original_line"),
+            previous_thread.get("line"),
+            previous_thread.get("original_line"),
+        )
+        if isinstance(value, int) and value > 0
+    }
+    if not candidate_lines:
+        return False
+    for match in DIFF_HUNK_HEADER_RE.finditer(diff_snippet):
+        start = int(match.group("start"))
+        count = int(match.group("count") or "1")
+        end = start + max(count, 1) + 3
+        if any(start - 3 <= line_number <= end for line_number in candidate_lines):
+            return True
+    return False
+
+
+def build_outdated_recheck(
+    *,
+    thread: dict[str, Any],
+    previous_thread: dict[str, Any],
+    file_context: dict[str, Any],
+    area: str,
+    accepted_thread: dict[str, Any] | None,
+) -> dict[str, Any]:
+    validation_commands = list(accepted_thread.get("validation_commands") or []) if accepted_thread else []
+    current_head_visible = diff_hunk_covers_thread_location(
+        file_context.get("diff_snippet"),
+        previous_thread=previous_thread,
+        current_thread=thread,
+    )
+    reviewer_body = str(
+        (thread.get("reviewer_comment") or previous_thread.get("reviewer_comment") or {}).get("body") or ""
+    ).strip()
+    request_anchor_visible, exact_anchors, matched_exact_anchors, matched_terms = request_anchor_evidence(
+        reviewer_body,
+        snippet=file_context.get("snippet"),
+        diff_snippet=file_context.get("diff_snippet"),
+    )
+
+    if accepted_thread is None:
+        verdict = "still-applies"
+        verdict_reason = "thread_was_not_accepted_before_push"
+    elif not validation_commands:
+        verdict = "ambiguous"
+        verdict_reason = "missing_validation_provenance"
+    elif area not in {"docs", "runtime", "tests"}:
+        verdict = "ambiguous"
+        verdict_reason = "unsupported_area_for_auto_resolve"
+    elif not bool(file_context.get("path_exists")):
+        verdict = "ambiguous"
+        verdict_reason = "path_missing_in_current_head"
+    elif not current_head_visible:
+        verdict = "ambiguous"
+        verdict_reason = "missing_current_head_evidence"
+    elif not request_anchor_visible:
+        verdict = "ambiguous"
+        verdict_reason = "missing_request_anchor_evidence"
+    else:
+        verdict = "auto-accept"
+        verdict_reason = "accepted_same_run_with_current_head_evidence"
+
+    return {
+        "previous_snapshot": {
+            "path": str(previous_thread.get("path") or ""),
+            "line": previous_thread.get("line"),
+            "original_line": previous_thread.get("original_line"),
+            "is_outdated": bool(previous_thread.get("is_outdated")),
+            "is_resolved": bool(previous_thread.get("is_resolved")),
+        },
+        "original_request": {
+            "reviewer_login": str(thread.get("reviewer_login") or previous_thread.get("reviewer_login") or ""),
+            "reviewer_body": str(
+                (thread.get("reviewer_comment") or previous_thread.get("reviewer_comment") or {}).get("body") or ""
+            ).strip(),
+            "latest_reviewer_comment_at": str(
+                thread.get("latest_reviewer_comment_at") or previous_thread.get("latest_reviewer_comment_at") or ""
+            ).strip(),
+        },
+        "same_run_acceptance": {
+            "accepted_in_previous_plan": accepted_thread is not None,
+        },
+        "validation_provenance": {
+            "commands": validation_commands,
+        },
+        "current_head_evidence": {
+            "path": str(thread.get("path") or ""),
+            "line": thread.get("line"),
+            "original_line": thread.get("original_line"),
+            "path_exists": bool(file_context.get("path_exists")),
+            "area": area,
+            "snippet": file_context.get("snippet"),
+            "diff_snippet": file_context.get("diff_snippet"),
+            "evidence_visible": current_head_visible,
+            "request_anchor_visible": request_anchor_visible,
+            "exact_request_anchors": exact_anchors,
+            "matched_exact_request_anchors": matched_exact_anchors,
+            "matched_request_terms": matched_terms,
+        },
+        "resolution_verdict": verdict,
+        "verdict_reason": verdict_reason,
+        "auto_resolution_candidate": verdict == "auto-accept",
+    }
+
+
 def code_change_policy(path: str) -> dict[str, Any]:
     area = classify_path(path)
     core_area = core_area_for_path(path)
@@ -350,7 +623,7 @@ def validation_candidates_for_path(path: str, area: str, *, is_outdated: bool) -
             {
                 "kind": "outdated-default",
                 "path": path,
-                "basis": "Default to defer-outdated unless current HEAD proves the issue still applies.",
+                "basis": "Default to defer-outdated unless current HEAD proves the issue still applies or same-run reconciliation proves the accepted fix already covers it.",
             }
         ]
     if area in {"runtime", "tests"}:
@@ -434,7 +707,7 @@ def quality_escape_hints(
 ) -> list[str]:
     hints: list[str] = []
     if is_outdated:
-        hints.append("Outdated threads stay defer-outdated by default; only reopen the issue after checking current HEAD.")
+        hints.append("Outdated threads stay defer-outdated by default; only reopen after checking current HEAD, except for same-run transitioned threads with proven accepted fixes.")
     if "missing_required_evidence" in quality_basis.get("explicit_reread_reasons", []):
         hints.append(f"Treat missing evidence for {path or '<unknown>'} as a reread trigger only if the packet cannot support a local decision.")
     if "ownership_ambiguity" in quality_basis.get("explicit_reread_reasons", []):
@@ -565,10 +838,22 @@ def main() -> int:
     parser.add_argument("--context", type=Path, required=True, help="Path to JSON from collect_review_threads.py")
     parser.add_argument("--repo-root", type=Path, required=True, help="Repository root")
     parser.add_argument("--output-dir", type=Path, required=True, help="Directory for generated packets")
+    parser.add_argument(
+        "--previous-context",
+        type=Path,
+        help="Optional pre-push context JSON used to detect same-run outdated transitions.",
+    )
+    parser.add_argument(
+        "--reconciliation-input",
+        type=Path,
+        help="Optional JSON describing accepted same-run threads and validation provenance.",
+    )
     parser.add_argument("--result-output", type=Path, help="Optional path to write the eval-side build result JSON.")
     args = parser.parse_args()
 
     context = load_json(args.context)
+    previous_context = load_json(args.previous_context) if args.previous_context else None
+    reconciliation_input = load_reconciliation_input(args.reconciliation_input)
     repo_root = args.repo_root.resolve()
     output_dir = args.output_dir
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -659,7 +944,7 @@ def main() -> int:
         "outdated_policy": {
             "default_decision": "defer-outdated",
             "code_change_default": "Do not assign implementation work to outdated threads by default.",
-            "auto_resolve": "Never auto-resolve outdated threads.",
+            "auto_resolve": "Only same-run outdated transitions may auto-resolve after current HEAD proof and real validation evidence.",
             "upgrade_rule": "Upgrade an outdated thread to accept only after verifying against the current HEAD that the issue still applies.",
             "completion_reply_default": "Do not post a completion reply for outdated threads unless they were upgraded to accept and fixed.",
         },
@@ -720,6 +1005,9 @@ def main() -> int:
     diff_cache: dict[str, str | None] = {}
     packet_quality_records: list[dict[str, Any]] = []
     runtime_payloads: dict[str, Any] = {}
+    previous_threads = previous_thread_lookup(previous_context)
+    transitioned_outdated_ids: set[str] = set()
+    outdated_recheck_records: list[dict[str, Any]] = []
 
     for batch_index, batch in enumerate(batches, start=1):
         batch_id = f"batch-{batch_index:02d}"
@@ -881,6 +1169,27 @@ def main() -> int:
             "adjudication_basis": quality_basis,
             "reply_update_basis_policy": "Advisory only; record explicit allowed reread reasons or stops before leaving the packet-first path.",
         }
+        previous_thread = previous_threads.get(str(thread["thread_id"]))
+        if transitioned_to_outdated(previous_thread, thread):
+            accepted_thread = reconciliation_input["accepted_threads"].get(str(thread["thread_id"]))
+            recheck = build_outdated_recheck(
+                thread=thread,
+                previous_thread=previous_thread,
+                file_context=file_context,
+                area=area,
+                accepted_thread=accepted_thread,
+            )
+            transitioned_outdated_ids.add(str(thread["thread_id"]))
+            packet["transitioned_to_outdated"] = True
+            packet["thread"]["transitioned_to_outdated"] = True
+            packet["outdated_recheck"] = recheck
+            outdated_recheck_records.append(
+                {
+                    "thread_id": str(thread["thread_id"]),
+                    "resolution_verdict": recheck["resolution_verdict"],
+                    "auto_resolution_candidate": bool(recheck["auto_resolution_candidate"]),
+                }
+            )
         normalized_conflicts = normalize_marker_conflicts(thread)
         if normalized_conflicts:
             packet["marker_conflicts"] = normalized_conflicts
@@ -958,6 +1267,17 @@ def main() -> int:
         "derived_worker_fields": ["recommended_workers", "optional_workers"],
     }
     global_packet["marker_conflict_summary"] = marker_conflict_summary(unresolved_threads)
+    global_packet["same_run_reconciliation"] = {
+        "enabled": args.previous_context is not None,
+        "transitioned_to_outdated_thread_ids": sorted(transitioned_outdated_ids),
+        "outdated_transition_candidates": len(transitioned_outdated_ids),
+        "outdated_auto_resolve_candidates": sum(
+            1 for item in outdated_recheck_records if bool(item["auto_resolution_candidate"])
+        ),
+        "outdated_recheck_ambiguous": sum(
+            1 for item in outdated_recheck_records if item["resolution_verdict"] == "ambiguous"
+        ),
+    }
     write_json(output_dir / global_packet_name, global_packet)
     runtime_payloads[global_packet_name] = global_packet
 
@@ -1001,6 +1321,7 @@ def main() -> int:
         },
         "review_mode_overrides": override_signals,
         "marker_conflict_summary": marker_conflict_summary(unresolved_threads),
+        "same_run_reconciliation": global_packet["same_run_reconciliation"],
         "thread_batches": {
             batch_id: [thread_id for thread_id, assigned_batch in thread_to_batch.items() if assigned_batch == batch_id]
             for batch_id in sorted(set(thread_to_batch.values()))
@@ -1054,6 +1375,14 @@ def main() -> int:
         common_path_sufficient=common_path_sufficient,
         common_path_failures=common_path_failures,
         thread_counts=thread_counts,
+        same_run_reconciliation_enabled=args.previous_context is not None,
+        outdated_transition_candidates=len(transitioned_outdated_ids),
+        outdated_auto_resolve_candidates=sum(
+            1 for item in outdated_recheck_records if bool(item["auto_resolution_candidate"])
+        ),
+        outdated_recheck_ambiguous=sum(
+            1 for item in outdated_recheck_records if item["resolution_verdict"] == "ambiguous"
+        ),
         packet_metrics_path=str(packet_metrics_path),
     )
     if args.result_output is not None:

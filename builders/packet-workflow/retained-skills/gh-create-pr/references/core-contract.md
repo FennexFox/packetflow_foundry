@@ -77,6 +77,7 @@ Keep in `packet_metrics.json` or evaluation logs only:
 - byte proxies
 - token-efficiency estimates
 - regression-oriented delegation metrics
+- any repo-local temporary, helper, scratch, or ad hoc operator-input file under `.codex/tmp/` instead of the repo root or a tracked source directory
 
 ## Repo Profile Boundary
 

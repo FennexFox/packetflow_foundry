@@ -358,6 +358,20 @@ def _base_counters() -> dict[str, Any]:
     }
 
 
+def normalize_reconciliation_summary(payload: Any) -> dict[str, int] | None:
+    if not isinstance(payload, dict):
+        return None
+    raw = payload.get("reconciliation_summary")
+    if not isinstance(raw, dict):
+        return None
+    return {
+        "outdated_transition_candidates": _int_or_zero(raw.get("outdated_transition_candidates")),
+        "outdated_auto_resolved": _int_or_zero(raw.get("outdated_auto_resolved")),
+        "outdated_recheck_ambiguous": _int_or_zero(raw.get("outdated_recheck_ambiguous")),
+        "outdated_still_applicable": _int_or_zero(raw.get("outdated_still_applicable")),
+    }
+
+
 def validate_thread_action_payload(context: dict[str, Any], payload: Any, phase: str) -> dict[str, Any]:
     policy = policy_for_phase(phase)
     mode_field = policy["mode_field"]
@@ -375,6 +389,9 @@ def validate_thread_action_payload(context: dict[str, Any], payload: Any, phase:
         "normalized_thread_actions": [],
         "stop_reasons": [],
     }
+    reconciliation_summary = normalize_reconciliation_summary(payload)
+    if reconciliation_summary is not None:
+        result["reconciliation_summary"] = reconciliation_summary
 
     payload_fingerprint = _stringify(payload.get("context_fingerprint")) if isinstance(payload, dict) else ""
     if payload_fingerprint and payload_fingerprint != result["context_fingerprint"]:

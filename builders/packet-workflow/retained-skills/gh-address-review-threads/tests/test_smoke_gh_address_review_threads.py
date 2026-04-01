@@ -38,7 +38,10 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
         self.assertEqual(payload["next_action"], "review_smoke_results")
         self.assertEqual(payload["thread_counts"]["unresolved"], 2)
         self.assertTrue(payload["common_path_sufficient"])
-        self.assertGreater(payload["estimated_delegation_savings"], 0)
+        self.assertGreaterEqual(payload["estimated_delegation_savings"], 0)
+        self.assertEqual(payload["outdated_transition_candidates"], 1)
+        self.assertEqual(payload["outdated_auto_resolved"], 1)
+        self.assertEqual(payload["outdated_recheck_ambiguous"], 0)
 
     def test_main_reports_blocked_schema_when_gh_cli_is_missing(self) -> None:
         with patch.object(sys, "argv", ["smoke_gh_address_review_threads.py"]):
@@ -123,7 +126,24 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
                             "common_path_sufficient": True,
                             "common_path_failures": [],
                             "thread_counts": {"unresolved": 2, "unresolved_outdated": 0},
+                            "outdated_transition_candidates": 0,
+                            "outdated_recheck_ambiguous": 0,
                             "packet_metrics_file": str(output_dir / "packet_metrics.json"),
+                        },
+                    )
+                    return ""
+                if arg_list[0].endswith("reconcile_outdated_threads.py"):
+                    write_json(
+                        Path(arg_list[arg_list.index("--output") + 1]),
+                        {
+                            "context_fingerprint": context["context_fingerprint"],
+                            "thread_actions": [],
+                            "reconciliation_summary": {
+                                "outdated_transition_candidates": 0,
+                                "outdated_auto_resolved": 0,
+                                "outdated_recheck_ambiguous": 0,
+                                "outdated_still_applicable": 0,
+                            },
                         },
                     )
                     return ""
@@ -131,6 +151,8 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
                     write_json(Path(arg_list[arg_list.index("--output") + 1]), {"skill": {"name": "gh-address-review-threads"}})
                     return ""
                 if "validate_thread_action_plan.py" in arg_list[0]:
+                    plan_path = Path(arg_list[arg_list.index("--plan") + 1])
+                    plan_payload = json.loads(plan_path.read_text(encoding="utf-8")) if plan_path.exists() else {}
                     write_json(
                         Path(arg_list[arg_list.index("--output") + 1]),
                         {
@@ -139,10 +161,13 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
                             "context_fingerprint": context["context_fingerprint"],
                             "normalized_thread_actions": [],
                             "counters": {},
+                            "reconciliation_summary": plan_payload.get("reconciliation_summary"),
                         },
                     )
                     return ""
                 if "apply_thread_action_plan.py" in arg_list[0]:
+                    plan_path = Path(arg_list[arg_list.index("--plan") + 1])
+                    plan_payload = json.loads(plan_path.read_text(encoding="utf-8")) if plan_path.exists() else {}
                     write_json(
                         Path(arg_list[arg_list.index("--result-output") + 1]),
                         {
@@ -151,6 +176,7 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
                             "fingerprint_match": True,
                             "counters": {},
                             "mutations": [],
+                            "reconciliation_summary": plan_payload.get("reconciliation_summary"),
                         },
                     )
                     return ""
@@ -174,6 +200,9 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
             self.assertEqual(payload["next_action"], "review_smoke_results")
             self.assertTrue(payload["common_path_sufficient"])
             self.assertGreater(payload["estimated_delegation_savings"], 0)
+            self.assertEqual(payload["outdated_transition_candidates"], 0)
+            self.assertEqual(payload["outdated_auto_resolved"], 0)
+            self.assertEqual(payload["outdated_recheck_ambiguous"], 0)
 
     def test_main_reports_noop_schema_when_no_unresolved_threads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir_name:

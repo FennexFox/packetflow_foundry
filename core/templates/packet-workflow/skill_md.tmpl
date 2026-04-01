@@ -30,6 +30,7 @@ __REPO_PROFILE_NOTE__
 - Resolve `<runtime-root>` to `<repo-root>/.codex/tmp/packet-workflow/__SKILL_NAME__/<run-id>/` and keep `.codex/tmp/` gitignored.
 - Set `<packet-dir>` to `<runtime-root>/packets`.
 - Set `<eval-log-json>` to `~/.codex/tmp/evaluation_logs/__SKILL_NAME__/<run-id>.json` by default. If the sandbox blocks that path, use `<repo-root>/.codex/tmp/evaluation_logs/__SKILL_NAME__/<run-id>.json` as an explicit override and keep `.codex/tmp/` gitignored.
+- Keep any repo-local temporary, helper, scratch, or ad hoc operator-input file under `<repo-root>/.codex/tmp/` rather than the repo root or another tracked directory.
 
 ## Workflow
 
@@ -85,7 +86,7 @@ __PROFILE_EVALUATION_ARTIFACTS__
 - Use `phase` updates for deterministic lint, validate, and apply results when those outputs exist.
 - Use `finalize` after the run to merge token usage, actual worker mix, final usability, outputs, and notes.
 - Keep the evaluation log at the contract-default outside-repo path unless you intentionally need the gitignored `.codex/tmp/` fallback.
-- Keep packet artifacts and other helper temp files under the fixed gitignored `.codex/tmp/packet-workflow/` root.
+- Keep any repo-local temporary, helper, scratch, or ad hoc input file under the fixed gitignored `.codex/tmp/` tree; packet artifacts stay under `.codex/tmp/packet-workflow/`.
 - Read `references/evaluation-log-contract.md` for the shared envelope and `references/__DOMAIN_SLUG__-evaluation-contract.md` for workflow-specific fields.
 
 ## Scripts

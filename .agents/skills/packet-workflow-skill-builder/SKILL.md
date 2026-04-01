@@ -34,6 +34,7 @@ Use this skill only for repo packet workflows that follow `collect -> optional l
 - The generator consumes templates from `../../../core/templates/packet-workflow/` and defaults from `../../../core/defaults/packet-workflow/`.
 - The generator writes the authoritative retained kernel to `../../../builders/packet-workflow/retained-skills/<skill-name>/`.
 - The generator writes the thin discovery wrapper to `../../../.agents/skills/<skill-name>/`.
+- Generated skills should treat `../../../.codex/tmp/` as the only repo-local home for temporary, helper, scratch, and ad hoc operator-input files that are not meant for source control.
 - Generated skills should place runtime artifacts under the fixed gitignored repo-local root `../../../.codex/tmp/packet-workflow/<skill-name>/<run-id>/`.
 - Generated skills should default evaluation logging to `~/.codex/tmp/evaluation_logs/<skill-name>/<run-id>.json` and use the fixed gitignored `.codex/tmp/` fallback only when sandbox rules require repo-local writes.
 

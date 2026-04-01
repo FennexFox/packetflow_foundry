@@ -269,6 +269,352 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertTrue(thread_packet["adjudication_basis"]["common_path_sufficient"])
             self.assertEqual(thread_packet["adjudication_basis"]["explicit_reread_reasons"], [])
 
+    def test_main_marks_same_run_outdated_transition_candidates(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            previous_threads = [
+                review_thread(
+                    thread_id="t-1",
+                    path="docs/guide.md",
+                    line=2,
+                    reviewer_login="reviewer-a",
+                    reviewer_body="Please use the current wording.",
+                ),
+                review_thread(
+                    thread_id="t-2",
+                    path="src/legacy.py",
+                    line=1,
+                    reviewer_login="reviewer-b",
+                    reviewer_body="This legacy note is stale.",
+                    is_outdated=True,
+                ),
+                review_thread(
+                    thread_id="t-3",
+                    path="src/helper.py",
+                    line=2,
+                    reviewer_login="reviewer-c",
+                    reviewer_body="Please add more detail here.",
+                ),
+            ]
+            current_threads = [
+                review_thread(
+                    thread_id="t-1",
+                    path="docs/guide.md",
+                    line=2,
+                    reviewer_login="reviewer-a",
+                    reviewer_body="Please use the current wording.",
+                    is_outdated=True,
+                ),
+                review_thread(
+                    thread_id="t-2",
+                    path="src/legacy.py",
+                    line=1,
+                    reviewer_login="reviewer-b",
+                    reviewer_body="This legacy note is stale.",
+                    is_outdated=True,
+                ),
+                review_thread(
+                    thread_id="t-3",
+                    path="src/helper.py",
+                    line=2,
+                    reviewer_login="reviewer-c",
+                    reviewer_body="Please add more detail here.",
+                ),
+            ]
+            previous_context = context_with_threads(tmp, previous_threads)
+            current_context = context_with_threads(tmp, current_threads)
+            repo_root = Path(current_context["repo_root"])
+            (repo_root / "docs").mkdir(parents=True, exist_ok=True)
+            (repo_root / "docs" / "guide.md").write_text(
+                "# Guide\nOriginal wording\nCurrent wording\n",
+                encoding="utf-8",
+            )
+            for context in (previous_context, current_context):
+                context["changed_files"] = ["docs/guide.md", "src/helper.py", "src/legacy.py"]
+                context["changed_file_groups"]["runtime"] = {
+                    "count": 2,
+                    "sample_files": ["src/helper.py", "src/legacy.py"],
+                }
+                context["changed_file_groups"]["docs"] = {
+                    "count": 1,
+                    "sample_files": ["docs/guide.md"],
+                }
+                context["context_fingerprint"] = build_context_fingerprint(context)
+
+            previous_context_path = tmp / "previous-context.json"
+            context_path = tmp / "context.json"
+            reconciliation_input_path = tmp / "reconciliation-input.json"
+            output_dir = tmp / "packets"
+            build_result_path = tmp / "build-result.json"
+            write_json(previous_context_path, previous_context)
+            write_json(context_path, current_context)
+            write_json(
+                reconciliation_input_path,
+                {
+                    "accepted_threads": [
+                        {
+                            "thread_id": "t-1",
+                            "validation_commands": ["python -m pytest tests/test_docs.py"],
+                        }
+                    ]
+                },
+            )
+
+            argv = [
+                "build_review_packets.py",
+                "--context",
+                str(context_path),
+                "--previous-context",
+                str(previous_context_path),
+                "--reconciliation-input",
+                str(reconciliation_input_path),
+                "--repo-root",
+                current_context["repo_root"],
+                "--output-dir",
+                str(output_dir),
+                "--result-output",
+                str(build_result_path),
+            ]
+            def fake_diff_snippet(
+                repo_root: Path,
+                base_ref: str | None,
+                head_ref: str | None,
+                path: str,
+                line_number: int | None,
+                cache: dict[str, str | None],
+            ) -> str | None:
+                if path == "docs/guide.md":
+                    return "@@ -1,2 +1,2 @@\n # Guide\n-Original wording\n+Current wording\n"
+                return None
+
+            with patch.object(sys, "argv", argv), patch.object(
+                packets,
+                "diff_snippet_for_path",
+                side_effect=fake_diff_snippet,
+            ):
+                self.assertEqual(packets.main(), 0)
+
+            transitioned_packet = json.loads((output_dir / "thread-01.json").read_text(encoding="utf-8"))
+            already_outdated_packet = json.loads((output_dir / "thread-02.json").read_text(encoding="utf-8"))
+            orchestrator = json.loads((output_dir / "orchestrator.json").read_text(encoding="utf-8"))
+            global_packet = json.loads((output_dir / "global_packet.json").read_text(encoding="utf-8"))
+            build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
+
+            self.assertTrue(transitioned_packet["transitioned_to_outdated"])
+            self.assertTrue(transitioned_packet["thread"]["transitioned_to_outdated"])
+            self.assertEqual(transitioned_packet["outdated_recheck"]["resolution_verdict"], "auto-accept")
+            self.assertEqual(
+                transitioned_packet["outdated_recheck"]["original_request"]["reviewer_body"],
+                "Please use the current wording.",
+            )
+            self.assertEqual(
+                transitioned_packet["outdated_recheck"]["validation_provenance"]["commands"],
+                ["python -m pytest tests/test_docs.py"],
+            )
+            self.assertNotIn("transitioned_to_outdated", already_outdated_packet)
+            self.assertEqual(orchestrator["same_run_reconciliation"]["outdated_transition_candidates"], 1)
+            self.assertEqual(orchestrator["same_run_reconciliation"]["outdated_auto_resolve_candidates"], 1)
+            self.assertEqual(orchestrator["same_run_reconciliation"]["outdated_recheck_ambiguous"], 0)
+            self.assertEqual(global_packet["same_run_reconciliation"], orchestrator["same_run_reconciliation"])
+            self.assertTrue(build_result["same_run_reconciliation_enabled"])
+            self.assertEqual(build_result["outdated_transition_candidates"], 1)
+            self.assertEqual(build_result["outdated_auto_resolve_candidates"], 1)
+            self.assertEqual(build_result["outdated_recheck_ambiguous"], 0)
+
+    def test_same_run_outdated_transition_requires_diff_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            previous_threads = [
+                review_thread(
+                    thread_id="t-1",
+                    path="docs/guide.md",
+                    line=2,
+                    reviewer_login="reviewer-a",
+                    reviewer_body="Please use the current wording.",
+                )
+            ]
+            current_threads = [
+                review_thread(
+                    thread_id="t-1",
+                    path="docs/guide.md",
+                    line=2,
+                    reviewer_login="reviewer-a",
+                    reviewer_body="Please use the current wording.",
+                    is_outdated=True,
+                )
+            ]
+            previous_context = context_with_threads(tmp, previous_threads)
+            current_context = context_with_threads(tmp, current_threads)
+            repo_root = Path(current_context["repo_root"])
+            (repo_root / "docs" / "guide.md").write_text(
+                "# Guide\nCurrent wording\n",
+                encoding="utf-8",
+            )
+            for context in (previous_context, current_context):
+                context["changed_files"] = ["docs/guide.md"]
+                context["changed_file_groups"]["runtime"] = {"count": 0, "sample_files": []}
+                context["changed_file_groups"]["docs"] = {
+                    "count": 1,
+                    "sample_files": ["docs/guide.md"],
+                }
+                context["context_fingerprint"] = build_context_fingerprint(context)
+
+            previous_context_path = tmp / "previous-context.json"
+            context_path = tmp / "context.json"
+            reconciliation_input_path = tmp / "reconciliation-input.json"
+            output_dir = tmp / "packets"
+            build_result_path = tmp / "build-result.json"
+            write_json(previous_context_path, previous_context)
+            write_json(context_path, current_context)
+            write_json(
+                reconciliation_input_path,
+                {
+                    "accepted_threads": [
+                        {
+                            "thread_id": "t-1",
+                            "validation_commands": ["python -m pytest tests/test_docs.py"],
+                        }
+                    ]
+                },
+            )
+
+            argv = [
+                "build_review_packets.py",
+                "--context",
+                str(context_path),
+                "--previous-context",
+                str(previous_context_path),
+                "--reconciliation-input",
+                str(reconciliation_input_path),
+                "--repo-root",
+                current_context["repo_root"],
+                "--output-dir",
+                str(output_dir),
+                "--result-output",
+                str(build_result_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                self.assertEqual(packets.main(), 0)
+
+            transitioned_packet = json.loads((output_dir / "thread-01.json").read_text(encoding="utf-8"))
+            build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(transitioned_packet["outdated_recheck"]["resolution_verdict"], "ambiguous")
+            self.assertEqual(
+                transitioned_packet["outdated_recheck"]["verdict_reason"],
+                "missing_current_head_evidence",
+            )
+            self.assertFalse(transitioned_packet["outdated_recheck"]["current_head_evidence"]["evidence_visible"])
+            self.assertEqual(build_result["outdated_auto_resolve_candidates"], 0)
+            self.assertEqual(build_result["outdated_recheck_ambiguous"], 1)
+
+    def test_same_run_outdated_transition_requires_request_anchor_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            previous_threads = [
+                review_thread(
+                    thread_id="t-1",
+                    path="docs/guide.md",
+                    line=2,
+                    reviewer_login="reviewer-a",
+                    reviewer_body="Please use the current wording.",
+                )
+            ]
+            current_threads = [
+                review_thread(
+                    thread_id="t-1",
+                    path="docs/guide.md",
+                    line=2,
+                    reviewer_login="reviewer-a",
+                    reviewer_body="Please use the current wording.",
+                    is_outdated=True,
+                )
+            ]
+            previous_context = context_with_threads(tmp, previous_threads)
+            current_context = context_with_threads(tmp, current_threads)
+            repo_root = Path(current_context["repo_root"])
+            (repo_root / "docs" / "guide.md").write_text(
+                "# Guide\nFresh intro\n",
+                encoding="utf-8",
+            )
+            for context in (previous_context, current_context):
+                context["changed_files"] = ["docs/guide.md"]
+                context["changed_file_groups"]["runtime"] = {"count": 0, "sample_files": []}
+                context["changed_file_groups"]["docs"] = {
+                    "count": 1,
+                    "sample_files": ["docs/guide.md"],
+                }
+                context["context_fingerprint"] = build_context_fingerprint(context)
+
+            previous_context_path = tmp / "previous-context.json"
+            context_path = tmp / "context.json"
+            reconciliation_input_path = tmp / "reconciliation-input.json"
+            output_dir = tmp / "packets"
+            build_result_path = tmp / "build-result.json"
+            write_json(previous_context_path, previous_context)
+            write_json(context_path, current_context)
+            write_json(
+                reconciliation_input_path,
+                {
+                    "accepted_threads": [
+                        {
+                            "thread_id": "t-1",
+                            "validation_commands": ["python -m pytest tests/test_docs.py"],
+                        }
+                    ]
+                },
+            )
+
+            argv = [
+                "build_review_packets.py",
+                "--context",
+                str(context_path),
+                "--previous-context",
+                str(previous_context_path),
+                "--reconciliation-input",
+                str(reconciliation_input_path),
+                "--repo-root",
+                current_context["repo_root"],
+                "--output-dir",
+                str(output_dir),
+                "--result-output",
+                str(build_result_path),
+            ]
+
+            def fake_diff_snippet(
+                repo_root: Path,
+                base_ref: str | None,
+                head_ref: str | None,
+                path: str,
+                line_number: int | None,
+                cache: dict[str, str | None],
+            ) -> str | None:
+                if path == "docs/guide.md":
+                    return "@@ -1,2 +1,2 @@\n # Guide\n-Old intro\n+Fresh intro\n"
+                return None
+
+            with patch.object(sys, "argv", argv), patch.object(
+                packets,
+                "diff_snippet_for_path",
+                side_effect=fake_diff_snippet,
+            ):
+                self.assertEqual(packets.main(), 0)
+
+            transitioned_packet = json.loads((output_dir / "thread-01.json").read_text(encoding="utf-8"))
+            build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(transitioned_packet["outdated_recheck"]["resolution_verdict"], "ambiguous")
+            self.assertEqual(
+                transitioned_packet["outdated_recheck"]["verdict_reason"],
+                "missing_request_anchor_evidence",
+            )
+            self.assertTrue(transitioned_packet["outdated_recheck"]["current_head_evidence"]["evidence_visible"])
+            self.assertFalse(
+                transitioned_packet["outdated_recheck"]["current_head_evidence"]["request_anchor_visible"]
+            )
+            self.assertEqual(build_result["outdated_auto_resolve_candidates"], 0)
+            self.assertEqual(build_result["outdated_recheck_ambiguous"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -219,6 +219,11 @@ Generated runtime metadata:
 - thin discovery wrapper:
   - `.agents/skills/<skill-name>/`
 
+Generated skills must also reserve `<repo-root>/.codex/tmp/` as the only repo-local scratch tree for temporary, helper, runtime-artifact, and ad hoc operator-input files that are not meant to be tracked:
+- keep packet runtime artifacts under `.codex/tmp/packet-workflow/<skill-name>/`
+- keep repo-local fallbacks such as evaluation logs or helper inputs under `.codex/tmp/`
+- do not place repo-local temp files at the repo root or inside tracked source directories
+
 Wrapper rules:
 - wrapper subtree may contain only `SKILL.md` and `agents/openai.yaml`
 - wrapper must point operators at the retained kernel

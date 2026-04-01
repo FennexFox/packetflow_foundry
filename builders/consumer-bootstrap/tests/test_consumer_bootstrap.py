@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import py_compile
+import shutil
 import sys
 import tempfile
 import unittest
@@ -75,6 +76,7 @@ def create_consumer_repo(
     root: Path,
     *,
     include_readme: bool = True,
+    gitignore_text: str | None = None,
     root_agents_text: str | None = None,
     codex_agents_text: str | None = None,
     existing_profile: bool = False,
@@ -91,6 +93,8 @@ def create_consumer_repo(
     (repo / ".git").mkdir()
     if include_readme:
         (repo / "README.md").write_text("# Consumer Repo\n", encoding="utf-8")
+    if gitignore_text is not None:
+        (repo / ".gitignore").write_text(gitignore_text, encoding="utf-8")
     if include_vendor:
         vendor_skill_root = (
             repo / ".codex" / "vendor" / "packetflow_foundry" / ".agents" / "skills"
@@ -128,16 +132,24 @@ def create_consumer_repo(
 def run_bootstrap_main(
     repo: Path,
     *,
-    symlink_side_effect: Exception | None = None,
+    bridge_mode: str = bootstrap.BRIDGE_MODE_COPY,
 ) -> tuple[int, str, str, mock.Mock]:
     stdout = io.StringIO()
     stderr = io.StringIO()
     symlink_mock = mock.Mock()
-    if symlink_side_effect is not None:
-        symlink_mock.side_effect = symlink_side_effect
 
     with (
-        mock.patch.object(sys, "argv", ["init_consumer_codex.py", "--repo-root", str(repo)]),
+        mock.patch.object(
+            sys,
+            "argv",
+            [
+                "init_consumer_codex.py",
+                "--repo-root",
+                str(repo),
+                "--bridge-mode",
+                bridge_mode,
+            ],
+        ),
         mock.patch.object(Path, "symlink_to", symlink_mock),
         redirect_stdout(stdout),
         redirect_stderr(stderr),
@@ -145,6 +157,14 @@ def run_bootstrap_main(
         code = bootstrap.main()
 
     return code, stdout.getvalue(), stderr.getvalue(), symlink_mock
+
+
+def relative_files(root: Path) -> list[str]:
+    return sorted(
+        str(path.relative_to(root)).replace("\\", "/")
+        for path in root.rglob("*")
+        if path.is_file()
+    )
 
 
 class ConsumerBootstrapTests(unittest.TestCase):
@@ -192,18 +212,25 @@ class ConsumerBootstrapTests(unittest.TestCase):
             code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
 
             self.assertEqual(code, 0)
+            self.assertIn("bridge mode: copy", stdout)
             self.assertIn("root AGENTS.md: not present", stdout)
             self.assertIn(".codex/AGENTS.md: created", stdout)
+            self.assertIn(".gitignore: created with .codex/tmp/", stdout)
             self.assertIn(".codex/agents: ready", stdout)
-            self.assertIn("agent bridge:", stdout)
+            self.assertIn("copied agent bridge:", stdout)
             self.assertIn("vendor-agent", stdout)
             self.assertIn(".agents/skills: ready", stdout)
-            self.assertIn("skill bridge:", stdout)
+            self.assertIn("copied skill bridge:", stdout)
             self.assertIn("vendor-skill", stdout)
-            self.assertEqual(symlink_mock.call_count, 2)
+            self.assertEqual(symlink_mock.call_count, 0)
             self.assertFalse((repo / "AGENTS.md").exists())
             self.assertTrue((repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE).is_dir())
             self.assertTrue((repo / bootstrap.ROOT_SKILLS_RELATIVE).is_dir())
+            self.assertEqual(
+                (repo / ".gitignore").read_text(encoding="utf-8"),
+                ".codex/tmp/\n",
+            )
+            self.assertTrue((repo / bootstrap.BRIDGE_STATE_RELATIVE).is_file())
 
             codex_agents = (repo / ".codex" / "AGENTS.md").read_text(encoding="utf-8")
             self.assertIn(bootstrap.BOOTSTRAP_MARKER_START, codex_agents)
@@ -271,6 +298,7 @@ class ConsumerBootstrapTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             repo = create_consumer_repo(
                 Path(tmp),
+                gitignore_text="bin/\n",
                 root_agents_text="# Root AGENTS\n",
                 codex_agents_text="# Local Codex AGENTS\n",
                 vendor_skill_names=["vendor-skill"],
@@ -279,24 +307,39 @@ class ConsumerBootstrapTests(unittest.TestCase):
 
             first_code, first_stdout, _, _ = run_bootstrap_main(repo)
             self.assertEqual(first_code, 0)
-            create_skill_dir(repo / bootstrap.ROOT_SKILLS_RELATIVE, "vendor-skill")
-            create_agent_file(repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE, "vendor-agent")
-            (repo / bootstrap.PROJECT_PROFILE_RELATIVE).unlink()
 
             second_code, second_stdout, _, _ = run_bootstrap_main(repo)
 
             self.assertEqual(second_code, 0)
             self.assertIn("root AGENTS.md: appended foundry block", first_stdout)
             self.assertIn(".codex/AGENTS.md: appended foundry block", first_stdout)
+            self.assertIn(".gitignore: appended .codex/tmp/", first_stdout)
             self.assertIn("root AGENTS.md: unchanged", second_stdout)
             self.assertIn(".codex/AGENTS.md: unchanged", second_stdout)
-            self.assertIn("skipped agent bridge:", second_stdout)
-            self.assertIn("skipped skill bridge:", second_stdout)
+            self.assertIn(".gitignore: unchanged", second_stdout)
 
             root_agents = (repo / "AGENTS.md").read_text(encoding="utf-8")
             codex_agents = (repo / ".codex" / "AGENTS.md").read_text(encoding="utf-8")
+            gitignore = (repo / ".gitignore").read_text(encoding="utf-8")
             self.assertEqual(root_agents.count(bootstrap.BOOTSTRAP_MARKER_START), 1)
             self.assertEqual(codex_agents.count(bootstrap.BOOTSTRAP_MARKER_START), 1)
+            self.assertEqual(gitignore.count(".codex/tmp/"), 1)
+
+    def test_existing_gitignore_with_codex_tmp_stays_unchanged(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                gitignore_text="bin/\n.codex/tmp\n",
+                vendor_skill_names=["vendor-skill"],
+            )
+
+            before = (repo / ".gitignore").read_text(encoding="utf-8")
+
+            code, stdout, _, _ = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertIn(".gitignore: unchanged", stdout)
+            self.assertEqual((repo / ".gitignore").read_text(encoding="utf-8"), before)
 
     def test_existing_agents_with_foundry_keywords_stay_unchanged(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -398,8 +441,8 @@ class ConsumerBootstrapTests(unittest.TestCase):
             code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
 
             self.assertEqual(code, 0)
-            self.assertEqual(symlink_mock.call_count, 2)
-            self.assertIn("legacy skill bridge:", stdout)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("legacy copied skill bridge:", stdout)
             self.assertIn("legacy-only", stdout)
             self.assertIn("shared-skill", stderr)
             self.assertIn("Legacy `.codex/project/skills/` is deprecated", stderr)
@@ -415,8 +458,8 @@ class ConsumerBootstrapTests(unittest.TestCase):
             code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
 
             self.assertEqual(code, 0)
-            self.assertEqual(symlink_mock.call_count, 2)
-            self.assertIn("legacy agent bridge:", stdout)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("legacy copied agent bridge:", stdout)
             self.assertIn("legacy-only.toml", stdout)
             self.assertIn("shared-agent", stderr)
             self.assertIn("Legacy `.codex/project/agents/` is deprecated", stderr)
@@ -445,18 +488,904 @@ class ConsumerBootstrapTests(unittest.TestCase):
             )
             self.assertFalse((repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE).exists())
 
-    def test_symlink_failure_produces_clear_error(self) -> None:
+    def test_copy_alias_is_accepted(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
-            repo = create_consumer_repo(Path(tmp), vendor_skill_names=["vendor-skill"])
-
-            code, _, stderr, _ = run_bootstrap_main(
-                repo,
-                symlink_side_effect=OSError("no symlink permission"),
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["vendor-skill"],
+                vendor_agent_names=["vendor-agent"],
             )
 
+            code, stdout, stderr, symlink_mock = run_bootstrap_main(
+                repo,
+                bridge_mode=bootstrap.BRIDGE_MODE_COPY_ON_FAIL,
+            )
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("bridge mode: copy", stdout)
+            self.assertIn("copied agent bridge:", stdout)
+            self.assertIn("copied skill bridge:", stdout)
+            self.assertEqual(stderr.strip(), "")
+
+    def test_copied_vendor_skill_rewrites_wrapper_paths_to_vendor_subtree(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["vendor-skill"],
+            )
+            vendor_skill = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".agents"
+                / "skills"
+                / "vendor-skill"
+                / "SKILL.md"
+            )
+            vendor_skill.write_text(
+                "\n".join(
+                    [
+                        "---",
+                        "name: vendor-skill",
+                        "description: test skill",
+                        "---",
+                        "",
+                        "Use `../../../builders/packet-workflow/retained-skills/vendor-skill/SKILL.md`.",
+                        "Run `python ../../../builders/packet-workflow/scripts/init_packet_skill.py`.",
+                        "",
+                    ]
+                ),
+                encoding="utf-8",
+            )
+
+            code, _, _, _ = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            copied_skill = repo / bootstrap.ROOT_SKILLS_RELATIVE / "vendor-skill" / "SKILL.md"
+            copied_text = copied_skill.read_text(encoding="utf-8")
+            self.assertIn(
+                "../../../.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/vendor-skill/SKILL.md",
+                copied_text,
+            )
+            self.assertIn(
+                "python ../../../.codex/vendor/packetflow_foundry/builders/packet-workflow/scripts/init_packet_skill.py",
+                copied_text,
+            )
+            self.assertNotIn(
+                "Use `../../../builders/packet-workflow/retained-skills/vendor-skill/SKILL.md`.",
+                copied_text,
+            )
+
+    def test_default_copy_creates_managed_copies(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["vendor-skill"],
+                vendor_agent_names=["vendor-agent"],
+            )
+
+            code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("bridge mode: copy", stdout)
+            self.assertIn("copied agent bridge:", stdout)
+            self.assertIn("copied skill bridge:", stdout)
+            self.assertEqual(stderr.strip(), "")
+
+            vendor_agent = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".codex"
+                / "agents"
+                / "vendor-agent.toml"
+            )
+            copied_agent = repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE / "vendor-agent.toml"
+            self.assertEqual(
+                copied_agent.read_text(encoding="utf-8"),
+                vendor_agent.read_text(encoding="utf-8"),
+            )
+
+            copied_skill = repo / bootstrap.ROOT_SKILLS_RELATIVE / "vendor-skill"
+            self.assertEqual(relative_files(copied_skill), ["SKILL.md", "agents/openai.yaml"])
+
+            bridge_state = json.loads(
+                (repo / bootstrap.BRIDGE_STATE_RELATIVE).read_text(encoding="utf-8")
+            )
+            self.assertEqual(bridge_state["kind"], bootstrap.BRIDGE_STATE_KIND)
+            self.assertIn("vendor-agent.toml", bridge_state["agents"])
+            self.assertIn("vendor-skill", bridge_state["skills"])
+
+    def test_copy_refreshes_managed_copies_when_vendor_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["vendor-skill"],
+                vendor_agent_names=["vendor-agent"],
+            )
+
+            first_code, _, _, _ = run_bootstrap_main(repo)
+            self.assertEqual(first_code, 0)
+
+            vendor_agent = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".codex"
+                / "agents"
+                / "vendor-agent.toml"
+            )
+            vendor_agent.write_text(
+                vendor_agent.read_text(encoding="utf-8") + "# updated\n",
+                encoding="utf-8",
+            )
+            vendor_skill = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".agents"
+                / "skills"
+                / "vendor-skill"
+                / "agents"
+                / "openai.yaml"
+            )
+            vendor_skill.write_text('display_name: "Updated"\n', encoding="utf-8")
+
+            code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("refreshed copied agent bridge:", stdout)
+            self.assertIn("refreshed copied skill bridge:", stdout)
+            self.assertEqual(stderr.strip(), "")
+
+            copied_agent = repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE / "vendor-agent.toml"
+            copied_skill = (
+                repo / bootstrap.ROOT_SKILLS_RELATIVE / "vendor-skill" / "agents" / "openai.yaml"
+            )
+            self.assertIn("# updated", copied_agent.read_text(encoding="utf-8"))
+            self.assertEqual(
+                copied_skill.read_text(encoding="utf-8"),
+                'display_name: "Updated"\n',
+            )
+
+    def test_sync_managed_file_copy_recreates_missing_target_once(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            source_path = create_agent_file(repo_root / "vendor", "vendor-agent")
+            target_path = repo_root / "consumer" / "vendor-agent.toml"
+            target_path.parent.mkdir(parents=True, exist_ok=True)
+            target_path.write_text(source_path.read_text(encoding="utf-8"), encoding="utf-8")
+            state_group = {
+                "vendor-agent.toml": bootstrap.build_file_copy_state_entry(repo_root, source_path)
+            }
+
+            target_path.unlink()
+
+            with mock.patch.object(bootstrap, "write_bytes", wraps=bootstrap.write_bytes) as write_mock:
+                status, detail, notice = bootstrap.sync_managed_file_copy(
+                    repo_root,
+                    source_path,
+                    target_path,
+                    bridge_name="vendor-agent.toml",
+                    state_group=state_group,
+                )
+
+            self.assertEqual(status, "copied")
+            self.assertEqual(detail, f"{target_path.as_posix()} <- {source_path.as_posix()}")
+            self.assertIsNone(notice)
+            self.assertEqual(write_mock.call_count, 1)
+            self.assertEqual(
+                target_path.read_text(encoding="utf-8"),
+                source_path.read_text(encoding="utf-8"),
+            )
+
+    def test_sync_managed_directory_copy_restores_missing_files_and_prunes_stale_managed_files(
+        self,
+    ) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            source_root = create_skill_dir(repo_root / "vendor", "vendor-skill")
+            obsolete_source_file = source_root / "obsolete.txt"
+            obsolete_source_file.write_text("obsolete\n", encoding="utf-8")
+            target_root = repo_root / "consumer" / "vendor-skill"
+            shutil.copytree(source_root, target_root)
+            copied_files = bootstrap.build_skill_bridge_files(
+                repo_root,
+                source_root,
+                target_root,
+            )
+            state_group = {
+                "vendor-skill": bootstrap.build_directory_copy_state_entry(
+                    repo_root,
+                    source_root,
+                    copied_files,
+                )
+            }
+
+            missing_file = target_root / "agents" / "openai.yaml"
+            stale_file = target_root / "obsolete.txt"
+            obsolete_source_file.unlink()
+            missing_file.unlink()
+
+            status, detail, notice = bootstrap.sync_managed_directory_copy(
+                repo_root,
+                source_root,
+                target_root,
+                bridge_name="vendor-skill",
+                state_group=state_group,
+            )
+
+            self.assertEqual(status, "refreshed")
+            self.assertEqual(detail, f"{target_root.as_posix()} <- {source_root.as_posix()}")
+            self.assertIsNone(notice)
+            self.assertTrue(missing_file.is_file())
+            self.assertFalse(stale_file.exists())
+
+    def test_copy_keeps_locally_added_skill_files_on_rerun(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["vendor-skill"],
+            )
+
+            first_code, _, _, _ = run_bootstrap_main(repo)
+            self.assertEqual(first_code, 0)
+
+            copied_skill_root = repo / bootstrap.ROOT_SKILLS_RELATIVE / "vendor-skill"
+            copied_skill = copied_skill_root / "agents" / "openai.yaml"
+            local_file = copied_skill_root / "local-notes.txt"
+            local_file.write_text("local override\n", encoding="utf-8")
+
+            vendor_skill = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".agents"
+                / "skills"
+                / "vendor-skill"
+                / "agents"
+                / "openai.yaml"
+            )
+            vendor_skill.write_text('display_name: "Updated"\n', encoding="utf-8")
+
+            code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("skipped skill bridge:", stdout)
+            self.assertIn("modified locally", stderr)
+            self.assertTrue(local_file.is_file())
+            self.assertEqual(
+                copied_skill.read_text(encoding="utf-8"),
+                'display_name: "Test"\n',
+            )
+
+    def test_copy_rejects_symlinked_skill_wrapper_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["vendor-skill"],
+            )
+            symlinked_file = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".agents"
+                / "skills"
+                / "vendor-skill"
+                / "agents"
+                / "openai.yaml"
+            )
+            real_is_symlink = Path.is_symlink
+
+            def fake_is_symlink(path: Path) -> bool:
+                if path == symlinked_file:
+                    return True
+                return real_is_symlink(path)
+
+            with mock.patch.object(Path, "is_symlink", fake_is_symlink):
+                code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
             self.assertEqual(code, 1)
-            self.assertIn("Failed to create directory symlink", stderr)
-            self.assertIn("Enable Windows Developer Mode", stderr)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertNotIn("copied skill bridge:", stdout)
+            self.assertIn("unsupported symlinked file", stderr)
+            self.assertFalse(
+                (repo / bootstrap.ROOT_SKILLS_RELATIVE / "vendor-skill").exists()
+            )
+            self.assertFalse((repo / bootstrap.BRIDGE_STATE_RELATIVE).exists())
+
+    def test_copy_rejects_linked_skill_root_directories(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["vendor-skill"],
+            )
+            linked_root = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".agents"
+                / "skills"
+                / "vendor-skill"
+            )
+            real_has_reparse_point = bootstrap.path_has_reparse_point
+
+            def fake_has_reparse_point(path: Path) -> bool:
+                if path == linked_root:
+                    return True
+                return real_has_reparse_point(path)
+
+            with mock.patch.object(bootstrap, "path_has_reparse_point", fake_has_reparse_point):
+                code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 1)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertNotIn("copied skill bridge:", stdout)
+            self.assertIn("unsupported linked directory", stderr)
+            self.assertFalse(
+                (repo / bootstrap.ROOT_SKILLS_RELATIVE / "vendor-skill").exists()
+            )
+            self.assertFalse((repo / bootstrap.BRIDGE_STATE_RELATIVE).exists())
+
+    def test_copy_rejects_symlinked_agent_source_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_agent_names=["vendor-agent"],
+            )
+            symlinked_file = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".codex"
+                / "agents"
+                / "vendor-agent.toml"
+            )
+            real_is_symlink = Path.is_symlink
+
+            def fake_is_symlink(path: Path) -> bool:
+                if path == symlinked_file:
+                    return True
+                return real_is_symlink(path)
+
+            with mock.patch.object(Path, "is_symlink", fake_is_symlink):
+                code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 1)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertNotIn("copied agent bridge:", stdout)
+            self.assertIn("unsupported symlinked file", stderr)
+            self.assertFalse(
+                (repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE / "vendor-agent.toml").exists()
+            )
+            self.assertFalse((repo / bootstrap.BRIDGE_STATE_RELATIVE).exists())
+
+    def test_copy_errors_cleanly_for_external_agent_source_path_before_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = create_consumer_repo(
+                root,
+                vendor_agent_names=["vendor-agent"],
+            )
+            vendor_agent = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".codex"
+                / "agents"
+                / "vendor-agent.toml"
+            )
+            external_root = root / "external"
+            external_agent = create_agent_file(external_root, "external-agent")
+            real_resolve = Path.resolve
+
+            def fake_resolve(path: Path, *args: object, **kwargs: object) -> Path:
+                if path == vendor_agent:
+                    return external_agent.resolve()
+                return real_resolve(path, *args, **kwargs)
+
+            with mock.patch.object(Path, "resolve", fake_resolve):
+                code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 1)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertNotIn("copied agent bridge:", stdout)
+            self.assertIn("resolves outside the agent root", stderr)
+            self.assertFalse(
+                (repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE / "vendor-agent.toml").exists()
+            )
+            self.assertFalse((repo / bootstrap.BRIDGE_STATE_RELATIVE).exists())
+
+    def test_copy_errors_cleanly_for_external_skill_source_path_before_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = create_consumer_repo(
+                root,
+                vendor_skill_names=["vendor-skill"],
+            )
+            vendor_skill = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".agents"
+                / "skills"
+                / "vendor-skill"
+            )
+            external_skill = create_skill_dir(root / "external-skills", "vendor-skill")
+            real_resolve = Path.resolve
+
+            def fake_resolve(path: Path, *args: object, **kwargs: object) -> Path:
+                if path == vendor_skill:
+                    return external_skill.resolve()
+                return real_resolve(path, *args, **kwargs)
+
+            with mock.patch.object(Path, "resolve", fake_resolve):
+                code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 1)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertNotIn("copied skill bridge:", stdout)
+            self.assertIn("resolves outside the skill root", stderr)
+            self.assertFalse(
+                (repo / bootstrap.ROOT_SKILLS_RELATIVE / "vendor-skill").exists()
+            )
+            self.assertFalse((repo / bootstrap.BRIDGE_STATE_RELATIVE).exists())
+
+    def test_copy_persists_agent_bridge_state_before_skill_pass_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_agent_names=["vendor-agent"],
+            )
+            root_agent = (
+                repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE / "vendor-agent.toml"
+            )
+            state_path = repo / bootstrap.BRIDGE_STATE_RELATIVE
+
+            with mock.patch.object(
+                bootstrap,
+                "create_skill_bridges",
+                side_effect=RuntimeError("simulated skill bridge failure"),
+            ):
+                code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 1)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertEqual(stdout.strip(), "")
+            self.assertIn("simulated skill bridge failure", stderr)
+            self.assertTrue(root_agent.is_file())
+            bridge_state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertIn("vendor-agent.toml", bridge_state["agents"])
+
+            vendor_agent = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".codex"
+                / "agents"
+                / "vendor-agent.toml"
+            )
+            vendor_agent.write_text(
+                vendor_agent.read_text(encoding="utf-8") + "# upstream change\n",
+                encoding="utf-8",
+            )
+
+            code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("refreshed copied agent bridge:", stdout)
+            self.assertEqual(stderr.strip(), "")
+            self.assertIn("# upstream change\n", root_agent.read_text(encoding="utf-8"))
+
+    def test_copy_persists_agent_bridge_state_before_later_agent_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_agent_names=["alpha-agent", "vendor-agent"],
+            )
+            root_agent = (
+                repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE / "alpha-agent.toml"
+            )
+            state_path = repo / bootstrap.BRIDGE_STATE_RELATIVE
+            real_sync = bootstrap.sync_managed_file_copy
+
+            def fake_sync_managed_file_copy(
+                repo_root: Path,
+                source_path: Path,
+                target_path: Path,
+                *,
+                bridge_name: str,
+                state_group: dict[str, object],
+            ) -> tuple[str, str, str | None]:
+                if bridge_name == "vendor-agent.toml":
+                    raise RuntimeError("simulated later agent bridge failure")
+                return real_sync(
+                    repo_root,
+                    source_path,
+                    target_path,
+                    bridge_name=bridge_name,
+                    state_group=state_group,
+                )
+
+            with mock.patch.object(
+                bootstrap,
+                "sync_managed_file_copy",
+                side_effect=fake_sync_managed_file_copy,
+            ):
+                code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 1)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertEqual(stdout.strip(), "")
+            self.assertIn("simulated later agent bridge failure", stderr)
+            self.assertTrue(root_agent.is_file())
+            bridge_state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertIn("alpha-agent.toml", bridge_state["agents"])
+            self.assertNotIn("vendor-agent.toml", bridge_state["agents"])
+
+            vendor_agent = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".codex"
+                / "agents"
+                / "alpha-agent.toml"
+            )
+            vendor_agent.write_text(
+                vendor_agent.read_text(encoding="utf-8") + "# upstream change\n",
+                encoding="utf-8",
+            )
+
+            code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("refreshed copied agent bridge:", stdout)
+            self.assertEqual(stderr.strip(), "")
+            self.assertIn("# upstream change\n", root_agent.read_text(encoding="utf-8"))
+
+    def test_copy_persists_skill_bridge_state_before_later_skill_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["alpha-skill", "vendor-skill"],
+            )
+            root_skill = repo / bootstrap.ROOT_SKILLS_RELATIVE / "alpha-skill" / "SKILL.md"
+            state_path = repo / bootstrap.BRIDGE_STATE_RELATIVE
+            real_sync = bootstrap.sync_managed_directory_copy
+
+            def fake_sync_managed_directory_copy(
+                repo_root: Path,
+                source_root: Path,
+                target_root: Path,
+                *,
+                bridge_name: str,
+                state_group: dict[str, object],
+            ) -> tuple[str, str, str | None]:
+                if bridge_name == "vendor-skill":
+                    raise RuntimeError("simulated later skill bridge failure")
+                return real_sync(
+                    repo_root,
+                    source_root,
+                    target_root,
+                    bridge_name=bridge_name,
+                    state_group=state_group,
+                )
+
+            with mock.patch.object(
+                bootstrap,
+                "sync_managed_directory_copy",
+                side_effect=fake_sync_managed_directory_copy,
+            ):
+                code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 1)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertEqual(stdout.strip(), "")
+            self.assertIn("simulated later skill bridge failure", stderr)
+            self.assertTrue(root_skill.is_file())
+            bridge_state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertIn("alpha-skill", bridge_state["skills"])
+            self.assertNotIn("vendor-skill", bridge_state["skills"])
+
+            vendor_skill = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".agents"
+                / "skills"
+                / "alpha-skill"
+                / "SKILL.md"
+            )
+            vendor_skill.write_text(
+                "---\nname: alpha-skill\ndescription: updated skill\n---\n",
+                encoding="utf-8",
+            )
+
+            code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("refreshed copied skill bridge:", stdout)
+            self.assertEqual(stderr.strip(), "")
+            self.assertIn("updated skill", root_skill.read_text(encoding="utf-8"))
+
+    def test_copy_skips_locally_modified_managed_copies(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["vendor-skill"],
+                vendor_agent_names=["vendor-agent"],
+            )
+
+            first_code, _, _, _ = run_bootstrap_main(repo)
+            self.assertEqual(first_code, 0)
+
+            copied_agent = repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE / "vendor-agent.toml"
+            copied_skill = repo / bootstrap.ROOT_SKILLS_RELATIVE / "vendor-skill" / "SKILL.md"
+            copied_agent.write_text("# local edit\n", encoding="utf-8")
+            copied_skill.write_text("local skill override\n", encoding="utf-8")
+
+            vendor_agent = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".codex"
+                / "agents"
+                / "vendor-agent.toml"
+            )
+            vendor_agent.write_text(
+                vendor_agent.read_text(encoding="utf-8") + "# upstream change\n",
+                encoding="utf-8",
+            )
+
+            code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("skipped agent bridge:", stdout)
+            self.assertIn("skipped skill bridge:", stdout)
+            self.assertIn("modified locally", stderr)
+            self.assertEqual(copied_agent.read_text(encoding="utf-8"), "# local edit\n")
+            self.assertEqual(copied_skill.read_text(encoding="utf-8"), "local skill override\n")
+
+    def test_existing_vendor_symlink_bridges_are_migrated_to_managed_copies(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["vendor-skill"],
+                vendor_agent_names=["vendor-agent"],
+            )
+            vendor_agent = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".codex"
+                / "agents"
+                / "vendor-agent.toml"
+            )
+            vendor_skill = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".agents"
+                / "skills"
+                / "vendor-skill"
+            )
+            root_agent = repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE / "vendor-agent.toml"
+            root_skill = repo / bootstrap.ROOT_SKILLS_RELATIVE / "vendor-skill"
+            root_agent.parent.mkdir(parents=True, exist_ok=True)
+            root_agent.write_text(vendor_agent.read_text(encoding="utf-8"), encoding="utf-8")
+            shutil.copytree(vendor_skill, root_skill)
+
+            real_is_symlink = Path.is_symlink
+            real_resolve = Path.resolve
+            real_unlink = Path.unlink
+
+            def fake_is_symlink(path: Path) -> bool:
+                if path in {root_agent, root_skill}:
+                    return True
+                return real_is_symlink(path)
+
+            def fake_resolve(path: Path, *args: object, **kwargs: object) -> Path:
+                if path == root_agent:
+                    return vendor_agent.resolve()
+                if path == root_skill:
+                    return vendor_skill.resolve()
+                return real_resolve(path, *args, **kwargs)
+
+            def fake_unlink(path: Path, *args: object, **kwargs: object) -> None:
+                if path == root_agent:
+                    real_unlink(path, *args, **kwargs)
+                    return None
+                if path == root_skill:
+                    shutil.rmtree(path)
+                    return None
+                real_unlink(path, *args, **kwargs)
+                return None
+
+            with (
+                mock.patch.object(Path, "is_symlink", fake_is_symlink),
+                mock.patch.object(Path, "resolve", fake_resolve),
+                mock.patch.object(Path, "unlink", fake_unlink),
+            ):
+                code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("migrated copied agent bridge:", stdout)
+            self.assertIn("migrated copied skill bridge:", stdout)
+            self.assertEqual(stderr.strip(), "")
+            self.assertTrue((repo / bootstrap.BRIDGE_STATE_RELATIVE).is_file())
+
+    def test_copy_prunes_deleted_managed_vendor_entries_on_rerun(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["vendor-skill"],
+                vendor_agent_names=["vendor-agent"],
+            )
+
+            first_code, _, _, _ = run_bootstrap_main(repo)
+            self.assertEqual(first_code, 0)
+
+            vendor_agent = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".codex"
+                / "agents"
+                / "vendor-agent.toml"
+            )
+            vendor_skill = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".agents"
+                / "skills"
+                / "vendor-skill"
+            )
+            vendor_agent.unlink()
+            shutil.rmtree(vendor_skill)
+
+            code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("removed agent bridge:", stdout)
+            self.assertIn("removed skill bridge:", stdout)
+            self.assertEqual(stderr.strip(), "")
+            self.assertFalse(
+                (repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE / "vendor-agent.toml").exists()
+            )
+            self.assertFalse((repo / bootstrap.ROOT_SKILLS_RELATIVE / "vendor-skill").exists())
+            self.assertFalse((repo / bootstrap.BRIDGE_STATE_RELATIVE).exists())
+
+    def test_copy_keeps_locally_modified_deleted_managed_entries_on_rerun(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["vendor-skill"],
+                vendor_agent_names=["vendor-agent"],
+            )
+
+            first_code, _, _, _ = run_bootstrap_main(repo)
+            self.assertEqual(first_code, 0)
+
+            copied_agent = repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE / "vendor-agent.toml"
+            copied_skill = repo / bootstrap.ROOT_SKILLS_RELATIVE / "vendor-skill" / "SKILL.md"
+            copied_agent.write_text("# local edit\n", encoding="utf-8")
+            copied_skill.write_text("local skill override\n", encoding="utf-8")
+
+            vendor_agent = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".codex"
+                / "agents"
+                / "vendor-agent.toml"
+            )
+            vendor_skill = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".agents"
+                / "skills"
+                / "vendor-skill"
+            )
+            vendor_agent.unlink()
+            shutil.rmtree(vendor_skill)
+
+            code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("skipped agent bridge:", stdout)
+            self.assertIn("skipped skill bridge:", stdout)
+            self.assertIn("after upstream deletion", stderr)
+            self.assertEqual(copied_agent.read_text(encoding="utf-8"), "# local edit\n")
+            self.assertEqual(copied_skill.read_text(encoding="utf-8"), "local skill override\n")
+            bridge_state = json.loads(
+                (repo / bootstrap.BRIDGE_STATE_RELATIVE).read_text(encoding="utf-8")
+            )
+            self.assertIn("vendor-agent.toml", bridge_state["agents"])
+            self.assertIn("vendor-skill", bridge_state["skills"])
+
+    def test_copy_keeps_symlinked_skill_files_after_upstream_deletion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["vendor-skill"],
+            )
+
+            first_code, _, _, _ = run_bootstrap_main(repo)
+            self.assertEqual(first_code, 0)
+
+            vendor_skill = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".agents"
+                / "skills"
+                / "vendor-skill"
+            )
+            copied_skill = repo / bootstrap.ROOT_SKILLS_RELATIVE / "vendor-skill" / "SKILL.md"
+            shutil.rmtree(vendor_skill)
+
+            real_is_symlink = Path.is_symlink
+            real_sha256_path = bootstrap.sha256_path
+
+            def fake_is_symlink(path: Path) -> bool:
+                if path == copied_skill:
+                    return True
+                return real_is_symlink(path)
+
+            def fake_sha256_path(path: Path) -> str:
+                if path == copied_skill:
+                    raise OSError("symlink targets should not be hashed during prune")
+                return real_sha256_path(path)
+
+            with (
+                mock.patch.object(Path, "is_symlink", fake_is_symlink),
+                mock.patch.object(bootstrap, "sha256_path", fake_sha256_path),
+            ):
+                code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("skipped skill bridge:", stdout)
+            self.assertIn("after upstream deletion", stderr)
+            self.assertTrue(copied_skill.is_file())
+            bridge_state = json.loads(
+                (repo / bootstrap.BRIDGE_STATE_RELATIVE).read_text(encoding="utf-8")
+            )
+            self.assertIn("vendor-skill", bridge_state["skills"])
 
     def test_missing_vendor_subtree_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

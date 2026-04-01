@@ -66,6 +66,19 @@ class RewordRecentCommitsDriverTests(unittest.TestCase):
         self.assertFalse(branch_state(repo)["working_tree_dirty"])
         self.assertEqual(run_git(repo, "status", "--short"), "")
 
+    def test_local_only_mode_still_prepares_packet_artifacts(self) -> None:
+        _temp_dir, repo = self.seed_repo()
+
+        exit_code, summary = self.run_driver("--repo", str(repo), "--count", "1", "--prepare-only")
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(summary["status"], "prepared")
+        self.assertEqual(summary["review_mode"], "local-only")
+        artifact_root = Path(summary["artifact_root"])
+        self.assertTrue((artifact_root / "packets" / "orchestrator.json").is_file())
+        self.assertTrue((artifact_root / "packets" / "global_packet.json").is_file())
+        self.assertTrue((artifact_root / "packets" / "rules_packet.json").is_file())
+
     def test_messages_file_dry_run_validates_and_finalizes_eval_log(self) -> None:
         _temp_dir, repo = self.seed_repo()
         _, prepare_summary = self.run_driver("--repo", str(repo), "--count", "2", "--prepare-only")
@@ -122,6 +135,28 @@ class RewordRecentCommitsDriverTests(unittest.TestCase):
         self.assertEqual(subjects, ["fix(core): rewrite seed", "fix(parser): rewrite follow-up"])
         eval_log = load_json(Path(summary["evaluation_log_path"]))
         self.assertTrue(eval_log["safety"]["apply_succeeded"])
+
+    def test_messages_file_inside_repo_outside_codex_tmp_is_rejected(self) -> None:
+        _temp_dir, repo = self.seed_repo()
+        _, prepare_summary = self.run_driver("--repo", str(repo), "--count", "2", "--prepare-only")
+        template_path = Path(prepare_summary["message_template_path"])
+        self.write_messages(template_path)
+        invalid_path = repo / "message-template.json"
+        invalid_path.write_text(template_path.read_text(encoding="utf-8"), encoding="utf-8")
+
+        exit_code, summary = self.run_driver(
+            "--repo",
+            str(repo),
+            "--count",
+            "2",
+            "--messages-file",
+            str(invalid_path),
+            "--dry-run",
+        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(summary["status"], "failed")
+        self.assertIn("messages-file paths inside the repo must live under .codex/tmp/", summary["error_message"])
 
 
 if __name__ == "__main__":
