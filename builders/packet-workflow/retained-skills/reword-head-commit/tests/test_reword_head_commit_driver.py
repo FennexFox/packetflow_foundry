@@ -48,9 +48,14 @@ class RewordHeadCommitDriverTests(unittest.TestCase):
         )
         return temp_dir, repo
 
-    def run_driver(self, *args: str) -> tuple[int, dict]:
+    def run_driver(self, *args: str, cwd: Path | None = None) -> tuple[int, dict]:
         stdout = io.StringIO()
-        with mock.patch.object(sys, "argv", ["reword_head_commit.py", *args]), contextlib.redirect_stdout(stdout):
+        chdir_context = contextlib.chdir(cwd) if cwd is not None else contextlib.nullcontext()
+        with (
+            mock.patch.object(sys, "argv", ["reword_head_commit.py", *args]),
+            chdir_context,
+            contextlib.redirect_stdout(stdout),
+        ):
             exit_code = reword_head_commit.main()
         return exit_code, json.loads(stdout.getvalue())
 
@@ -139,6 +144,36 @@ class RewordHeadCommitDriverTests(unittest.TestCase):
         self.assertEqual(exit_code, 1)
         validation = load_json(Path(summary["validation_path"]))
         self.assertIn("active_git_operation", {item["code"] for item in validation["errors"]})
+
+    def test_invalid_message_returns_validation_summary_instead_of_generic_failure(self) -> None:
+        _temp_dir, repo = self.seed_repo()
+
+        exit_code, summary = self.run_driver("--repo", str(repo), "--message", "")
+
+        self.assertEqual(exit_code, 1)
+        self.assertEqual(summary["status"], "invalid")
+        validation = load_json(Path(summary["validation_path"]))
+        apply_result = load_json(Path(summary["apply_result_path"]))
+        self.assertIn("missing_new_message", {item["code"] for item in validation["errors"]})
+        self.assertEqual(apply_result["status"], "blocked")
+        self.assertIsNone(apply_result["operation"]["new_subject"])
+
+    def test_relative_message_file_is_resolved_from_repo_root(self) -> None:
+        _temp_dir, repo = self.seed_repo()
+        message_path = repo / ".codex" / "tmp" / "packet-workflow" / "reword-head-commit" / "message.txt"
+        message_path.parent.mkdir(parents=True, exist_ok=True)
+        message_path.write_text("fix(app): rename seed\n", encoding="utf-8")
+        with tempfile.TemporaryDirectory() as outside_dir:
+            exit_code, summary = self.run_driver(
+                "--repo",
+                str(repo),
+                "--message-file",
+                ".codex/tmp/packet-workflow/reword-head-commit/message.txt",
+                cwd=Path(outside_dir),
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(summary["status"], "dry-run")
 
 
 if __name__ == "__main__":

@@ -68,7 +68,10 @@ def load_message(args: argparse.Namespace, repo_root: Path) -> str:
         return str(args.message).strip("\n")
     if args.message_file is None:
         raise RuntimeError("either --message or --message-file is required")
-    message_path = args.message_file.resolve()
+    message_path = args.message_file.expanduser()
+    if not message_path.is_absolute():
+        message_path = repo_root / message_path
+    message_path = message_path.resolve()
     repo_codex_tmp = (repo_root / ".codex" / "tmp").resolve()
     if message_path.is_relative_to(repo_root) and not message_path.is_relative_to(repo_codex_tmp):
         raise RuntimeError("message-file paths inside the repo must live under .codex/tmp/")
@@ -191,8 +194,9 @@ def base_apply_result(
     repo_state: dict[str, Any],
     dry_run: bool,
 ) -> dict[str, Any]:
-    action = list(validation.get("normalized_rewrite_actions", []))[0]
-    subject, _sep, body = str(action.get("new_message") or "").partition("\n")
+    action = next(iter(validation.get("normalized_rewrite_actions", [])), None)
+    new_message = str(action.get("new_message") or "") if isinstance(action, dict) else ""
+    subject, _sep, body = new_message.partition("\n")
     return {
         "status": "dry-run" if dry_run else "pending",
         "dry_run": dry_run,
@@ -209,7 +213,7 @@ def base_apply_result(
         "rules_reliability": validation.get("rules_reliability"),
         "operation": {
             "kind": "amend_head_commit",
-            "new_subject": subject,
+            "new_subject": subject or None,
             "has_body": bool(body.strip()),
         },
         "ref_updated": False,
