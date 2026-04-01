@@ -993,6 +993,141 @@ class ConsumerBootstrapTests(unittest.TestCase):
             self.assertEqual(stderr.strip(), "")
             self.assertIn("# upstream change\n", root_agent.read_text(encoding="utf-8"))
 
+    def test_copy_persists_agent_bridge_state_before_later_agent_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_agent_names=["alpha-agent", "vendor-agent"],
+            )
+            root_agent = (
+                repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE / "alpha-agent.toml"
+            )
+            state_path = repo / bootstrap.BRIDGE_STATE_RELATIVE
+            real_sync = bootstrap.sync_managed_file_copy
+
+            def fake_sync_managed_file_copy(
+                repo_root: Path,
+                source_path: Path,
+                target_path: Path,
+                *,
+                bridge_name: str,
+                state_group: dict[str, object],
+            ) -> tuple[str, str, str | None]:
+                if bridge_name == "vendor-agent.toml":
+                    raise RuntimeError("simulated later agent bridge failure")
+                return real_sync(
+                    repo_root,
+                    source_path,
+                    target_path,
+                    bridge_name=bridge_name,
+                    state_group=state_group,
+                )
+
+            with mock.patch.object(
+                bootstrap,
+                "sync_managed_file_copy",
+                side_effect=fake_sync_managed_file_copy,
+            ):
+                code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 1)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertEqual(stdout.strip(), "")
+            self.assertIn("simulated later agent bridge failure", stderr)
+            self.assertTrue(root_agent.is_file())
+            bridge_state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertIn("alpha-agent.toml", bridge_state["agents"])
+            self.assertNotIn("vendor-agent.toml", bridge_state["agents"])
+
+            vendor_agent = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".codex"
+                / "agents"
+                / "alpha-agent.toml"
+            )
+            vendor_agent.write_text(
+                vendor_agent.read_text(encoding="utf-8") + "# upstream change\n",
+                encoding="utf-8",
+            )
+
+            code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("refreshed copied agent bridge:", stdout)
+            self.assertEqual(stderr.strip(), "")
+            self.assertIn("# upstream change\n", root_agent.read_text(encoding="utf-8"))
+
+    def test_copy_persists_skill_bridge_state_before_later_skill_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["alpha-skill", "vendor-skill"],
+            )
+            root_skill = repo / bootstrap.ROOT_SKILLS_RELATIVE / "alpha-skill" / "SKILL.md"
+            state_path = repo / bootstrap.BRIDGE_STATE_RELATIVE
+            real_sync = bootstrap.sync_managed_directory_copy
+
+            def fake_sync_managed_directory_copy(
+                repo_root: Path,
+                source_root: Path,
+                target_root: Path,
+                *,
+                bridge_name: str,
+                state_group: dict[str, object],
+            ) -> tuple[str, str, str | None]:
+                if bridge_name == "vendor-skill":
+                    raise RuntimeError("simulated later skill bridge failure")
+                return real_sync(
+                    repo_root,
+                    source_root,
+                    target_root,
+                    bridge_name=bridge_name,
+                    state_group=state_group,
+                )
+
+            with mock.patch.object(
+                bootstrap,
+                "sync_managed_directory_copy",
+                side_effect=fake_sync_managed_directory_copy,
+            ):
+                code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 1)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertEqual(stdout.strip(), "")
+            self.assertIn("simulated later skill bridge failure", stderr)
+            self.assertTrue(root_skill.is_file())
+            bridge_state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertIn("alpha-skill", bridge_state["skills"])
+            self.assertNotIn("vendor-skill", bridge_state["skills"])
+
+            vendor_skill = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".agents"
+                / "skills"
+                / "alpha-skill"
+                / "SKILL.md"
+            )
+            vendor_skill.write_text(
+                "---\nname: alpha-skill\ndescription: updated skill\n---\n",
+                encoding="utf-8",
+            )
+
+            code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("refreshed copied skill bridge:", stdout)
+            self.assertEqual(stderr.strip(), "")
+            self.assertIn("updated skill", root_skill.read_text(encoding="utf-8"))
+
     def test_copy_skips_locally_modified_managed_copies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = create_consumer_repo(

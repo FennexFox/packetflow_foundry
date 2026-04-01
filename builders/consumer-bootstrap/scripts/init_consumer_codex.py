@@ -1086,6 +1086,7 @@ def create_skill_bridges(
                 bridge_name=skill_name,
                 state_group=skill_state,
             )
+            persist_bridge_state(repo_root, bridge_state)
             append_bridge_event(
                 events,
                 bridge_kind="skill",
@@ -1121,6 +1122,7 @@ def create_skill_bridges(
                     bridge_name=skill_name,
                     state_group=skill_state,
                 )
+                persist_bridge_state(repo_root, bridge_state)
                 append_bridge_event(
                     events,
                     bridge_kind="skill",
@@ -1147,6 +1149,7 @@ def create_skill_bridges(
                 bridge_name=skill_name,
                 state_group=skill_state,
             )
+            persist_bridge_state(repo_root, bridge_state)
             append_bridge_event(
                 events,
                 bridge_kind="skill",
@@ -1170,6 +1173,7 @@ def create_skill_bridges(
             bridge_name=skill_name,
             state_group=skill_state,
         )
+        persist_bridge_state(repo_root, bridge_state)
         append_bridge_event(
             events,
             bridge_kind="skill",
@@ -1187,6 +1191,7 @@ def create_skill_bridges(
             bridge_name=skill_name,
             state_group=skill_state,
         )
+        persist_bridge_state(repo_root, bridge_state)
         append_bridge_event(
             events,
             bridge_kind="skill",
@@ -1234,6 +1239,7 @@ def create_agent_bridges(
                 bridge_name=agent_filename,
                 state_group=agent_state,
             )
+            persist_bridge_state(repo_root, bridge_state)
             append_bridge_event(
                 events,
                 bridge_kind="agent",
@@ -1270,6 +1276,7 @@ def create_agent_bridges(
                     bridge_name=agent_filename,
                     state_group=agent_state,
                 )
+                persist_bridge_state(repo_root, bridge_state)
                 append_bridge_event(
                     events,
                     bridge_kind="agent",
@@ -1296,6 +1303,7 @@ def create_agent_bridges(
                 bridge_name=agent_filename,
                 state_group=agent_state,
             )
+            persist_bridge_state(repo_root, bridge_state)
             append_bridge_event(
                 events,
                 bridge_kind="agent",
@@ -1320,6 +1328,7 @@ def create_agent_bridges(
             bridge_name=agent_filename,
             state_group=agent_state,
         )
+        persist_bridge_state(repo_root, bridge_state)
         append_bridge_event(
             events,
             bridge_kind="agent",
@@ -1337,6 +1346,7 @@ def create_agent_bridges(
             bridge_name=agent_filename,
             state_group=agent_state,
         )
+        persist_bridge_state(repo_root, bridge_state)
         append_bridge_event(
             events,
             bridge_kind="agent",
