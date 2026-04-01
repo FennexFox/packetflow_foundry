@@ -829,7 +829,17 @@ def sync_managed_directory_copy(
                     )
                 expected_hash = expected_hashes.get(relative_path)
                 if expected_hash is None:
-                    continue
+                    return (
+                        "skipped",
+                        (
+                            f"{target_root.as_posix()} "
+                            "(managed copy contents were modified locally; leaving in place)"
+                        ),
+                        (
+                            "Managed copied skill bridge was modified locally and was not "
+                            f"overwritten: {target_root.as_posix()}."
+                        ),
+                    )
                 if sha256_path(target_file) != expected_hash:
                     return (
                         "skipped",
@@ -956,6 +966,18 @@ def prune_stale_managed_directory_copy(
         )
 
     for relative_path, target_file in target_files.items():
+        if target_file.is_symlink() or not target_file.is_file():
+            return (
+                "skipped",
+                (
+                    f"{target_root.as_posix()} "
+                    "(managed copy contents were modified locally after upstream deletion; leaving in place)"
+                ),
+                (
+                    "Managed copied skill bridge was modified locally after upstream deletion "
+                    f"and was not removed: {target_root.as_posix()}."
+                ),
+            )
         if sha256_path(target_file) != expected_hashes[relative_path]:
             return (
                 "skipped",

@@ -686,10 +686,14 @@ class ConsumerBootstrapTests(unittest.TestCase):
                 source_path.read_text(encoding="utf-8"),
             )
 
-    def test_sync_managed_directory_copy_restores_missing_files_and_prunes_stale(self) -> None:
+    def test_sync_managed_directory_copy_restores_missing_files_and_prunes_stale_managed_files(
+        self,
+    ) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
             source_root = create_skill_dir(repo_root / "vendor", "vendor-skill")
+            obsolete_source_file = source_root / "obsolete.txt"
+            obsolete_source_file.write_text("obsolete\n", encoding="utf-8")
             target_root = repo_root / "consumer" / "vendor-skill"
             shutil.copytree(source_root, target_root)
             copied_files = bootstrap.build_skill_bridge_files(
@@ -706,9 +710,9 @@ class ConsumerBootstrapTests(unittest.TestCase):
             }
 
             missing_file = target_root / "agents" / "openai.yaml"
-            stale_file = target_root / "stale.txt"
+            stale_file = target_root / "obsolete.txt"
+            obsolete_source_file.unlink()
             missing_file.unlink()
-            stale_file.write_text("stale\n", encoding="utf-8")
 
             status, detail, notice = bootstrap.sync_managed_directory_copy(
                 repo_root,
@@ -723,6 +727,46 @@ class ConsumerBootstrapTests(unittest.TestCase):
             self.assertIsNone(notice)
             self.assertTrue(missing_file.is_file())
             self.assertFalse(stale_file.exists())
+
+    def test_copy_keeps_locally_added_skill_files_on_rerun(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["vendor-skill"],
+            )
+
+            first_code, _, _, _ = run_bootstrap_main(repo)
+            self.assertEqual(first_code, 0)
+
+            copied_skill_root = repo / bootstrap.ROOT_SKILLS_RELATIVE / "vendor-skill"
+            copied_skill = copied_skill_root / "agents" / "openai.yaml"
+            local_file = copied_skill_root / "local-notes.txt"
+            local_file.write_text("local override\n", encoding="utf-8")
+
+            vendor_skill = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".agents"
+                / "skills"
+                / "vendor-skill"
+                / "agents"
+                / "openai.yaml"
+            )
+            vendor_skill.write_text('display_name: "Updated"\n', encoding="utf-8")
+
+            code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("skipped skill bridge:", stdout)
+            self.assertIn("modified locally", stderr)
+            self.assertTrue(local_file.is_file())
+            self.assertEqual(
+                copied_skill.read_text(encoding="utf-8"),
+                'display_name: "Test"\n',
+            )
 
     def test_copy_rejects_symlinked_skill_wrapper_files(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -1073,6 +1117,57 @@ class ConsumerBootstrapTests(unittest.TestCase):
                 (repo / bootstrap.BRIDGE_STATE_RELATIVE).read_text(encoding="utf-8")
             )
             self.assertIn("vendor-agent.toml", bridge_state["agents"])
+            self.assertIn("vendor-skill", bridge_state["skills"])
+
+    def test_copy_keeps_symlinked_skill_files_after_upstream_deletion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_skill_names=["vendor-skill"],
+            )
+
+            first_code, _, _, _ = run_bootstrap_main(repo)
+            self.assertEqual(first_code, 0)
+
+            vendor_skill = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".agents"
+                / "skills"
+                / "vendor-skill"
+            )
+            copied_skill = repo / bootstrap.ROOT_SKILLS_RELATIVE / "vendor-skill" / "SKILL.md"
+            shutil.rmtree(vendor_skill)
+
+            real_is_symlink = Path.is_symlink
+            real_sha256_path = bootstrap.sha256_path
+
+            def fake_is_symlink(path: Path) -> bool:
+                if path == copied_skill:
+                    return True
+                return real_is_symlink(path)
+
+            def fake_sha256_path(path: Path) -> str:
+                if path == copied_skill:
+                    raise OSError("symlink targets should not be hashed during prune")
+                return real_sha256_path(path)
+
+            with (
+                mock.patch.object(Path, "is_symlink", fake_is_symlink),
+                mock.patch.object(bootstrap, "sha256_path", fake_sha256_path),
+            ):
+                code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("skipped skill bridge:", stdout)
+            self.assertIn("after upstream deletion", stderr)
+            self.assertTrue(copied_skill.is_file())
+            bridge_state = json.loads(
+                (repo / bootstrap.BRIDGE_STATE_RELATIVE).read_text(encoding="utf-8")
+            )
             self.assertIn("vendor-skill", bridge_state["skills"])
 
     def test_missing_vendor_subtree_fails(self) -> None:
