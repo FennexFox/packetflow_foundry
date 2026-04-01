@@ -41,15 +41,9 @@ git subtree add --prefix=.codex/vendor/packetflow_foundry packetflow_foundry mas
 python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py
 ```
 
-On Windows, bootstrap creates filesystem symlinks for `.codex/agents/` and `.agents/skills/`.
-Run it from an elevated PowerShell window (`Run as Administrator`) unless Windows Developer
-Mode is enabled.
-
-If you cannot grant symlink permission, run:
-
-```text
-python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py --bridge-mode copy-on-fail
-```
+Bootstrap now writes managed copies into repo-root `.codex/agents/` and `.agents/skills/`.
+After updating `.codex/vendor/packetflow_foundry`, rerun the same bootstrap command to
+refresh those managed copies while leaving locally modified copies untouched.
 
 Bootstrap notes:
 - repo-root `.gitignore` is created or appended so `.codex/tmp/` stays ignored
@@ -57,16 +51,16 @@ Bootstrap notes:
 - repo-root `.codex/agents/` is the canonical consumer subagent location
 - `.codex/project/profiles/default/profile.json` is a project-local scaffold, not a reusable foundry overlay
 - skill-specific project-local overrides belong in `.codex/project/profiles/<skill-name>/profile.json`
-- vendored foundry default agent TOMLs are bridged into repo-root `.codex/agents/` unless a root entry already exists
+- vendored foundry default agent TOMLs are copied into repo-root `.codex/agents/` unless a root entry already exists
 - repo-root `.agents/skills/` is the canonical consumer skill location
-- vendored foundry thin wrappers are bridged into root `.agents/skills/` unless a root entry already exists
-- `--bridge-mode copy-on-fail` retries failed bridges as managed copies and refreshes them on later runs while they remain unchanged locally
-- bridged wrappers resolve authoritative retained kernels from `.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/`
+- vendored foundry thin wrappers are copied into root `.agents/skills/` unless a root entry already exists
+- copied skill wrappers keep resolving authoritative retained kernels from `.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/`
+- rerunning bootstrap refreshes managed copies that still match the last managed state
+- `--bridge-mode copy-on-fail` is retained only as a deprecated compatibility alias for `copy`
 - legacy `.codex/project/agents/` is deprecated and bridged only for migration
 - legacy `.codex/project/skills/` is deprecated and bridged only for migration
 - a compatible existing `.codex/project/profiles/default/profile.json` is left unchanged on rerun
 - conflicting non-`AGENTS.md` bootstrap outputs still cause the helper to abort without writing files
-- default `symlink` mode aborts with environment guidance when bridge symlink creation fails
 
 ## What Stays In The Vendor
 

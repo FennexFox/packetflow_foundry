@@ -9,6 +9,7 @@ import json
 import os
 import sys
 from pathlib import Path
+from typing import TypeAlias, TypedDict
 
 
 FOUNDRY_KEYWORDS = (
@@ -30,7 +31,7 @@ BRIDGE_STATE_RELATIVE = Path(".codex/project/bootstrap/bridge-state.json")
 PROJECT_LOCAL_PROFILE_KIND = "project-local-scaffold-profile"
 BRIDGE_STATE_KIND = "packetflow-foundry-bootstrap-bridge-state"
 BRIDGE_STATE_VERSION = 1
-BRIDGE_MODE_SYMLINK = "symlink"
+BRIDGE_MODE_COPY = "copy"
 BRIDGE_MODE_COPY_ON_FAIL = "copy-on-fail"
 CODEX_TMP_GITIGNORE_ENTRY = ".codex/tmp/"
 CODEX_TMP_GITIGNORE_ALIASES = frozenset(
@@ -45,6 +46,13 @@ CONFLICT_TARGETS = (
     PROJECT_PROFILE_RELATIVE,
 )
 
+BridgeEvent: TypeAlias = tuple[str, str]
+
+
+class BridgeReport(TypedDict):
+    events: list[BridgeEvent]
+    notices: list[str]
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -55,15 +63,22 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--bridge-mode",
-        choices=(BRIDGE_MODE_SYMLINK, BRIDGE_MODE_COPY_ON_FAIL),
-        default=BRIDGE_MODE_SYMLINK,
+        choices=(BRIDGE_MODE_COPY, BRIDGE_MODE_COPY_ON_FAIL),
+        default=BRIDGE_MODE_COPY,
         help=(
             "Bridge strategy for vendored agents and skills. "
-            "`symlink` requires filesystem symlink permission. "
-            "`copy-on-fail` retries with managed copies when symlink creation fails."
+            "`copy` writes managed copies and refreshes them on rerun while "
+            "they remain unchanged locally. `copy-on-fail` is kept as a "
+            "deprecated compatibility alias for `copy`."
         ),
     )
     return parser.parse_args()
+
+
+def normalize_bridge_mode(value: str) -> str:
+    if value == BRIDGE_MODE_COPY_ON_FAIL:
+        return BRIDGE_MODE_COPY
+    return value
 
 
 def resolve_repo_root(value: str) -> Path:
@@ -191,13 +206,20 @@ def render_agents_block() -> str:
             ),
             (
                 "- `.codex/agents/` is the project-scoped subagent discovery "
-                "surface. Vendored foundry agent TOMLs are bridged there from "
+                "surface. Bootstrap writes managed copies of vendored foundry "
+                "agent TOMLs there from "
                 "`.codex/vendor/packetflow_foundry/.codex/agents/`."
             ),
             (
                 "- `.agents/skills/` is a thin discovery-wrapper surface. "
-                "Reusable retained kernels stay under "
+                "Bootstrap writes managed copies of vendored wrappers there "
+                "while reusable retained kernels stay under "
                 "`.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/`."
+            ),
+            (
+                "- Rerun consumer bootstrap after updating the vendor subtree "
+                "to refresh managed agent and skill copies that were not "
+                "modified locally."
             ),
             "- Do not edit `.codex/vendor/packetflow_foundry` for local needs.",
             (
@@ -451,47 +473,108 @@ def remove_empty_parent_dirs(path: Path, *, stop: Path) -> None:
         current = current.parent
 
 
-def symlink_failure_message(link_path: Path, source_path: Path, *, is_directory: bool) -> str:
-    kind = "directory" if is_directory else "file"
-    return (
-        f"Failed to create {kind} symlink "
-        f"{link_path.as_posix()} -> {source_path.as_posix()}. "
-        "Enable Windows Developer Mode or rerun bootstrap from an elevated "
-        "PowerShell window (Run as Administrator). Otherwise run with "
-        "permissions that allow symbolic links."
-    )
-
-
-def relative_link_target(source: Path, *, target_parent: Path) -> Path:
-    return Path(os.path.relpath(source, start=target_parent))
-
-
-def try_create_symlink(
-    link_path: Path,
-    source_path: Path,
-    *,
-    is_directory: bool,
-) -> OSError | None:
-    link_path.parent.mkdir(parents=True, exist_ok=True)
-    relative_target = relative_link_target(source_path, target_parent=link_path.parent)
+def path_is_within(path: Path, root: Path) -> bool:
     try:
-        link_path.symlink_to(relative_target, target_is_directory=is_directory)
-    except OSError as exc:
-        return exc
+        path.resolve().relative_to(root.resolve())
+    except ValueError:
+        return False
+    return True
+
+
+def same_resolved_path(path: Path, other: Path) -> bool:
+    try:
+        return path.resolve() == other.resolve()
+    except OSError:
+        return False
+
+
+def maybe_remove_expected_bridge_symlink(target_path: Path, source_path: Path) -> bool:
+    if not target_path.is_symlink():
+        return False
+    if not same_resolved_path(target_path, source_path):
+        return False
+    target_path.unlink()
+    return True
+
+
+def skill_bridge_anchor(repo_root: Path, source_root: Path) -> Path | None:
+    vendor_skills_root = repo_root / ".codex" / "vendor" / "packetflow_foundry" / ".agents" / "skills"
+    legacy_skills_root = repo_root / LEGACY_PROJECT_SKILLS_RELATIVE
+    if path_is_within(source_root, vendor_skills_root):
+        return repo_root / ".codex" / "vendor" / "packetflow_foundry"
+    if path_is_within(source_root, legacy_skills_root):
+        return repo_root
     return None
 
 
-def create_symlink(link_path: Path, source_path: Path, *, is_directory: bool) -> str:
-    error = try_create_symlink(link_path, source_path, is_directory=is_directory)
-    if error is not None:
-        raise RuntimeError(
-            symlink_failure_message(
-                link_path,
-                source_path,
-                is_directory=is_directory,
+def rewrite_skill_wrapper_for_target(
+    repo_root: Path,
+    source_root: Path,
+    target_root: Path,
+    content: bytes,
+) -> bytes:
+    anchor = skill_bridge_anchor(repo_root, source_root)
+    if anchor is None:
+        return content
+
+    source_prefix = Path(os.path.relpath(anchor / "builders", start=source_root)).as_posix()
+    target_prefix = Path(os.path.relpath(anchor / "builders", start=target_root)).as_posix()
+    source_token = f"{source_prefix}/"
+    target_token = f"{target_prefix}/"
+
+    text = content.decode("utf-8")
+    if source_token not in text:
+        return content
+    return text.replace(source_token, target_token).encode("utf-8")
+
+
+def build_skill_bridge_files(
+    repo_root: Path,
+    source_root: Path,
+    target_root: Path,
+) -> dict[str, bytes]:
+    copied_files: dict[str, bytes] = {}
+    for relative_path, source_file in iter_relative_files(source_root).items():
+        content = source_file.read_bytes()
+        if relative_path == "SKILL.md":
+            content = rewrite_skill_wrapper_for_target(
+                repo_root,
+                source_root,
+                target_root,
+                content,
             )
-        ) from error
-    return f"{link_path.as_posix()} -> {source_path.as_posix()}"
+        copied_files[relative_path] = content
+    return copied_files
+
+
+def append_bridge_event(
+    events: list[BridgeEvent],
+    *,
+    bridge_kind: str,
+    status: str,
+    detail: str,
+    legacy: bool = False,
+    migrated: bool = False,
+) -> None:
+    if status == "unchanged":
+        return
+
+    words: list[str] = []
+    if status == "refreshed":
+        words.append("refreshed")
+    if migrated:
+        words.append("migrated")
+    if legacy:
+        words.append("legacy")
+    if status in {"copied", "refreshed"}:
+        words.append("copied")
+    elif status == "skipped":
+        words.append("skipped")
+    else:
+        raise RuntimeError(f"Unsupported bridge status: {status}")
+
+    words.extend((bridge_kind, "bridge"))
+    events.append((" ".join(words), detail))
 
 
 def bridge_state_group(
@@ -518,13 +601,14 @@ def build_file_copy_state_entry(repo_root: Path, source_path: Path) -> dict[str,
 def build_directory_copy_state_entry(
     repo_root: Path,
     source_root: Path,
+    copied_files: dict[str, bytes],
 ) -> dict[str, object]:
     return {
         "type": "directory-copy",
         "source": relative_repo_path(source_root, repo_root),
         "files": {
-            relative_path: {"sha256": sha256_path(path)}
-            for relative_path, path in iter_relative_files(source_root).items()
+            relative_path: {"sha256": sha256_digest(content)}
+            for relative_path, content in copied_files.items()
         },
     }
 
@@ -565,23 +649,21 @@ def validate_directory_copy_state_entry(
 
 
 def sync_directory_copy(
-    source_root: Path,
     target_root: Path,
+    copied_files: dict[str, bytes],
     *,
     previous_files: set[str] | None = None,
 ) -> None:
     target_root.mkdir(parents=True, exist_ok=True)
-    source_files = iter_relative_files(source_root)
-
     if previous_files is not None:
-        for relative_path in sorted(previous_files - set(source_files)):
+        for relative_path in sorted(previous_files - set(copied_files)):
             stale_file = target_root / Path(relative_path)
             if stale_file.exists():
                 stale_file.unlink()
                 remove_empty_parent_dirs(stale_file, stop=target_root)
 
-    for relative_path, source_file in source_files.items():
-        write_bytes(target_root / Path(relative_path), source_file.read_bytes())
+    for relative_path, content in copied_files.items():
+        write_bytes(target_root / Path(relative_path), content)
 
 
 def sync_managed_file_copy(
@@ -644,6 +726,7 @@ def sync_managed_directory_copy(
     bridge_name: str,
     state_group: dict[str, object],
 ) -> tuple[str, str, str | None]:
+    copied_files = build_skill_bridge_files(repo_root, source_root, target_root)
     entry = state_group.get(bridge_name)
     if entry is not None:
         expected_hashes = validate_directory_copy_state_entry(entry, bridge_name=bridge_name)
@@ -689,23 +772,31 @@ def sync_managed_directory_copy(
                         ),
                     )
 
-            source_hashes = {
-                relative_path: sha256_path(source_file)
-                for relative_path, source_file in iter_relative_files(source_root).items()
+            copied_hashes = {
+                relative_path: sha256_digest(content)
+                for relative_path, content in copied_files.items()
             }
-            if source_hashes == expected_hashes:
+            if copied_hashes == expected_hashes:
                 return "unchanged", target_root.as_posix(), None
 
             sync_directory_copy(
-                source_root,
                 target_root,
+                copied_files,
                 previous_files=set(expected_hashes),
             )
-            state_group[bridge_name] = build_directory_copy_state_entry(repo_root, source_root)
+            state_group[bridge_name] = build_directory_copy_state_entry(
+                repo_root,
+                source_root,
+                copied_files,
+            )
             return "refreshed", f"{target_root.as_posix()} <- {source_root.as_posix()}", None
 
-    sync_directory_copy(source_root, target_root)
-    state_group[bridge_name] = build_directory_copy_state_entry(repo_root, source_root)
+    sync_directory_copy(target_root, copied_files)
+    state_group[bridge_name] = build_directory_copy_state_entry(
+        repo_root,
+        source_root,
+        copied_files,
+    )
     return "copied", f"{target_root.as_posix()} <- {source_root.as_posix()}", None
 
 
@@ -717,15 +808,14 @@ def create_skill_bridges(
     repo_root: Path,
     vendor_skills_root: Path,
     *,
-    bridge_mode: str,
     bridge_state: dict[str, object],
-) -> dict[str, object]:
+) -> BridgeReport:
     root_skills = ensure_root_skill_dir(repo_root)
     vendor_skills = iter_skill_directories(vendor_skills_root)
     legacy_skills = iter_skill_directories(repo_root / LEGACY_PROJECT_SKILLS_RELATIVE)
     skill_state = bridge_state_group(bridge_state, "skills")
 
-    events: list[tuple[str, str]] = []
+    events: list[BridgeEvent] = []
     notices: list[str] = []
 
     for skill_name in sorted(set(vendor_skills) | set(legacy_skills)):
@@ -733,8 +823,42 @@ def create_skill_bridges(
         legacy_source = legacy_skills.get(skill_name)
         source_path = legacy_source or vendor_skills[skill_name]
         managed_copy_exists = skill_name in skill_state
+        if maybe_remove_expected_bridge_symlink(target_path, source_path):
+            status, detail, notice = sync_managed_directory_copy(
+                repo_root,
+                source_path,
+                target_path,
+                bridge_name=skill_name,
+                state_group=skill_state,
+            )
+            append_bridge_event(
+                events,
+                bridge_kind="skill",
+                status=status,
+                detail=detail,
+                legacy=legacy_source is not None,
+                migrated=True,
+            )
+            if notice is not None:
+                notices.append(notice)
+            if legacy_source is not None:
+                notices.append(
+                    "Legacy `.codex/project/skills/` entry bridged for migration: "
+                    f"{skill_name}. Move canonical ownership to `.agents/skills/{skill_name}`."
+                )
+            continue
+
+        if target_path.is_symlink():
+            events.append(
+                (
+                    "skipped skill bridge",
+                    f"{target_path.as_posix()} (existing root symlink takes precedence)",
+                )
+            )
+            continue
+
         if target_path.exists():
-            if bridge_mode == BRIDGE_MODE_COPY_ON_FAIL and managed_copy_exists:
+            if managed_copy_exists:
                 status, detail, notice = sync_managed_directory_copy(
                     repo_root,
                     source_path,
@@ -742,14 +866,14 @@ def create_skill_bridges(
                     bridge_name=skill_name,
                     state_group=skill_state,
                 )
-                if status == "copied":
-                    events.append(("copied skill bridge", detail))
-                elif status == "refreshed":
-                    events.append(("refreshed copied skill bridge", detail))
-                elif status == "skipped":
-                    events.append(("skipped skill bridge", detail))
-                    if notice is not None:
-                        notices.append(notice)
+                append_bridge_event(
+                    events,
+                    bridge_kind="skill",
+                    status=status,
+                    detail=detail,
+                )
+                if notice is not None:
+                    notices.append(notice)
                 continue
 
             events.append(
@@ -761,45 +885,22 @@ def create_skill_bridges(
             continue
 
         if legacy_source is not None:
-            error = try_create_symlink(target_path, legacy_source, is_directory=True)
-            if error is None:
-                events.append(
-                    (
-                        "legacy skill bridge",
-                        f"{target_path.as_posix()} -> {legacy_source.as_posix()}",
-                    )
-                )
-            elif bridge_mode == BRIDGE_MODE_COPY_ON_FAIL:
-                status, detail, notice = sync_managed_directory_copy(
-                    repo_root,
-                    legacy_source,
-                    target_path,
-                    bridge_name=skill_name,
-                    state_group=skill_state,
-                )
-                events.append(
-                    (
-                        "legacy copied skill bridge"
-                        if status == "copied"
-                        else "refreshed legacy copied skill bridge",
-                        detail,
-                    )
-                )
-                notices.append(
-                    "Symlink creation failed for skill bridge "
-                    f"{target_path.as_posix()}; created a managed copy instead "
-                    "because `--bridge-mode copy-on-fail` was requested."
-                )
-                if notice is not None:
-                    notices.append(notice)
-            else:
-                raise RuntimeError(
-                    symlink_failure_message(
-                        target_path,
-                        legacy_source,
-                        is_directory=True,
-                    )
-                ) from error
+            status, detail, notice = sync_managed_directory_copy(
+                repo_root,
+                legacy_source,
+                target_path,
+                bridge_name=skill_name,
+                state_group=skill_state,
+            )
+            append_bridge_event(
+                events,
+                bridge_kind="skill",
+                status=status,
+                detail=detail,
+                legacy=True,
+            )
+            if notice is not None:
+                notices.append(notice)
 
             notices.append(
                 "Legacy `.codex/project/skills/` entry bridged for migration: "
@@ -807,64 +908,21 @@ def create_skill_bridges(
             )
             continue
 
-        if bridge_mode == BRIDGE_MODE_COPY_ON_FAIL and managed_copy_exists:
-            status, detail, notice = sync_managed_directory_copy(
-                repo_root,
-                source_path,
-                target_path,
-                bridge_name=skill_name,
-                state_group=skill_state,
-            )
-            if status == "copied":
-                events.append(("copied skill bridge", detail))
-            elif status == "refreshed":
-                events.append(("refreshed copied skill bridge", detail))
-            elif status == "skipped":
-                events.append(("skipped skill bridge", detail))
-                if notice is not None:
-                    notices.append(notice)
-            continue
-
-        error = try_create_symlink(target_path, source_path, is_directory=True)
-        if error is None:
-            events.append(
-                (
-                    "skill bridge",
-                    f"{target_path.as_posix()} -> {source_path.as_posix()}",
-                )
-            )
-            continue
-        if bridge_mode == BRIDGE_MODE_COPY_ON_FAIL:
-            status, detail, notice = sync_managed_directory_copy(
-                repo_root,
-                source_path,
-                target_path,
-                bridge_name=skill_name,
-                state_group=skill_state,
-            )
-            events.append(
-                (
-                    "copied skill bridge"
-                    if status == "copied"
-                    else "refreshed copied skill bridge",
-                    detail,
-                )
-            )
-            notices.append(
-                "Symlink creation failed for skill bridge "
-                f"{target_path.as_posix()}; created a managed copy instead "
-                "because `--bridge-mode copy-on-fail` was requested."
-            )
-            if notice is not None:
-                notices.append(notice)
-            continue
-        raise RuntimeError(
-            symlink_failure_message(
-                target_path,
-                source_path,
-                is_directory=True,
-            )
-        ) from error
+        status, detail, notice = sync_managed_directory_copy(
+            repo_root,
+            source_path,
+            target_path,
+            bridge_name=skill_name,
+            state_group=skill_state,
+        )
+        append_bridge_event(
+            events,
+            bridge_kind="skill",
+            status=status,
+            detail=detail,
+        )
+        if notice is not None:
+            notices.append(notice)
 
     if legacy_skills:
         notices.append(
@@ -881,15 +939,14 @@ def create_agent_bridges(
     repo_root: Path,
     vendor_agents_root: Path,
     *,
-    bridge_mode: str,
     bridge_state: dict[str, object],
-) -> dict[str, object]:
+) -> BridgeReport:
     project_agents = ensure_project_agent_dir(repo_root)
     vendor_agents = iter_agent_files(vendor_agents_root)
     legacy_agents = iter_agent_files(repo_root / LEGACY_PROJECT_AGENTS_RELATIVE)
     agent_state = bridge_state_group(bridge_state, "agents")
 
-    events: list[tuple[str, str]] = []
+    events: list[BridgeEvent] = []
     notices: list[str] = []
 
     for agent_filename in sorted(set(vendor_agents) | set(legacy_agents)):
@@ -897,8 +954,43 @@ def create_agent_bridges(
         legacy_source = legacy_agents.get(agent_filename)
         source_path = legacy_source or vendor_agents[agent_filename]
         managed_copy_exists = agent_filename in agent_state
+        if maybe_remove_expected_bridge_symlink(target_path, source_path):
+            status, detail, notice = sync_managed_file_copy(
+                repo_root,
+                source_path,
+                target_path,
+                bridge_name=agent_filename,
+                state_group=agent_state,
+            )
+            append_bridge_event(
+                events,
+                bridge_kind="agent",
+                status=status,
+                detail=detail,
+                legacy=legacy_source is not None,
+                migrated=True,
+            )
+            if notice is not None:
+                notices.append(notice)
+            if legacy_source is not None:
+                notices.append(
+                    "Legacy `.codex/project/agents/` entry bridged for migration: "
+                    f"{Path(agent_filename).stem}. Move canonical ownership to "
+                    f"`.codex/agents/{agent_filename}`."
+                )
+            continue
+
+        if target_path.is_symlink():
+            events.append(
+                (
+                    "skipped agent bridge",
+                    f"{target_path.as_posix()} (existing root symlink takes precedence)",
+                )
+            )
+            continue
+
         if target_path.exists():
-            if bridge_mode == BRIDGE_MODE_COPY_ON_FAIL and managed_copy_exists:
+            if managed_copy_exists:
                 status, detail, notice = sync_managed_file_copy(
                     repo_root,
                     source_path,
@@ -906,14 +998,14 @@ def create_agent_bridges(
                     bridge_name=agent_filename,
                     state_group=agent_state,
                 )
-                if status == "copied":
-                    events.append(("copied agent bridge", detail))
-                elif status == "refreshed":
-                    events.append(("refreshed copied agent bridge", detail))
-                elif status == "skipped":
-                    events.append(("skipped agent bridge", detail))
-                    if notice is not None:
-                        notices.append(notice)
+                append_bridge_event(
+                    events,
+                    bridge_kind="agent",
+                    status=status,
+                    detail=detail,
+                )
+                if notice is not None:
+                    notices.append(notice)
                 continue
 
             events.append(
@@ -925,45 +1017,22 @@ def create_agent_bridges(
             continue
 
         if legacy_source is not None:
-            error = try_create_symlink(target_path, legacy_source, is_directory=False)
-            if error is None:
-                events.append(
-                    (
-                        "legacy agent bridge",
-                        f"{target_path.as_posix()} -> {legacy_source.as_posix()}",
-                    )
-                )
-            elif bridge_mode == BRIDGE_MODE_COPY_ON_FAIL:
-                status, detail, notice = sync_managed_file_copy(
-                    repo_root,
-                    legacy_source,
-                    target_path,
-                    bridge_name=agent_filename,
-                    state_group=agent_state,
-                )
-                events.append(
-                    (
-                        "legacy copied agent bridge"
-                        if status == "copied"
-                        else "refreshed legacy copied agent bridge",
-                        detail,
-                    )
-                )
-                notices.append(
-                    "Symlink creation failed for agent bridge "
-                    f"{target_path.as_posix()}; created a managed copy instead "
-                    "because `--bridge-mode copy-on-fail` was requested."
-                )
-                if notice is not None:
-                    notices.append(notice)
-            else:
-                raise RuntimeError(
-                    symlink_failure_message(
-                        target_path,
-                        legacy_source,
-                        is_directory=False,
-                    )
-                ) from error
+            status, detail, notice = sync_managed_file_copy(
+                repo_root,
+                legacy_source,
+                target_path,
+                bridge_name=agent_filename,
+                state_group=agent_state,
+            )
+            append_bridge_event(
+                events,
+                bridge_kind="agent",
+                status=status,
+                detail=detail,
+                legacy=True,
+            )
+            if notice is not None:
+                notices.append(notice)
 
             notices.append(
                 "Legacy `.codex/project/agents/` entry bridged for migration: "
@@ -972,64 +1041,21 @@ def create_agent_bridges(
             )
             continue
 
-        if bridge_mode == BRIDGE_MODE_COPY_ON_FAIL and managed_copy_exists:
-            status, detail, notice = sync_managed_file_copy(
-                repo_root,
-                source_path,
-                target_path,
-                bridge_name=agent_filename,
-                state_group=agent_state,
-            )
-            if status == "copied":
-                events.append(("copied agent bridge", detail))
-            elif status == "refreshed":
-                events.append(("refreshed copied agent bridge", detail))
-            elif status == "skipped":
-                events.append(("skipped agent bridge", detail))
-                if notice is not None:
-                    notices.append(notice)
-            continue
-
-        error = try_create_symlink(target_path, source_path, is_directory=False)
-        if error is None:
-            events.append(
-                (
-                    "agent bridge",
-                    f"{target_path.as_posix()} -> {source_path.as_posix()}",
-                )
-            )
-            continue
-        if bridge_mode == BRIDGE_MODE_COPY_ON_FAIL:
-            status, detail, notice = sync_managed_file_copy(
-                repo_root,
-                source_path,
-                target_path,
-                bridge_name=agent_filename,
-                state_group=agent_state,
-            )
-            events.append(
-                (
-                    "copied agent bridge"
-                    if status == "copied"
-                    else "refreshed copied agent bridge",
-                    detail,
-                )
-            )
-            notices.append(
-                "Symlink creation failed for agent bridge "
-                f"{target_path.as_posix()}; created a managed copy instead "
-                "because `--bridge-mode copy-on-fail` was requested."
-            )
-            if notice is not None:
-                notices.append(notice)
-            continue
-        raise RuntimeError(
-            symlink_failure_message(
-                target_path,
-                source_path,
-                is_directory=False,
-            )
-        ) from error
+        status, detail, notice = sync_managed_file_copy(
+            repo_root,
+            source_path,
+            target_path,
+            bridge_name=agent_filename,
+            state_group=agent_state,
+        )
+        append_bridge_event(
+            events,
+            bridge_kind="agent",
+            status=status,
+            detail=detail,
+        )
+        if notice is not None:
+            notices.append(notice)
 
     if legacy_agents:
         notices.append(
@@ -1066,6 +1092,7 @@ def main() -> int:
 
     try:
         repo_root = resolve_repo_root(args.repo_root)
+        bridge_mode = normalize_bridge_mode(args.bridge_mode)
         bridge_state = load_bridge_state(repo_root)
         vendor_dir = require_vendor_subtree(repo_root)
         vendor_agents_root = require_vendor_agents_root(vendor_dir)
@@ -1078,13 +1105,11 @@ def main() -> int:
         agent_bridge_report = create_agent_bridges(
             repo_root,
             vendor_agents_root,
-            bridge_mode=args.bridge_mode,
             bridge_state=bridge_state,
         )
         bridge_report = create_skill_bridges(
             repo_root,
             vendor_skills_root,
-            bridge_mode=args.bridge_mode,
             bridge_state=bridge_state,
         )
         if bridge_state_has_entries(bridge_state):
@@ -1094,7 +1119,7 @@ def main() -> int:
         return 1
 
     print(f"[OK] Initialized PacketFlow consumer scaffold at {repo_root.as_posix()}")
-    print(f" - bridge mode: {args.bridge_mode}")
+    print(f" - bridge mode: {bridge_mode}")
     print(f" - root AGENTS.md: {root_agents_status}")
     print(f" - .codex/AGENTS.md: {codex_agents_status}")
     print(f" - {GITIGNORE_RELATIVE.as_posix()}: {gitignore_status}")
