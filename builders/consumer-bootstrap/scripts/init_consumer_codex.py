@@ -215,6 +215,13 @@ def delete_bridge_state(repo_root: Path) -> None:
         state_path.unlink()
 
 
+def persist_bridge_state(repo_root: Path, state: dict[str, object]) -> None:
+    if bridge_state_has_entries(state):
+        save_bridge_state(repo_root, state)
+    else:
+        delete_bridge_state(repo_root)
+
+
 def render_agents_block() -> str:
     return "\n".join(
         [
@@ -1389,15 +1396,13 @@ def main() -> int:
             vendor_agents_root,
             bridge_state=bridge_state,
         )
+        persist_bridge_state(repo_root, bridge_state)
         bridge_report = create_skill_bridges(
             repo_root,
             vendor_skills_root,
             bridge_state=bridge_state,
         )
-        if bridge_state_has_entries(bridge_state):
-            save_bridge_state(repo_root, bridge_state)
-        else:
-            delete_bridge_state(repo_root)
+        persist_bridge_state(repo_root, bridge_state)
     except RuntimeError as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1

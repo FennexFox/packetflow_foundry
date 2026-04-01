@@ -945,6 +945,54 @@ class ConsumerBootstrapTests(unittest.TestCase):
             )
             self.assertFalse((repo / bootstrap.BRIDGE_STATE_RELATIVE).exists())
 
+    def test_copy_persists_agent_bridge_state_before_skill_pass_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_agent_names=["vendor-agent"],
+            )
+            root_agent = (
+                repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE / "vendor-agent.toml"
+            )
+            state_path = repo / bootstrap.BRIDGE_STATE_RELATIVE
+
+            with mock.patch.object(
+                bootstrap,
+                "create_skill_bridges",
+                side_effect=RuntimeError("simulated skill bridge failure"),
+            ):
+                code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 1)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertEqual(stdout.strip(), "")
+            self.assertIn("simulated skill bridge failure", stderr)
+            self.assertTrue(root_agent.is_file())
+            bridge_state = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertIn("vendor-agent.toml", bridge_state["agents"])
+
+            vendor_agent = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".codex"
+                / "agents"
+                / "vendor-agent.toml"
+            )
+            vendor_agent.write_text(
+                vendor_agent.read_text(encoding="utf-8") + "# upstream change\n",
+                encoding="utf-8",
+            )
+
+            code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertIn("refreshed copied agent bridge:", stdout)
+            self.assertEqual(stderr.strip(), "")
+            self.assertIn("# upstream change\n", root_agent.read_text(encoding="utf-8"))
+
     def test_copy_skips_locally_modified_managed_copies(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = create_consumer_repo(
