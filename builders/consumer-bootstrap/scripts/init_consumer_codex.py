@@ -144,7 +144,20 @@ def sha256_path(path: Path) -> str:
 
 
 def relative_repo_path(path: Path, repo_root: Path) -> str:
-    return path.resolve().relative_to(repo_root.resolve()).as_posix()
+    try:
+        resolved_path = path.resolve()
+    except OSError as exc:
+        raise RuntimeError(
+            "Failed to resolve bootstrap bridge source path: "
+            f"{path.as_posix()}."
+        ) from exc
+    try:
+        return resolved_path.relative_to(repo_root.resolve()).as_posix()
+    except ValueError as exc:
+        raise RuntimeError(
+            "Bootstrap bridge source path must resolve inside the repository root: "
+            f"{path.as_posix()}."
+        ) from exc
 
 
 def default_bridge_state() -> dict[str, object]:
@@ -542,6 +555,16 @@ def build_skill_bridge_files(
 ) -> dict[str, bytes]:
     copied_files: dict[str, bytes] = {}
     for relative_path, source_file in iter_relative_files(source_root).items():
+        if source_file.is_symlink():
+            raise RuntimeError(
+                "Managed skill bridge source contains unsupported symlinked file: "
+                f"{source_file.as_posix()}."
+            )
+        if not path_is_within(source_file, source_root):
+            raise RuntimeError(
+                "Managed skill bridge source resolves outside the skill root: "
+                f"{source_file.as_posix()}."
+            )
         content = source_file.read_bytes()
         if relative_path == "SKILL.md":
             content = rewrite_skill_wrapper_for_target(
@@ -683,6 +706,8 @@ def sync_managed_file_copy(
     bridge_name: str,
     state_group: dict[str, object],
 ) -> tuple[str, str, str | None]:
+    state_entry = build_file_copy_state_entry(repo_root, source_path)
+    source_hash = str(state_entry["sha256"])
     entry = state_group.get(bridge_name)
     if entry is not None:
         expected_hash = validate_file_copy_state_entry(entry, bridge_name=bridge_name)
@@ -713,17 +738,16 @@ def sync_managed_file_copy(
                         f"overwritten: {target_path.as_posix()}."
                     ),
                 )
-            source_hash = sha256_path(source_path)
             if source_hash == expected_hash:
                 return "unchanged", target_path.as_posix(), None
 
         write_bytes(target_path, source_path.read_bytes())
-        state_group[bridge_name] = build_file_copy_state_entry(repo_root, source_path)
+        state_group[bridge_name] = state_entry
         status = "refreshed" if existed_before else "copied"
         return status, f"{target_path.as_posix()} <- {source_path.as_posix()}", None
 
     write_bytes(target_path, source_path.read_bytes())
-    state_group[bridge_name] = build_file_copy_state_entry(repo_root, source_path)
+    state_group[bridge_name] = state_entry
     return "copied", f"{target_path.as_posix()} <- {source_path.as_posix()}", None
 
 
@@ -735,7 +759,13 @@ def sync_managed_directory_copy(
     bridge_name: str,
     state_group: dict[str, object],
 ) -> tuple[str, str, str | None]:
+    relative_repo_path(source_root, repo_root)
     copied_files = build_skill_bridge_files(repo_root, source_root, target_root)
+    state_entry = build_directory_copy_state_entry(
+        repo_root,
+        source_root,
+        copied_files,
+    )
     entry = state_group.get(bridge_name)
     if entry is not None:
         expected_hashes = validate_directory_copy_state_entry(entry, bridge_name=bridge_name)
@@ -754,21 +784,23 @@ def sync_managed_directory_copy(
                 )
 
             target_files = iter_relative_files(target_root)
-            if set(target_files) != set(expected_hashes):
-                return (
-                    "skipped",
-                    (
-                        f"{target_root.as_posix()} "
-                        "(managed copy contents were modified locally; leaving in place)"
-                    ),
-                    (
-                        "Managed copied skill bridge was modified locally and was not "
-                        f"overwritten: {target_root.as_posix()}."
-                    ),
-                )
-
             for relative_path, target_file in target_files.items():
-                if sha256_path(target_file) != expected_hashes[relative_path]:
+                if target_file.is_symlink() or not target_file.is_file():
+                    return (
+                        "skipped",
+                        (
+                            f"{target_root.as_posix()} "
+                            "(managed copy contents were modified locally; leaving in place)"
+                        ),
+                        (
+                            "Managed copied skill bridge was modified locally and was not "
+                            f"overwritten: {target_root.as_posix()}."
+                        ),
+                    )
+                expected_hash = expected_hashes.get(relative_path)
+                if expected_hash is None:
+                    continue
+                if sha256_path(target_file) != expected_hash:
                     return (
                         "skipped",
                         (
@@ -785,27 +817,19 @@ def sync_managed_directory_copy(
                 relative_path: sha256_digest(content)
                 for relative_path, content in copied_files.items()
             }
-            if copied_hashes == expected_hashes:
+            if copied_hashes == expected_hashes and set(target_files) == set(expected_hashes):
                 return "unchanged", target_root.as_posix(), None
 
             sync_directory_copy(
                 target_root,
                 copied_files,
-                previous_files=set(expected_hashes),
+                previous_files=set(target_files),
             )
-            state_group[bridge_name] = build_directory_copy_state_entry(
-                repo_root,
-                source_root,
-                copied_files,
-            )
+            state_group[bridge_name] = state_entry
             return "refreshed", f"{target_root.as_posix()} <- {source_root.as_posix()}", None
 
     sync_directory_copy(target_root, copied_files)
-    state_group[bridge_name] = build_directory_copy_state_entry(
-        repo_root,
-        source_root,
-        copied_files,
-    )
+    state_group[bridge_name] = state_entry
     return "copied", f"{target_root.as_posix()} <- {source_root.as_posix()}", None
 
 
