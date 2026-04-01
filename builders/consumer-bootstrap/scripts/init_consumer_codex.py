@@ -7,6 +7,7 @@ import argparse
 import hashlib
 import json
 import os
+import shutil
 import sys
 from pathlib import Path
 from typing import TypeAlias, TypedDict
@@ -192,6 +193,12 @@ def save_bridge_state(repo_root: Path, state: dict[str, object]) -> None:
         repo_root / BRIDGE_STATE_RELATIVE,
         json.dumps(state, indent=2, ensure_ascii=True),
     )
+
+
+def delete_bridge_state(repo_root: Path) -> None:
+    state_path = repo_root / BRIDGE_STATE_RELATIVE
+    if state_path.exists():
+        state_path.unlink()
 
 
 def render_agents_block() -> str:
@@ -566,7 +573,9 @@ def append_bridge_event(
         words.append("migrated")
     if legacy:
         words.append("legacy")
-    if status in {"copied", "refreshed"}:
+    if status == "removed":
+        words.append("removed")
+    elif status in {"copied", "refreshed"}:
         words.append("copied")
     elif status == "skipped":
         words.append("skipped")
@@ -710,8 +719,8 @@ def sync_managed_file_copy(
 
         write_bytes(target_path, source_path.read_bytes())
         state_group[bridge_name] = build_file_copy_state_entry(repo_root, source_path)
-        if existed_before:
-            return "refreshed", f"{target_path.as_posix()} <- {source_path.as_posix()}", None
+        status = "refreshed" if existed_before else "copied"
+        return status, f"{target_path.as_posix()} <- {source_path.as_posix()}", None
 
     write_bytes(target_path, source_path.read_bytes())
     state_group[bridge_name] = build_file_copy_state_entry(repo_root, source_path)
@@ -798,6 +807,118 @@ def sync_managed_directory_copy(
         copied_files,
     )
     return "copied", f"{target_root.as_posix()} <- {source_root.as_posix()}", None
+
+
+def prune_stale_managed_file_copy(
+    target_path: Path,
+    *,
+    managed_root: Path,
+    bridge_name: str,
+    state_group: dict[str, object],
+) -> tuple[str, str, str | None]:
+    entry = state_group.get(bridge_name)
+    if entry is None:
+        return "unchanged", target_path.as_posix(), None
+
+    expected_hash = validate_file_copy_state_entry(entry, bridge_name=bridge_name)
+    if not target_path.exists():
+        state_group.pop(bridge_name, None)
+        return "unchanged", target_path.as_posix(), None
+    if target_path.is_symlink() or not target_path.is_file():
+        return (
+            "skipped",
+            (
+                f"{target_path.as_posix()} "
+                "(managed copy target is no longer a regular file after upstream deletion)"
+            ),
+            (
+                "Managed copied agent bridge no longer points to a regular file after "
+                f"upstream deletion: {target_path.as_posix()}. Remove it to clear the "
+                "stale bootstrap entry."
+            ),
+        )
+
+    current_hash = sha256_path(target_path)
+    if current_hash != expected_hash:
+        return (
+            "skipped",
+            (
+                f"{target_path.as_posix()} "
+                "(managed copy was modified locally after upstream deletion; leaving in place)"
+            ),
+            (
+                "Managed copied agent bridge was modified locally after upstream deletion "
+                f"and was not removed: {target_path.as_posix()}."
+            ),
+        )
+
+    target_path.unlink()
+    remove_empty_parent_dirs(target_path, stop=managed_root)
+    state_group.pop(bridge_name, None)
+    return "removed", f"{target_path.as_posix()} (upstream source was deleted)", None
+
+
+def prune_stale_managed_directory_copy(
+    target_root: Path,
+    *,
+    managed_root: Path,
+    bridge_name: str,
+    state_group: dict[str, object],
+) -> tuple[str, str, str | None]:
+    entry = state_group.get(bridge_name)
+    if entry is None:
+        return "unchanged", target_root.as_posix(), None
+
+    expected_hashes = validate_directory_copy_state_entry(entry, bridge_name=bridge_name)
+    if not target_root.exists():
+        state_group.pop(bridge_name, None)
+        return "unchanged", target_root.as_posix(), None
+    if target_root.is_symlink() or not target_root.is_dir():
+        return (
+            "skipped",
+            (
+                f"{target_root.as_posix()} "
+                "(managed copy target is no longer a regular directory after upstream deletion)"
+            ),
+            (
+                "Managed copied skill bridge no longer points to a regular directory after "
+                f"upstream deletion: {target_root.as_posix()}. Remove it to clear the stale "
+                "bootstrap entry."
+            ),
+        )
+
+    target_files = iter_relative_files(target_root)
+    if set(target_files) != set(expected_hashes):
+        return (
+            "skipped",
+            (
+                f"{target_root.as_posix()} "
+                "(managed copy contents were modified locally after upstream deletion; leaving in place)"
+            ),
+            (
+                "Managed copied skill bridge was modified locally after upstream deletion "
+                f"and was not removed: {target_root.as_posix()}."
+            ),
+        )
+
+    for relative_path, target_file in target_files.items():
+        if sha256_path(target_file) != expected_hashes[relative_path]:
+            return (
+                "skipped",
+                (
+                    f"{target_root.as_posix()} "
+                    "(managed copy contents were modified locally after upstream deletion; leaving in place)"
+                ),
+                (
+                    "Managed copied skill bridge was modified locally after upstream deletion "
+                    f"and was not removed: {target_root.as_posix()}."
+                ),
+            )
+
+    shutil.rmtree(target_root)
+    remove_empty_parent_dirs(target_root, stop=managed_root)
+    state_group.pop(bridge_name, None)
+    return "removed", f"{target_root.as_posix()} (upstream source was deleted)", None
 
 
 def bridge_state_has_entries(state: dict[str, object]) -> bool:
@@ -912,6 +1033,23 @@ def create_skill_bridges(
             repo_root,
             source_path,
             target_path,
+            bridge_name=skill_name,
+            state_group=skill_state,
+        )
+        append_bridge_event(
+            events,
+            bridge_kind="skill",
+            status=status,
+            detail=detail,
+        )
+        if notice is not None:
+            notices.append(notice)
+
+    stale_skill_names = sorted(set(skill_state) - set(vendor_skills) - set(legacy_skills))
+    for skill_name in stale_skill_names:
+        status, detail, notice = prune_stale_managed_directory_copy(
+            root_skills / skill_name,
+            managed_root=root_skills,
             bridge_name=skill_name,
             state_group=skill_state,
         )
@@ -1057,6 +1195,23 @@ def create_agent_bridges(
         if notice is not None:
             notices.append(notice)
 
+    stale_agent_names = sorted(set(agent_state) - set(vendor_agents) - set(legacy_agents))
+    for agent_filename in stale_agent_names:
+        status, detail, notice = prune_stale_managed_file_copy(
+            project_agents / agent_filename,
+            managed_root=project_agents,
+            bridge_name=agent_filename,
+            state_group=agent_state,
+        )
+        append_bridge_event(
+            events,
+            bridge_kind="agent",
+            status=status,
+            detail=detail,
+        )
+        if notice is not None:
+            notices.append(notice)
+
     if legacy_agents:
         notices.append(
             "Legacy `.codex/project/agents/` is deprecated and remains migration-only."
@@ -1114,6 +1269,8 @@ def main() -> int:
         )
         if bridge_state_has_entries(bridge_state):
             save_bridge_state(repo_root, bridge_state)
+        else:
+            delete_bridge_state(repo_root)
     except RuntimeError as exc:
         print(f"[ERROR] {exc}", file=sys.stderr)
         return 1

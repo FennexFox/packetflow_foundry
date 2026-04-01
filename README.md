@@ -143,7 +143,7 @@ Bootstrap behavior:
 - legacy `.codex/project/agents/` entries are bridged only as a migration shim and should be moved to `.codex/agents/`
 - legacy `.codex/project/skills/` entries are bridged only as a migration shim and should be moved to root `.agents/skills/`
 - a compatible existing `.codex/project/profiles/default/profile.json` is left unchanged on rerun
-- conflicting non-`AGENTS.md` bootstrap outputs still cause the helper to abort without writing files
+- conflicting non-`AGENTS.md` bootstrap outputs still cause the helper to abort before creating or overwriting those managed artifacts, although append-only targets like `AGENTS.md` and `.gitignore` may already have been updated
 
 See [docs/vendoring.md](./docs/vendoring.md) for the full model.
 

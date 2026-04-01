@@ -14,9 +14,9 @@ Meaning:
 - add repo-specific profile data from `.codex/project/profiles/`
   - keep repo-wide defaults in `.codex/project/profiles/default/profile.json`
   - keep skill-specific overrides in `.codex/project/profiles/<skill-name>/profile.json`
-- bridge reusable foundry default agent TOMLs from `.codex/vendor/packetflow_foundry/.codex/agents/` into repo-root `.codex/agents/`
+- copy reusable foundry default agent TOMLs from `.codex/vendor/packetflow_foundry/.codex/agents/` into repo-root `.codex/agents/` as managed bootstrap artifacts
 - expose repo-scoped skills from repo-root `.agents/skills/`
-- bridge reusable foundry thin wrappers from `.codex/vendor/packetflow_foundry/.agents/skills/` into the root discovery surface
+- copy reusable foundry thin wrappers from `.codex/vendor/packetflow_foundry/.agents/skills/` into the root discovery surface as managed bootstrap artifacts
 - keep authoritative retained kernels in `.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/`
 
 ## Recommended Consumer Layout
@@ -60,7 +60,7 @@ Bootstrap notes:
 - legacy `.codex/project/agents/` is deprecated and bridged only for migration
 - legacy `.codex/project/skills/` is deprecated and bridged only for migration
 - a compatible existing `.codex/project/profiles/default/profile.json` is left unchanged on rerun
-- conflicting non-`AGENTS.md` bootstrap outputs still cause the helper to abort without writing files
+- conflicting non-`AGENTS.md` bootstrap outputs still cause the helper to abort before creating or overwriting those managed artifacts, although append-only targets like `AGENTS.md` and `.gitignore` may already have been updated
 
 ## What Stays In The Vendor
 
