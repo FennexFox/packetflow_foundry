@@ -464,12 +464,46 @@ def iter_skill_directories(root: Path) -> dict[str, Path]:
     return skills
 
 
+def validate_managed_source_file(
+    path: Path,
+    *,
+    source_root: Path,
+    bridge_kind: str,
+    root_label: str,
+) -> None:
+    if path.is_symlink():
+        raise RuntimeError(
+            f"Managed {bridge_kind} bridge source contains unsupported symlinked file: "
+            f"{path.as_posix()}."
+        )
+    try:
+        resolved_path = path.resolve()
+    except OSError as exc:
+        raise RuntimeError(
+            f"Failed to resolve managed {bridge_kind} bridge source: "
+            f"{path.as_posix()}."
+        ) from exc
+    try:
+        resolved_path.relative_to(source_root.resolve())
+    except ValueError as exc:
+        raise RuntimeError(
+            f"Managed {bridge_kind} bridge source resolves outside the {root_label}: "
+            f"{path.as_posix()}."
+        ) from exc
+
+
 def iter_agent_files(root: Path) -> dict[str, Path]:
     if not root.is_dir():
         return {}
     agents: dict[str, Path] = {}
     for child in sorted(root.iterdir(), key=lambda entry: entry.name):
         if child.is_file() and child.suffix == ".toml":
+            validate_managed_source_file(
+                child,
+                source_root=root,
+                bridge_kind="agent",
+                root_label="agent root",
+            )
             agents[child.name] = child
     return agents
 
@@ -555,16 +589,12 @@ def build_skill_bridge_files(
 ) -> dict[str, bytes]:
     copied_files: dict[str, bytes] = {}
     for relative_path, source_file in iter_relative_files(source_root).items():
-        if source_file.is_symlink():
-            raise RuntimeError(
-                "Managed skill bridge source contains unsupported symlinked file: "
-                f"{source_file.as_posix()}."
-            )
-        if not path_is_within(source_file, source_root):
-            raise RuntimeError(
-                "Managed skill bridge source resolves outside the skill root: "
-                f"{source_file.as_posix()}."
-            )
+        validate_managed_source_file(
+            source_file,
+            source_root=source_root,
+            bridge_kind="skill",
+            root_label="skill root",
+        )
         content = source_file.read_bytes()
         if relative_path == "SKILL.md":
             content = rewrite_skill_wrapper_for_target(

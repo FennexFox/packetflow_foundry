@@ -760,6 +760,40 @@ class ConsumerBootstrapTests(unittest.TestCase):
             )
             self.assertFalse((repo / bootstrap.BRIDGE_STATE_RELATIVE).exists())
 
+    def test_copy_rejects_symlinked_agent_source_files(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_consumer_repo(
+                Path(tmp),
+                vendor_agent_names=["vendor-agent"],
+            )
+            symlinked_file = (
+                repo
+                / ".codex"
+                / "vendor"
+                / "packetflow_foundry"
+                / ".codex"
+                / "agents"
+                / "vendor-agent.toml"
+            )
+            real_is_symlink = Path.is_symlink
+
+            def fake_is_symlink(path: Path) -> bool:
+                if path == symlinked_file:
+                    return True
+                return real_is_symlink(path)
+
+            with mock.patch.object(Path, "is_symlink", fake_is_symlink):
+                code, stdout, stderr, symlink_mock = run_bootstrap_main(repo)
+
+            self.assertEqual(code, 1)
+            self.assertEqual(symlink_mock.call_count, 0)
+            self.assertNotIn("copied agent bridge:", stdout)
+            self.assertIn("unsupported symlinked file", stderr)
+            self.assertFalse(
+                (repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE / "vendor-agent.toml").exists()
+            )
+            self.assertFalse((repo / bootstrap.BRIDGE_STATE_RELATIVE).exists())
+
     def test_copy_errors_cleanly_for_external_agent_source_path_before_mutation(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -791,7 +825,7 @@ class ConsumerBootstrapTests(unittest.TestCase):
             self.assertEqual(code, 1)
             self.assertEqual(symlink_mock.call_count, 0)
             self.assertNotIn("copied agent bridge:", stdout)
-            self.assertIn("must resolve inside the repository root", stderr)
+            self.assertIn("resolves outside the agent root", stderr)
             self.assertFalse(
                 (repo / bootstrap.PROJECT_AGENT_DISCOVERY_RELATIVE / "vendor-agent.toml").exists()
             )
