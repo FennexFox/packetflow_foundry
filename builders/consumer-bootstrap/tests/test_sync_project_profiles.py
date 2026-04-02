@@ -496,6 +496,47 @@ class ProjectProfileSyncTests(unittest.TestCase):
             )
             self.assertEqual(report["profiles"][0]["action"], "updated")
 
+    def test_sync_updates_legacy_default_profile_without_versioning_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_repo_root(Path(tmp))
+            payload = {
+                "kind": bootstrap.PROJECT_LOCAL_PROFILE_KIND,
+                "name": "default",
+                "profile_path": bootstrap.PROJECT_PROFILE_RELATIVE.as_posix(),
+                "summary": "Legacy default profile.",
+                "repo_match": {
+                    "root_markers": [".git", "README.md"],
+                    "remote_patterns": [],
+                },
+                "bindings": {
+                    "primary_readme_path": "README.md",
+                    "settings_source_path": None,
+                    "publish_config_path": None,
+                },
+                "packet_defaults": {
+                    "review_docs": {},
+                    "source_path_globs": {},
+                },
+                "lint_rules": {
+                    "require_readme_settings_table": False,
+                    "missing_review_docs_are_errors": False,
+                },
+                "notes": [],
+            }
+            profile_path = write_project_profile(repo, "default", payload)
+
+            code, _, _, report = run_sync_main(repo)
+
+            self.assertEqual(code, 0)
+            updated = json.loads(profile_path.read_text(encoding="utf-8"))
+            self.assertIn("metadata", updated)
+            self.assertIn("versioning", updated["metadata"])
+            self.assertEqual(report["profiles"][0]["action"], "updated")
+            self.assertEqual(
+                report["profiles"][0]["compatibility_status"],
+                versioning.STATUS_MISSING_PROFILE_VERSIONING,
+            )
+
     def test_sync_reports_invalid_json_as_manual_migration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = create_repo_root(Path(tmp))
@@ -564,6 +605,45 @@ class ProjectProfileSyncTests(unittest.TestCase):
             )
             self.assertEqual(skill_report["action"], "manual_migration_required")
             self.assertEqual(skill_report["compatibility_status"], "stale-profile")
+
+    def test_sync_blocks_stale_retained_profile_source_before_scaffolding(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_repo_root(Path(tmp))
+            create_packet_workflow_wrapper(
+                repo / ".agents" / "skills",
+                "demo-skill",
+                "../../../builders/packet-workflow/retained-skills/demo-skill/",
+            )
+            builder_version = current_builder_version()
+            create_retained_skill(
+                repo,
+                "demo-skill",
+                profile_versioning={
+                    "builder_family": builder_version["builder_family"],
+                    "builder_semver": builder_version["builder_semver"],
+                    "compatibility_epoch": builder_version["compatibility_epoch"],
+                    "repo_profile_schema_version": 0,
+                },
+            )
+
+            code, _, _, report = run_sync_main(repo)
+
+            self.assertEqual(code, 1)
+            skill_report = next(
+                item for item in report["profiles"] if item["skill_name"] == "demo-skill"
+            )
+            self.assertEqual(skill_report["action"], "manual_migration_required")
+            self.assertEqual(skill_report["compatibility_status"], "stale-profile")
+            self.assertFalse(
+                (
+                    repo
+                    / ".codex"
+                    / "project"
+                    / "profiles"
+                    / "demo-skill"
+                    / "profile.json"
+                ).exists()
+            )
 
     def test_sync_reports_ahead_default_profile_as_manual_migration(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

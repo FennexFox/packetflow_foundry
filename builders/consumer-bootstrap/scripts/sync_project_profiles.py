@@ -17,7 +17,6 @@ from project_profile_support import (
     build_default_project_local_profile,
     build_skill_project_local_profile,
     project_local_profile_relative,
-    project_local_profile_versioning,
     render_json_document,
 )
 
@@ -29,6 +28,7 @@ if str(PACKET_WORKFLOW_SCRIPT_DIR) not in sys.path:
 from packet_workflow_versioning import (  # type: ignore  # noqa: E402
     STATUS_AHEAD_OF_BUILDER,
     STATUS_CURRENT,
+    STATUS_MISSING_PROFILE_VERSIONING,
     STATUS_SEMVER_BEHIND_COMPATIBLE,
     STATUS_STALE_PROFILE,
     classify_builder_compatibility,
@@ -260,9 +260,10 @@ def classify_profile_versioning_only(
     *,
     current_builder: dict[str, Any],
     profile_versioning: dict[str, Any] | None,
+    allow_missing_versioning: bool = False,
 ) -> tuple[str | None, bool]:
     if profile_versioning is None:
-        return "missing-profile-versioning", True
+        return STATUS_MISSING_PROFILE_VERSIONING, not allow_missing_versioning
     if profile_versioning["builder_family"] != current_builder["builder_family"]:
         return "profile-family-mismatch", True
     if (
@@ -293,15 +294,25 @@ def load_skill_builder_versioning(retained_skill_dir: Path) -> dict[str, Any] | 
     return extract_skill_builder_versioning(load_json_object(spec_path))
 
 
+def profile_versioning_is_missing(payload: dict[str, Any]) -> bool:
+    metadata = payload.get("metadata")
+    if metadata is None:
+        return True
+    if not isinstance(metadata, dict):
+        return False
+    return "versioning" not in metadata
+
+
 def classify_retained_skill_source(
     *,
     current_builder: dict[str, Any],
     skill_versioning: dict[str, Any] | None,
+    profile_versioning: dict[str, Any] | None,
 ) -> tuple[str | None, bool]:
     compatibility = classify_builder_compatibility(
         current_builder=current_builder,
         skill_versioning=skill_versioning,
-        profile_versioning=project_local_profile_versioning(current_builder),
+        profile_versioning=profile_versioning,
     )
     return str(compatibility["status"]), bool(compatibility["blocking"])
 
@@ -430,9 +441,12 @@ def sync_default_profile(
         result["unresolved_gaps"] = []
         return result
 
+    profile_versioning = extract_profile_versioning(payload)
     compatibility_status, blocking = classify_profile_versioning_only(
         current_builder=current_builder,
-        profile_versioning=extract_profile_versioning(payload),
+        profile_versioning=profile_versioning,
+        allow_missing_versioning=profile_versioning is None
+        and profile_versioning_is_missing(payload),
     )
     result["compatibility_status"] = compatibility_status
     if blocking:
@@ -492,6 +506,7 @@ def sync_skill_profile(
     source_status, source_blocking = classify_retained_skill_source(
         current_builder=current_builder,
         skill_versioning=skill_versioning,
+        profile_versioning=extract_profile_versioning(retained_profile),
     )
     if source_blocking:
         result["action"] = ACTION_MANUAL
