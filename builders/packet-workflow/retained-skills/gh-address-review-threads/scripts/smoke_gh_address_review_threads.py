@@ -19,6 +19,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+import review_thread_run as run_support
 from thread_action_contract import build_context_fingerprint
 
 
@@ -106,6 +107,7 @@ def read_json(path: Path) -> dict[str, Any]:
 
 
 def write_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
 
 
@@ -178,11 +180,10 @@ def synthetic_thread(*, thread_id: str, path: str, line: int, reviewer_login: st
     }
 
 
-def build_synthetic_context(temp_dir: Path) -> tuple[Path, Path, Path, Path]:
+def build_synthetic_context(temp_dir: Path) -> tuple[Path, Path, Path, list[str], list[str]]:
     repo_root = temp_dir / "synthetic-repo"
     previous_context_path = temp_dir / "previous-context.json"
     context_path = temp_dir / "context.json"
-    reconciliation_input_path = temp_dir / "reconciliation-input.json"
     (repo_root / ".github").mkdir(parents=True, exist_ok=True)
     (repo_root / "src").mkdir(parents=True, exist_ok=True)
     (repo_root / "docs").mkdir(parents=True, exist_ok=True)
@@ -282,18 +283,13 @@ def build_synthetic_context(temp_dir: Path) -> tuple[Path, Path, Path, Path]:
     context["context_fingerprint"] = build_context_fingerprint(context)
     write_json(previous_context_path, previous_context)
     write_json(context_path, context)
-    write_json(
-        reconciliation_input_path,
-        {
-            "accepted_threads": [
-                {
-                    "thread_id": "t-1",
-                    "validation_commands": ["python -m pytest tests/test_docs.py"],
-                }
-            ]
-        },
+    return (
+        repo_root,
+        previous_context_path,
+        context_path,
+        ["t-1"],
+        ["python -m pytest tests/test_docs.py"],
     )
-    return repo_root, previous_context_path, context_path, reconciliation_input_path
 
 
 def ensure_gh_auth(repo_root: Path) -> bool:
@@ -377,27 +373,67 @@ def run_smoke_workflow(
     context_path: Path,
     temp_dir: Path,
     previous_context_path: Path | None = None,
-    reconciliation_input_path: Path | None = None,
+    accepted_thread_ids: list[str] | None = None,
+    validation_commands: list[str] | None = None,
 ) -> dict[str, Any]:
-    packet_dir = temp_dir / "packets"
-    build_result_path = temp_dir / "build-result.json"
-    eval_log_path = temp_dir / "eval-log.json"
-    ack_plan_path = temp_dir / "ack-plan.json"
-    ack_validation_path = temp_dir / "ack-validation.json"
-    ack_result_path = temp_dir / "ack-result.json"
-    complete_plan_path = temp_dir / "complete-plan.json"
-    complete_validation_path = temp_dir / "complete-validation.json"
-    complete_result_path = temp_dir / "complete-result.json"
+    manifest = run_support.create_run(
+        repo_root,
+        previous_context_path or context_path,
+        evaluation_log_path=temp_dir / "eval-log.json",
+    )
+    manifest_path = Path(manifest["paths"]["manifest"])
+    if validation_commands:
+        run_support.set_validation_commands(manifest, validation_commands)
+    if accepted_thread_ids:
+        run_support.set_accepted_threads(manifest, accepted_thread_ids)
 
-    context = read_json(context_path)
+    if previous_context_path is not None:
+        run_support.copy_context_into_manifest(
+            manifest,
+            phase="post",
+            source_path=context_path,
+        )
+        run_support.write_reconciliation_input(manifest)
+        build_context_path = Path(manifest["paths"]["post"]["context"])
+        packet_dir = Path(manifest["paths"]["post"]["packet_dir"])
+        build_result_path = Path(manifest["paths"]["post"]["build_result"])
+        reconciliation_input_path = Path(manifest["paths"]["post"]["reconciliation_input"])
+        previous_context_path = Path(manifest["paths"]["pre"]["context"])
+    else:
+        build_context_path = Path(manifest["paths"]["pre"]["context"])
+        packet_dir = Path(manifest["paths"]["pre"]["packet_dir"])
+        build_result_path = Path(manifest["paths"]["pre"]["build_result"])
+        reconciliation_input_path = None
+
+    ack_plan_path = Path(manifest["paths"]["ack"]["raw_plan"])
+    ack_validation_path = Path(manifest["paths"]["ack"]["validated_plan"])
+    ack_result_path = Path(manifest["paths"]["ack"]["result"])
+    complete_plan_path = Path(manifest["paths"]["complete"]["raw_plan"])
+    complete_validation_path = Path(manifest["paths"]["complete"]["validated_plan"])
+    complete_result_path = Path(manifest["paths"]["complete"]["result"])
+    eval_log_path = Path(manifest["paths"]["evaluation_log"])
+
+    run_support.write_manifest(manifest_path, manifest)
+    run_support.write_latest_pointer(repo_root, manifest)
+
+    context = read_json(build_context_path)
     counts = thread_counts_from_context(context)
     if counts["unresolved"] == 0:
-        return summary("noop", "no_unresolved_threads", counts, "nothing_to_do", pr_url=context.get("pr", {}).get("url"))
+        return summary(
+            "noop",
+            "no_unresolved_threads",
+            counts,
+            "nothing_to_do",
+            pr_url=context.get("pr", {}).get("url"),
+            run_id=manifest["run_id"],
+            run_root=manifest["paths"]["run_root"],
+            manifest_path=manifest["paths"]["manifest"],
+        )
 
     build_args = [
         str(script_path("build_review_packets.py")),
         "--context",
-        str(context_path),
+        str(build_context_path),
         "--repo-root",
         str(repo_root),
         "--output-dir",
@@ -435,19 +471,26 @@ def run_smoke_workflow(
             str(context_path),
             "--plan",
             str(ack_plan_path),
-            "--phase",
-            "ack",
-            "--output",
-            str(ack_validation_path),
+        "--phase",
+        "ack",
+        "--output",
+        str(ack_validation_path),
         ],
         cwd=repo_root,
     )
     merge_eval_phase(eval_log_path, "validate", ack_validation_path, cwd=repo_root)
+    run_support.copy_validated_plan_into_manifest(
+        manifest,
+        phase="ack",
+        source_path=ack_validation_path,
+    )
+    run_support.write_manifest(manifest_path, manifest)
+    run_support.write_latest_pointer(repo_root, manifest)
     run_script(
         [
             str(script_path("apply_thread_action_plan.py")),
             "--context",
-            str(context_path),
+            str(build_context_path),
             "--plan",
             str(ack_validation_path),
             "--phase",
@@ -464,7 +507,7 @@ def run_smoke_workflow(
         [
             str(script_path("reconcile_outdated_threads.py")),
             "--context",
-            str(context_path),
+            str(build_context_path),
             "--packet-dir",
             str(packet_dir),
             "--output",
@@ -476,7 +519,7 @@ def run_smoke_workflow(
         [
             str(script_path("validate_thread_action_plan.py")),
             "--context",
-            str(context_path),
+            str(build_context_path),
             "--plan",
             str(complete_plan_path),
             "--phase",
@@ -491,7 +534,7 @@ def run_smoke_workflow(
         [
             str(script_path("apply_thread_action_plan.py")),
             "--context",
-            str(context_path),
+            str(build_context_path),
             "--plan",
             str(complete_validation_path),
             "--phase",
@@ -513,6 +556,9 @@ def run_smoke_workflow(
         counts,
         "review_smoke_results",
         pr_url=context.get("pr", {}).get("url"),
+        run_id=manifest["run_id"],
+        run_root=manifest["paths"]["run_root"],
+        manifest_path=manifest["paths"]["manifest"],
         review_mode=build_result.get("review_mode"),
         common_path_sufficient=build_result.get("common_path_sufficient"),
         estimated_packet_tokens=packet_metrics.get("estimated_packet_tokens"),
@@ -536,7 +582,13 @@ def main() -> int:
     if args.synthetic:
         with tempfile.TemporaryDirectory(dir=temp_root, prefix="smoke-synthetic-") as temp_dir_name:
             temp_dir = Path(temp_dir_name)
-            repo_root, previous_context_path, context_path, reconciliation_input_path = build_synthetic_context(temp_dir)
+            (
+                repo_root,
+                previous_context_path,
+                context_path,
+                accepted_thread_ids,
+                validation_commands,
+            ) = build_synthetic_context(temp_dir)
             print(
                 json.dumps(
                     run_smoke_workflow(
@@ -544,7 +596,8 @@ def main() -> int:
                         context_path=context_path,
                         temp_dir=temp_dir,
                         previous_context_path=previous_context_path,
-                        reconciliation_input_path=reconciliation_input_path,
+                        accepted_thread_ids=accepted_thread_ids,
+                        validation_commands=validation_commands,
                     ),
                     indent=2,
                     ensure_ascii=True,
