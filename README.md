@@ -124,6 +124,13 @@ git subtree add --prefix=.codex/vendor/packetflow_foundry packetflow_foundry mas
 python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py
 ```
 
+When you want fresh project-local skill profile scaffolds or version metadata after
+bootstrap or a vendor update, run:
+
+```text
+python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/sync_project_profiles.py --repo-root <project-root>
+```
+
 Bootstrap now writes managed copies into repo-root `.codex/agents/` and `.agents/skills/`.
 Those bootstrap-copied entries are managed artifacts only when they came from the
 vendor subtree; do not patch those copied artifacts in place. Update the vendor source

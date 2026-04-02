@@ -13,6 +13,14 @@ import sys
 from pathlib import Path
 from typing import NotRequired, TypeAlias, TypedDict
 
+from project_profile_support import (
+    PROJECT_LOCAL_PROFILE_KIND,
+    PROJECT_PROFILE_RELATIVE,
+    build_default_project_local_profile,
+    is_existing_project_local_profile,
+    render_json_document,
+)
+
 
 FOUNDRY_KEYWORDS = (
     "packetflow_foundry",
@@ -24,13 +32,11 @@ BOOTSTRAP_MARKER_END = "<!-- packetflow_foundry consumer bootstrap:end -->"
 CODEX_AGENTS_RELATIVE = Path(".codex/AGENTS.md")
 ROOT_AGENTS_RELATIVE = Path("AGENTS.md")
 GITIGNORE_RELATIVE = Path(".gitignore")
-PROJECT_PROFILE_RELATIVE = Path(".codex/project/profiles/default/profile.json")
 PROJECT_AGENT_DISCOVERY_RELATIVE = Path(".codex/agents")
 LEGACY_PROJECT_AGENTS_RELATIVE = Path(".codex/project/agents")
 ROOT_SKILLS_RELATIVE = Path(".agents/skills")
 LEGACY_PROJECT_SKILLS_RELATIVE = Path(".codex/project/skills")
 BRIDGE_STATE_RELATIVE = Path(".codex/project/bootstrap/bridge-state.json")
-PROJECT_LOCAL_PROFILE_KIND = "project-local-scaffold-profile"
 BRIDGE_STATE_KIND = "packetflow-foundry-bootstrap-bridge-state"
 BRIDGE_STATE_VERSION = 1
 BRIDGE_MODE_COPY = "copy"
@@ -397,78 +403,9 @@ def update_codex_agents(repo_root: Path) -> str:
     return "appended foundry block"
 
 
-def project_root_markers(repo_root: Path) -> list[str]:
-    markers = [".git"]
-    if (repo_root / "README.md").is_file():
-        markers.append("README.md")
-    return markers
-
-
-def build_project_local_profile(repo_root: Path) -> dict[str, object]:
-    return {
-        "name": "default",
-        "kind": PROJECT_LOCAL_PROFILE_KIND,
-        "profile_path": PROJECT_PROFILE_RELATIVE.as_posix(),
-        "summary": (
-            "Project-local scaffold profile for this consumer repository. "
-            "This is not a reusable foundry overlay; replace the placeholder "
-            "values here with repo-specific bindings, review docs, and local notes."
-        ),
-        "repo_match": {
-            "root_markers": project_root_markers(repo_root),
-            "remote_patterns": [],
-        },
-        "bindings": {
-            "primary_readme_path": "README.md",
-            "settings_source_path": None,
-            "publish_config_path": None,
-        },
-        "packet_defaults": {
-            "review_docs": {},
-            "source_path_globs": {},
-        },
-        "lint_rules": {
-            "require_readme_settings_table": False,
-            "missing_review_docs_are_errors": False,
-        },
-        "notes": [
-            "This file is a project-local scaffold profile for one consumer repository.",
-            "It is not a reusable foundry overlay and should stay outside the vendor subtree.",
-            (
-                "Keep this profile data-only: add repo-specific bindings, globs, "
-                "review docs, booleans, and notes here."
-            ),
-            (
-                "Skill-specific packet-workflow bindings should live in "
-                "`.codex/project/profiles/<skill-name>/profile.json` instead "
-                "of this default scaffold."
-            ),
-            (
-                "Do not add executable hooks, prompt fragments, or packet routing "
-                "authority here."
-            ),
-        ],
-    }
-
-
 def render_project_local_profile(repo_root: Path) -> str:
-    return json.dumps(
-        build_project_local_profile(repo_root),
-        indent=2,
-        ensure_ascii=True,
-    )
-
-
-def is_existing_project_local_profile(path: Path) -> bool:
-    try:
-        document = json.loads(read_text(path))
-    except json.JSONDecodeError:
-        return False
-    if not isinstance(document, dict):
-        return False
-    return (
-        document.get("kind") == PROJECT_LOCAL_PROFILE_KIND
-        and document.get("profile_path") == PROJECT_PROFILE_RELATIVE.as_posix()
+    return render_json_document(
+        build_default_project_local_profile(repo_root),
     )
 
 
@@ -478,7 +415,8 @@ def preflight_non_agents(repo_root: Path) -> None:
         target = repo_root / relative_path
         if target.exists():
             if relative_path == PROJECT_PROFILE_RELATIVE and is_existing_project_local_profile(
-                target
+                target,
+                expected_profile_path=PROJECT_PROFILE_RELATIVE.as_posix(),
             ):
                 continue
             conflicts.append(relative_path.as_posix())
@@ -1512,7 +1450,10 @@ def create_non_agents(repo_root: Path) -> list[str]:
 
     profile_path = repo_root / PROJECT_PROFILE_RELATIVE
     if profile_path.exists():
-        if not is_existing_project_local_profile(profile_path):
+        if not is_existing_project_local_profile(
+            profile_path,
+            expected_profile_path=PROJECT_PROFILE_RELATIVE.as_posix(),
+        ):
             raise RuntimeError(
                 "Refusing to overwrite existing bootstrap outputs: "
                 f"{PROJECT_PROFILE_RELATIVE.as_posix()}. "

@@ -5,12 +5,16 @@ vendoring PacketFlow Foundry under `.codex/vendor/packetflow_foundry`.
 
 Primary entrypoint:
 - `scripts/init_consumer_codex.py`
+- `scripts/sync_project_profiles.py`
 
 Usage:
 - `python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py`
 - `python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py --repo-root <project-root>`
 - `python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py --bridge-mode copy`
 - `python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py --bridge-mode copy-on-fail`
+- `python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/sync_project_profiles.py --repo-root <project-root>`
+- `python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/sync_project_profiles.py --repo-root <project-root> --dry-run`
+- `python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/sync_project_profiles.py --repo-root <project-root> --skill <skill-name>`
 
 Bridge mode note:
 - bootstrap now writes managed copies for agent and skill bridges by default
@@ -21,6 +25,7 @@ Bridge mode note:
 Recommended vendor update flow:
 - `git subtree pull --prefix=.codex/vendor/packetflow_foundry packetflow_foundry <upstream-branch> --squash`
 - rerun `python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/init_consumer_codex.py`
+- rerun `python .codex/vendor/packetflow_foundry/builders/consumer-bootstrap/scripts/sync_project_profiles.py --repo-root <project-root>` when you want fresh project-local skill profile scaffolds and version metadata
 - run the relevant consumer smoke test(s)
 - inspect the resulting diff
 - commit the subtree update and bootstrap refresh together
@@ -47,3 +52,12 @@ Behavior:
 - aborts when conflicting non-`AGENTS.md` scaffold output already exists
 - refreshes managed copies on later runs while they remain unchanged locally
 - migrates legacy bootstrap symlink bridges to managed copies on rerun when they still point at the expected foundry source
+
+Project profile sync behavior:
+- creates missing `.codex/project/profiles/default/profile.json` when needed
+- discovers packet-workflow thin wrappers under repo-root `.agents/skills/`
+- creates missing `.codex/project/profiles/<skill-name>/profile.json` from retained default scaffolds
+- normalizes project-local `kind`, `name`, `profile_path`, and `metadata.versioning`
+- adds only missing nested keys from retained/default scaffolds and preserves existing semantic values
+- reports `created`, `updated`, `unchanged`, `ignored`, or `manual_migration_required` in a JSON report under `.codex/tmp/project-profile-sync/` by default
+- refuses to rewrite invalid, stale, or ahead-of-builder project-local profiles and leaves those for manual migration
