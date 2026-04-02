@@ -30,6 +30,10 @@ def parse_args() -> argparse.Namespace:
     return parser.parse_args()
 
 
+def normalize_body_text(value: Any) -> str:
+    return str(value or "").replace("\r\n", "\n").replace("\r", "\n").rstrip()
+
+
 def fail(payload: dict[str, Any], result_output: Path | None, reason: str, message: str, **extra: Any) -> int:
     payload.update(extra)
     payload["apply_succeeded"] = False
@@ -159,7 +163,10 @@ def main() -> int:
         except Exception as exc:
             return fail(payload, result_output, "apply_failed", str(exc))
 
-        if normalize_scalar(confirmed.get("title")) != title or normalize_scalar(confirmed.get("body")) != body.strip():
+        if (
+            normalize_scalar(confirmed.get("title")) != title
+            or normalize_body_text(confirmed.get("body")) != normalize_body_text(body)
+        ):
             return fail(
                 payload,
                 result_output,

@@ -338,6 +338,58 @@ class ApplyPrWriteupTests(unittest.TestCase):
             self.assertEqual(payload["current_pr_url"], context["pr"]["url"])
             self.assertEqual(json.loads(stdout.getvalue())["apply_succeeded"], True)
 
+    def test_apply_tolerates_crlf_body_normalization_in_confirmed_pr(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            repo_root = tmp / "repo"
+            repo_root.mkdir()
+            context = collected_context(repo_root)
+            validation_path = tmp / "validation.json"
+            result_path = tmp / "result.json"
+            validation = self.validation_payload(repo_root)
+            self.write_json(validation_path, validation)
+            new_body = validation["normalized_edit"]["body"]
+            new_title = validation["normalized_edit"]["title"]
+            view_calls = 0
+
+            def fake_run_command(args: list[str], cwd: Path) -> str:
+                nonlocal view_calls
+                if args[:3] == ["gh", "auth", "status"]:
+                    return "Logged in to github.com"
+                if args[:3] == ["gh", "pr", "view"]:
+                    view_calls += 1
+                    if view_calls == 1:
+                        return json.dumps(context["pr"])
+                    confirmed = dict(context["pr"])
+                    confirmed["title"] = new_title
+                    confirmed["body"] = new_body.replace("\n", "\r\n") + "\r\n"
+                    return json.dumps(confirmed)
+                if args[:4] == ["gh", "pr", "diff", "7"]:
+                    return "\n".join(context["changed_files"])
+                if args[:3] == ["gh", "pr", "edit"]:
+                    return ""
+                raise AssertionError(f"Unexpected command: {args}")
+
+            stdout = io.StringIO()
+            with mock.patch.object(apply_pr_writeup.tools, "run_command", side_effect=fake_run_command), mock.patch.object(
+                sys,
+                "argv",
+                [
+                    "apply_pr_writeup.py",
+                    "--validation",
+                    str(validation_path),
+                    "--result-output",
+                    str(result_path),
+                ],
+            ), redirect_stdout(stdout):
+                exit_code = apply_pr_writeup.main()
+
+            self.assertEqual(exit_code, 0)
+            payload = self.read_json(result_path)
+            self.assertTrue(payload["apply_succeeded"])
+            self.assertEqual(payload["current_pr_url"], context["pr"]["url"])
+            self.assertEqual(json.loads(stdout.getvalue())["apply_succeeded"], True)
+
 
 if __name__ == "__main__":
     unittest.main()
