@@ -1,0 +1,8 @@
+interface:
+  display_name: "Project Profile Sync"
+  short_description: "Scaffold and safe-sync project-local profiles"
+  default_prompt: >-
+    Use $project-profile-sync to run sync_project_profiles.py before any
+    manual profile edits, then read the JSON report and inspect only the
+    unresolved semantic gaps that remain for repo-specific bindings,
+    review docs, source globs, and skill-specific extra fields.

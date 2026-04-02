@@ -708,7 +708,7 @@ def validate_plan_against_worktree(worktree: dict[str, Any], plan: dict[str, Any
                     commit_index=commit_index,
                 )
 
-        for path in whole_file_paths + supporting_paths:
+        for path in whole_file_paths:
             if path in omitted_paths:
                 push_issue(
                     errors,
@@ -745,6 +745,19 @@ def validate_plan_against_worktree(worktree: dict[str, Any], plan: dict[str, Any
                     error_details,
                     code=VALIDATION_ERROR_CODES["invalid_split_path"],
                     message=f"Commit {commit_index} references `{path}` as both whole-file and split.",
+                    path=path,
+                    commit_index=commit_index,
+                )
+
+        # Supporting paths are evidence-only references. Validate that they resolve to
+        # known changed paths, but do not count them toward path ownership.
+        for path in supporting_paths:
+            if path not in worktree_files:
+                push_issue(
+                    errors,
+                    error_details,
+                    code=VALIDATION_ERROR_CODES["unknown_path"],
+                    message=f"Commit {commit_index} references unknown supporting path `{path}`.",
                     path=path,
                     commit_index=commit_index,
                 )
@@ -877,12 +890,12 @@ def validate_plan_against_worktree(worktree: dict[str, Any], plan: dict[str, Any
                     commit_index=commit_index,
                 )
 
-        if not whole_file_paths and not supporting_paths and not untracked_paths and not split_paths:
+        if not whole_file_paths and not untracked_paths and not split_paths:
             push_issue(
                 errors,
                 error_details,
                 code=VALIDATION_ERROR_CODES["path_assignment_mismatch"],
-                message=f"Commit {commit_index} does not cover any paths.",
+                message=f"Commit {commit_index} does not cover any owned paths.",
                 commit_index=commit_index,
             )
         if not str(commit.get("subject", "")).strip():

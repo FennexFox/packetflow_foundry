@@ -721,7 +721,10 @@ def main() -> int:
             "reread_control": "raw_reread_reason",
         },
         "alias_notes": {
-            "supporting_paths": "Current domain aliases assume file/path-oriented evidence first.",
+            "supporting_paths": (
+                "Current domain aliases assume file/path-oriented evidence first; "
+                "`supporting_paths` is evidence-only and does not claim path ownership."
+            ),
         },
         "reference_only_candidate_values": ["reference_only"],
         "output_inclusion_rules": {

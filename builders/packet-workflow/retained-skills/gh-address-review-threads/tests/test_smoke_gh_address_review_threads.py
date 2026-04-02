@@ -42,6 +42,9 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
         self.assertEqual(payload["outdated_transition_candidates"], 1)
         self.assertEqual(payload["outdated_auto_resolved"], 1)
         self.assertEqual(payload["outdated_recheck_ambiguous"], 0)
+        self.assertIn("run_id", payload)
+        self.assertIn("manifest_path", payload)
+        self.assertIn("run_root", payload)
 
     def test_main_reports_blocked_schema_when_gh_cli_is_missing(self) -> None:
         with patch.object(sys, "argv", ["smoke_gh_address_review_threads.py"]):
@@ -203,6 +206,8 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
             self.assertEqual(payload["outdated_transition_candidates"], 0)
             self.assertEqual(payload["outdated_auto_resolved"], 0)
             self.assertEqual(payload["outdated_recheck_ambiguous"], 0)
+            self.assertIn("run_id", payload)
+            self.assertIn("manifest_path", payload)
 
     def test_main_reports_noop_schema_when_no_unresolved_threads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir_name:

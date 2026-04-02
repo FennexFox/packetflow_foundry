@@ -28,7 +28,13 @@ Boundary:
 - Run helper scripts as `<python-bin> -B <skill-dir>/scripts/...`.
 - Stop and report the blocker if you cannot resolve a concrete interpreter path.
 - Resolve `<runtime-root>` to `<repo-root>/.codex/tmp/packet-workflow/gh-address-review-threads/<run-id>/` and keep `.codex/tmp/` gitignored.
-- Set `<packet-dir>` to `<runtime-root>/packets`.
+- Keep a run manifest at `<runtime-root>/manifest.json` and update `<repo-root>/.codex/tmp/packet-workflow/gh-address-review-threads/latest.json` to point at the newest run.
+- Use phase-separated artifact roots instead of one flat temp directory:
+  - `<runtime-root>/pre/`
+  - `<runtime-root>/ack/`
+  - `<runtime-root>/post/`
+  - `<runtime-root>/complete/`
+- Read packet locations from the manifest instead of re-deriving or reusing stale filenames from a previous run.
 - Set `<eval-log-json>` to `~/.codex/tmp/evaluation_logs/gh-address-review-threads/<run-id>.json` by default. If the sandbox blocks that path, use `<repo-root>/.codex/tmp/evaluation_logs/gh-address-review-threads/<run-id>.json` as an explicit override and keep `.codex/tmp/` gitignored.
 
 ## Workflow
@@ -36,15 +42,21 @@ Boundary:
 1. Collect structured context.
 - Run `gh auth status`.
 - If authentication fails, stop and tell the user to run `gh auth login`.
-- Before pushing accepted work, collect the pre-push snapshot with `<python-bin> -B <skill-dir>/scripts/collect_review_threads.py --repo <repo-root> --output <context-json>`.
-- Build the initial packets with `<python-bin> -B <skill-dir>/scripts/build_review_packets.py --context <context-json> --repo-root <repo-root> --output-dir <packet-dir> --result-output <packet-dir>/build-result.json`.
+- Before pushing accepted work, collect the pre-push snapshot with `<python-bin> -B <skill-dir>/scripts/collect_review_threads.py --repo <repo-root> --output <pre-context-json>`.
+- Immediately create a run manifest with `<python-bin> -B <skill-dir>/scripts/manage_review_thread_run.py start --repo-root <repo-root> --context <pre-context-json>`.
+- Build the initial packets with `<python-bin> -B <skill-dir>/scripts/build_review_packets.py --context <manifest.pre.context> --repo-root <repo-root> --output-dir <manifest.pre.packet_dir> --result-output <manifest.pre.build_result>`.
 - Draft a raw thread-actions plan locally.
-- Run `<python-bin> -B <skill-dir>/scripts/validate_thread_action_plan.py --context <context-json> --plan <raw-plan-json> --phase <ack|complete> --output <validated-plan-json>`.
-- Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <context-json> --orchestrator <packet-dir>/orchestrator.json --output <eval-log-json>`.
-- Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <eval-log-json> --phase build --result <packet-dir>/build-result.json`.
-- After accepted work is pushed, recollect a post-push snapshot, rebuild packets with `--previous-context <pre-push-context-json>` and `--reconciliation-input <reconciliation-json>`, then use `<python-bin> -B <skill-dir>/scripts/reconcile_outdated_threads.py --context <post-push-context-json> --packet-dir <packet-dir> --output <raw-complete-plan-json>` to seed the complete-phase plan.
-- Read `<packet-dir>/orchestrator.json` first.
-- Keep `<packet-dir>/global_packet.json` in view before reading any thread packet.
+- Run `<python-bin> -B <skill-dir>/scripts/validate_thread_action_plan.py --context <manifest.pre.context> --plan <manifest.ack.raw_plan> --phase <ack|complete> --output <manifest.ack.validated_plan or manifest.complete.validated_plan>`.
+- After validating the ack plan, record it with `<python-bin> -B <skill-dir>/scripts/manage_review_thread_run.py record-plan --manifest <manifest-json> --phase ack --validated-plan <manifest.ack.validated_plan>`.
+- Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <manifest.pre.context> --orchestrator <manifest.pre.packet_dir>/orchestrator.json --output <eval-log-json>`.
+- Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <eval-log-json> --phase build --result <manifest.pre.build_result>`.
+- After real validation runs for accepted work, record those commands with `<python-bin> -B <skill-dir>/scripts/manage_review_thread_run.py record-validation --manifest <manifest-json> --validation-command <cmd> ...`.
+- After accepted work is pushed, recollect a post-push snapshot, then stage it and emit reconciliation input with `<python-bin> -B <skill-dir>/scripts/manage_review_thread_run.py post-push --manifest <manifest-json> --context <post-context-json>`.
+- Rebuild packets with `--previous-context <manifest.pre.context>` and `--reconciliation-input <manifest.post.reconciliation_input>` into `<manifest.post.packet_dir>`, then use `<python-bin> -B <skill-dir>/scripts/reconcile_outdated_threads.py --context <manifest.post.context> --packet-dir <manifest.post.packet_dir> --output <manifest.complete.raw_plan>` to seed the complete-phase plan.
+- Do not parallelize the post-push lifecycle. Run `post-push`, then `build_review_packets.py`, then `reconcile_outdated_threads.py`, then complete-plan validation/apply in that exact order.
+- Treat `manage_review_thread_run.py` as the state gate for lifecycle transitions. If it rejects `record-validation`, `post-push`, or `record-plan --phase complete`, stop and fix the missing earlier phase instead of forcing later commands.
+- Read `<manifest.pre.packet_dir>/orchestrator.json` or `<manifest.post.packet_dir>/orchestrator.json` first for the active phase.
+- Keep the matching phase `global_packet.json` in view before reading any thread packet.
 - Before deciding a thread, read that packet's `discussion`, `existing_self_reply`, `reply_candidates`, `validation_candidates`, and `ownership_summary` or `shared_fix_surface`.
 
 2. Follow the review mode.
@@ -120,9 +132,13 @@ Boundary:
 
 - `scripts/collect_review_threads.py`
   - Collect PR metadata, changed files, diff stat, top-level comments, review submissions, unresolved and outdated review threads, and reply-update candidates.
+- `scripts/manage_review_thread_run.py`
+  - Create run-scoped manifests, keep `latest.json` pointed at the newest run, record accepted-thread and validation state, and stage post-push reconciliation input without overwriting pre-push artifacts.
 - `scripts/build_review_packets.py`
   - Split the collected context into `orchestrator.json`, `global_packet.json`, per-thread packets, clustered batch packets, `packet_metrics.json`, and an eval-side build result.
   - When given `--previous-context` and `--reconciliation-input`, mark same-run non-outdated -> outdated transitions and attach conservative `outdated_recheck` evidence.
+- `scripts/review_thread_run.py`
+  - Shared helper for manifest schema, run layout, latest-pointer updates, and pre/post phase artifact paths.
 - `scripts/reconcile_outdated_threads.py`
   - Build a conservative complete-phase raw plan from post-push packets.
   - Auto-upgrade only same-run outdated transitions with `resolution_verdict=auto-accept`; leave ambiguous transitions unresolved.

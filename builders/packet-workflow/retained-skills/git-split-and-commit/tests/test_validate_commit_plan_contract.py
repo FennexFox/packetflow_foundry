@@ -208,6 +208,49 @@ class ValidateCommitPlanContractTests(unittest.TestCase):
         self.assertIn(validator.VALIDATION_ERROR_CODES["targeted_check_unavailable"], error_codes)
         self.assertIn("targeted_check_unavailable", payload["stop_categories"])
 
+    def test_validator_allows_supporting_paths_to_overlap_owned_paths(self) -> None:
+        worktree = sample_worktree()
+        plan = sample_plan()
+        plan["commits"][0]["supporting_paths"] = ["src/app.py"]
+
+        with patch.object(validator, "build_worktree_context", return_value=worktree):
+            payload = validator.validate_plan_against_worktree(worktree, plan)
+
+        self.assertTrue(payload["valid"])
+        self.assertEqual(
+            [item["code"] for item in payload["error_details"]],
+            [],
+        )
+
+    def test_validator_rejects_commit_that_only_lists_supporting_paths(self) -> None:
+        worktree = sample_worktree()
+        plan = sample_plan()
+        plan["commits"][0]["whole_file_paths"] = []
+        plan["commits"][0]["supporting_paths"] = ["src/app.py"]
+
+        with patch.object(validator, "build_worktree_context", return_value=worktree):
+            payload = validator.validate_plan_against_worktree(worktree, plan)
+
+        self.assertFalse(payload["valid"])
+        self.assertIn(
+            validator.VALIDATION_ERROR_CODES["path_assignment_mismatch"],
+            {item["code"] for item in payload["error_details"]},
+        )
+
+    def test_validator_rejects_unknown_supporting_paths(self) -> None:
+        worktree = sample_worktree()
+        plan = sample_plan()
+        plan["commits"][0]["supporting_paths"] = ["docs/notes.md"]
+
+        with patch.object(validator, "build_worktree_context", return_value=worktree):
+            payload = validator.validate_plan_against_worktree(worktree, plan)
+
+        self.assertFalse(payload["valid"])
+        self.assertIn(
+            "Commit 1 references unknown supporting path `docs/notes.md`.",
+            payload["errors"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
