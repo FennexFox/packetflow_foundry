@@ -167,7 +167,11 @@ def discover_packet_workflow_wrappers(repo_root: Path) -> dict[str, WrapperInfo]
         skill_md = child / "SKILL.md"
         if not skill_md.is_file():
             continue
-        wrapper = resolve_packet_workflow_wrapper(child, skill_md)
+        wrapper = resolve_packet_workflow_wrapper(
+            child,
+            skill_md,
+            repo_root=repo_root,
+        )
         if wrapper is None:
             continue
         discovered[wrapper["skill_name"]] = wrapper
@@ -177,12 +181,22 @@ def discover_packet_workflow_wrappers(repo_root: Path) -> dict[str, WrapperInfo]
 def resolve_packet_workflow_wrapper(
     wrapper_dir: Path,
     skill_md_path: Path,
+    *,
+    repo_root: Path,
 ) -> WrapperInfo | None:
     text = skill_md_path.read_text(encoding="utf-8-sig")
+    resolved_repo_root = repo_root.resolve()
     for match in WRAPPER_RETAINED_SKILL_RE.finditer(text):
         retained_relative = match.group("relative")
         skill_name = match.group("skill")
+        retained_relative_path = Path(retained_relative)
+        if retained_relative_path.is_absolute():
+            continue
         retained_skill_dir = (wrapper_dir / retained_relative).resolve()
+        try:
+            retained_skill_dir.relative_to(resolved_repo_root)
+        except ValueError:
+            continue
         retained_profile_path = retained_skill_dir / "profiles" / "default" / "profile.json"
         builder_spec_path = retained_skill_dir / "builder-spec.json"
         if skill_name != wrapper_dir.name:
@@ -632,7 +646,14 @@ def main() -> int:
     report = build_report(repo_root, results=results, dry_run=cast(bool, args.dry_run))
     write_json(report_path, report)
 
-    print(f"[OK] Synced project-local profiles at {repo_root.as_posix()}")
+    has_blocking = any(item.get("blocking") for item in results)
+    summary_prefix = "[ERROR]" if has_blocking else "[OK]"
+    summary_text = (
+        "Synced project-local profiles with blocking items"
+        if has_blocking
+        else "Synced project-local profiles"
+    )
+    print(f"{summary_prefix} {summary_text} at {repo_root.as_posix()}")
     print(f" - report: {report_path.as_posix()}")
     for item in results:
         detail = item["profile_path"]
@@ -640,7 +661,7 @@ def main() -> int:
             detail = f"{detail} ({item['reason']})"
         print(f" - {item['action']}: {detail}")
 
-    if any(item.get("blocking") for item in results):
+    if has_blocking:
         return 1
     return 0
 

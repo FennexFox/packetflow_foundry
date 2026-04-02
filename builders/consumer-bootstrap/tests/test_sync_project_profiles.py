@@ -317,6 +317,42 @@ class ProjectProfileSyncTests(unittest.TestCase):
 
             self.assertEqual(list(discovered), ["demo-skill"])
 
+    def test_discover_ignores_wrapper_with_absolute_retained_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_repo_root(Path(tmp))
+            wrapper_root = repo / ".agents" / "skills"
+            create_packet_workflow_wrapper(
+                wrapper_root,
+                "demo-skill",
+                "C:/external/builders/packet-workflow/retained-skills/demo-skill/",
+            )
+
+            discovered = sync_profiles.discover_packet_workflow_wrappers(repo)
+
+            self.assertEqual(discovered, {})
+
+    def test_discover_ignores_wrapper_when_retained_path_resolves_outside_repo(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo = create_repo_root(root)
+            wrapper_dir = create_packet_workflow_wrapper(
+                repo / ".agents" / "skills",
+                "demo-skill",
+                "../../../builders/packet-workflow/retained-skills/demo-skill/",
+            )
+            external_retained = create_retained_skill(root / "external-foundry", "demo-skill")
+            real_resolve = Path.resolve
+
+            def fake_resolve(path: Path, *args: object, **kwargs: object) -> Path:
+                if path == wrapper_dir / "../../../builders/packet-workflow/retained-skills/demo-skill/":
+                    return external_retained.resolve()
+                return real_resolve(path, *args, **kwargs)
+
+            with mock.patch.object(Path, "resolve", fake_resolve):
+                discovered = sync_profiles.discover_packet_workflow_wrappers(repo)
+
+            self.assertEqual(discovered, {})
+
     def test_sync_creates_missing_default_and_skill_profiles(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo = create_repo_root(Path(tmp))
@@ -567,11 +603,13 @@ class ProjectProfileSyncTests(unittest.TestCase):
             }
             write_project_profile(repo, "default", ahead_payload)
 
-            code, _, _, report = run_sync_main(repo)
+            code, stdout, _, report = run_sync_main(repo)
 
             self.assertEqual(code, 1)
             self.assertEqual(report["profiles"][0]["action"], "manual_migration_required")
             self.assertEqual(report["profiles"][0]["compatibility_status"], "ahead-of-builder")
+            self.assertIn("[ERROR] Synced project-local profiles with blocking items", stdout)
+            self.assertNotIn("[OK] Synced project-local profiles", stdout)
 
     def test_dry_run_report_matches_apply(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
@@ -597,6 +635,21 @@ class ProjectProfileSyncTests(unittest.TestCase):
                 [item["action"] for item in dry_report["profiles"]],
                 [item["action"] for item in apply_report["profiles"]],
             )
+
+    def test_sync_success_prints_ok_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = create_repo_root(Path(tmp))
+            create_packet_workflow_wrapper(
+                repo / ".agents" / "skills",
+                "demo-skill",
+                "../../../builders/packet-workflow/retained-skills/demo-skill/",
+            )
+            create_retained_skill(repo, "demo-skill")
+
+            code, stdout, _, _ = run_sync_main(repo)
+
+            self.assertEqual(code, 0)
+            self.assertIn("[OK] Synced project-local profiles", stdout)
 
     def test_sync_after_bootstrap_preserves_skill_profile_precedence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

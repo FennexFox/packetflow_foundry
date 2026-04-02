@@ -11,7 +11,7 @@ import shutil
 import stat
 import sys
 from pathlib import Path
-from typing import NotRequired, TypeAlias, TypedDict
+from typing import TypeAlias, TypedDict
 
 from project_profile_support import (
     PROJECT_LOCAL_PROFILE_KIND,
@@ -68,9 +68,12 @@ class HashState(TypedDict):
     lf_sha256: str
 
 
-class ValidatedHashState(TypedDict):
+class ValidatedHashStateBase(TypedDict):
     raw_sha256: str
-    lf_sha256: NotRequired[str]
+
+
+class ValidatedHashState(ValidatedHashStateBase, total=False):
+    lf_sha256: str
 
 
 class FileCopyStateEntry(TypedDict):
