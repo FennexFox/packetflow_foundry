@@ -214,6 +214,40 @@ def write_latest_pointer(repo_root: Path, manifest: dict[str, Any]) -> dict[str,
     return pointer
 
 
+def last_completed_phase(manifest: dict[str, Any]) -> str:
+    state = manifest.get("state")
+    if not isinstance(state, dict):
+        return ""
+    return str(state.get("last_completed_phase") or "").strip()
+
+
+def require_last_completed_phase(
+    manifest: dict[str, Any],
+    *,
+    action_label: str,
+    allowed: set[str],
+) -> None:
+    current = last_completed_phase(manifest)
+    if current in allowed:
+        return
+    allowed_text = ", ".join(sorted(allowed))
+    raise RuntimeError(
+        f"{action_label} requires manifest state in {{{allowed_text}}}, got `{current or 'unknown'}`"
+    )
+
+
+def require_post_push_validation_provenance(manifest: dict[str, Any]) -> None:
+    state = manifest.get("state")
+    if not isinstance(state, dict):
+        raise RuntimeError("Malformed review-thread run manifest: missing state.")
+    accepted_threads = [str(item).strip() for item in state.get("accepted_threads") or [] if str(item).strip()]
+    validation_commands = [str(item).strip() for item in state.get("validation_commands") or [] if str(item).strip()]
+    if accepted_threads and not validation_commands:
+        raise RuntimeError(
+            "post-push requires recorded validation commands when accepted threads are present"
+        )
+
+
 def create_run(
     repo_root: Path,
     context_source_path: Path,

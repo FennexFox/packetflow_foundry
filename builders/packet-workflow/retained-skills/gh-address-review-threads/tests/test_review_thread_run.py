@@ -6,6 +6,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 TEST_DIR = Path(__file__).resolve().parent
@@ -15,6 +16,7 @@ for candidate in (str(TEST_DIR), str(SCRIPT_DIR)):
         sys.path.insert(0, candidate)
 
 import review_thread_run as run_support  # type: ignore  # noqa: E402
+import manage_review_thread_run as manage_run  # type: ignore  # noqa: E402
 from review_thread_test_support import context_with_threads, review_thread, write_json  # noqa: E402
 from thread_action_contract import build_context_fingerprint  # type: ignore  # noqa: E402
 
@@ -209,6 +211,173 @@ class ReviewThreadRunTests(unittest.TestCase):
 
             self.assertEqual(manifest["state"]["accepted_threads"], ["t-1"])
             self.assertTrue(Path(manifest["paths"]["ack"]["validated_plan"]).is_file())
+
+    def test_post_push_requires_recorded_validation_commands_when_threads_were_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            pre_context = context_with_threads(
+                tmp,
+                [
+                    review_thread(
+                        thread_id="t-1",
+                        path="src/app.py",
+                        line=10,
+                        reviewer_login="reviewer-a",
+                        reviewer_body="Please rename this.",
+                    )
+                ],
+            )
+            post_context = json.loads(json.dumps(pre_context))
+            pre_context["context_fingerprint"] = build_context_fingerprint(pre_context)
+            post_context["context_fingerprint"] = build_context_fingerprint(post_context)
+            repo_root = Path(pre_context["repo_root"])
+            init_repo(repo_root)
+
+            pre_source_path = tmp / "pre-context.json"
+            post_source_path = tmp / "post-context.json"
+            write_json(pre_source_path, pre_context)
+            write_json(post_source_path, post_context)
+
+            manifest = run_support.create_run(
+                repo_root,
+                pre_source_path,
+                run_id="test-run",
+                evaluation_log_path=tmp / "eval-log.json",
+            )
+            manifest_path = Path(manifest["paths"]["manifest"])
+            manifest["state"]["accepted_threads"] = ["t-1"]
+            manifest["state"]["last_completed_phase"] = "ack-validated"
+            run_support.write_manifest(manifest_path, manifest)
+
+            argv = [
+                "manage_review_thread_run.py",
+                "post-push",
+                "--manifest",
+                str(manifest_path),
+                "--context",
+                str(post_source_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "post-push requires recorded validation commands",
+                ):
+                    manage_run.main()
+
+    def test_record_validation_cli_keeps_subcommand_and_commands_distinct(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            context = context_with_threads(
+                tmp,
+                [
+                    review_thread(
+                        thread_id="t-1",
+                        path="src/app.py",
+                        line=10,
+                        reviewer_login="reviewer-a",
+                        reviewer_body="Please rename this.",
+                    )
+                ],
+            )
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            repo_root = Path(context["repo_root"])
+            init_repo(repo_root)
+
+            context_path = tmp / "context.json"
+            write_json(context_path, context)
+            manifest = run_support.create_run(
+                repo_root,
+                context_path,
+                run_id="test-run",
+                evaluation_log_path=tmp / "eval-log.json",
+            )
+            manifest_path = Path(manifest["paths"]["manifest"])
+            manifest["state"]["last_completed_phase"] = "ack-validated"
+            run_support.write_manifest(manifest_path, manifest)
+
+            argv = [
+                "manage_review_thread_run.py",
+                "record-validation",
+                "--manifest",
+                str(manifest_path),
+                "--validation-command",
+                "py -3 -m unittest tests/test_docs.py",
+                "--command",
+                "py -3 -m unittest tests/test_more.py",
+            ]
+            with patch.object(sys, "argv", argv):
+                self.assertEqual(manage_run.main(), 0)
+
+            updated = run_support.load_manifest(manifest_path)
+            self.assertEqual(updated["state"]["validation_commands"], [
+                "py -3 -m unittest tests/test_docs.py",
+                "py -3 -m unittest tests/test_more.py",
+            ])
+
+    def test_record_complete_plan_requires_post_prepared_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            context = context_with_threads(
+                tmp,
+                [
+                    review_thread(
+                        thread_id="t-1",
+                        path="src/app.py",
+                        line=10,
+                        reviewer_login="reviewer-a",
+                        reviewer_body="Please rename this.",
+                    )
+                ],
+            )
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            repo_root = Path(context["repo_root"])
+            init_repo(repo_root)
+
+            context_path = tmp / "context.json"
+            validated_plan_path = tmp / "complete-plan.json"
+            write_json(context_path, context)
+            write_json(
+                validated_plan_path,
+                {
+                    "phase": "complete",
+                    "valid": True,
+                    "normalized_thread_actions": [
+                        {
+                            "thread_id": "t-1",
+                            "decision": "accept",
+                            "complete_mode": "add",
+                            "complete_body": "Done.",
+                            "resolve_after_complete": True,
+                        }
+                    ],
+                },
+            )
+            manifest = run_support.create_run(
+                repo_root,
+                context_path,
+                run_id="test-run",
+                evaluation_log_path=tmp / "eval-log.json",
+            )
+            manifest_path = Path(manifest["paths"]["manifest"])
+            manifest["state"]["last_completed_phase"] = "ack-validated"
+            run_support.write_manifest(manifest_path, manifest)
+
+            argv = [
+                "manage_review_thread_run.py",
+                "record-plan",
+                "--manifest",
+                str(manifest_path),
+                "--phase",
+                "complete",
+                "--validated-plan",
+                str(validated_plan_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "record-plan --phase complete requires manifest state",
+                ):
+                    manage_run.main()
 
 
 if __name__ == "__main__":

@@ -17,7 +17,7 @@ def print_json(payload: dict[str, Any]) -> None:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
-    subparsers = parser.add_subparsers(dest="command", required=True)
+    subparsers = parser.add_subparsers(dest="action", required=True)
 
     start = subparsers.add_parser("start", help="Create a new run-scoped manifest and stage the pre-push context.")
     start.add_argument("--repo-root", type=Path, required=True)
@@ -38,7 +38,13 @@ def parse_args() -> argparse.Namespace:
         help="Store the validation commands that should feed same-run post-push reconciliation.",
     )
     record_validation.add_argument("--manifest", type=Path, required=True)
-    record_validation.add_argument("--command", action="append", default=[])
+    record_validation.add_argument(
+        "--validation-command",
+        "--command",
+        dest="validation_commands",
+        action="append",
+        default=[],
+    )
 
     record_accepts = subparsers.add_parser(
         "record-accepts",
@@ -65,9 +71,9 @@ def parse_args() -> argparse.Namespace:
 
 def main() -> int:
     args = parse_args()
-    command = args.command
+    action = args.action
 
-    if command == "start":
+    if action == "start":
         repo_root = args.repo_root.resolve()
         manifest = run_support.create_run(
             repo_root,
@@ -78,9 +84,15 @@ def main() -> int:
         print_json(manifest)
         return 0
 
-    if command == "record-plan":
+    if action == "record-plan":
         manifest_path = args.manifest.resolve()
         manifest = run_support.load_manifest(manifest_path)
+        if args.phase == "complete":
+            run_support.require_last_completed_phase(
+                manifest,
+                action_label="record-plan --phase complete",
+                allowed={"post-prepared"},
+            )
         run_support.copy_validated_plan_into_manifest(
             manifest,
             phase=str(args.phase),
@@ -91,16 +103,21 @@ def main() -> int:
         print_json(manifest)
         return 0
 
-    if command == "record-validation":
+    if action == "record-validation":
         manifest_path = args.manifest.resolve()
         manifest = run_support.load_manifest(manifest_path)
-        run_support.set_validation_commands(manifest, list(args.command or []))
+        run_support.require_last_completed_phase(
+            manifest,
+            action_label="record-validation",
+            allowed={"ack-validated"},
+        )
+        run_support.set_validation_commands(manifest, list(args.validation_commands or []))
         run_support.write_manifest(manifest_path, manifest)
         run_support.write_latest_pointer(Path(manifest["repo_root"]), manifest)
         print_json(manifest)
         return 0
 
-    if command == "record-accepts":
+    if action == "record-accepts":
         manifest_path = args.manifest.resolve()
         manifest = run_support.load_manifest(manifest_path)
         run_support.set_accepted_threads(manifest, list(args.thread_id or []))
@@ -109,9 +126,15 @@ def main() -> int:
         print_json(manifest)
         return 0
 
-    if command == "post-push":
+    if action == "post-push":
         manifest_path = args.manifest.resolve()
         manifest = run_support.load_manifest(manifest_path)
+        run_support.require_last_completed_phase(
+            manifest,
+            action_label="post-push",
+            allowed={"ack-validated"},
+        )
+        run_support.require_post_push_validation_provenance(manifest)
         run_support.copy_context_into_manifest(
             manifest,
             phase="post",
@@ -128,15 +151,15 @@ def main() -> int:
         )
         return 0
 
-    if command == "latest":
+    if action == "latest":
         print_json(run_support.read_json(run_support.latest_pointer_path(args.repo_root.resolve())))
         return 0
 
-    if command == "show":
+    if action == "show":
         print_json(run_support.load_manifest(args.manifest.resolve()))
         return 0
 
-    raise RuntimeError(f"Unsupported command: {command}")
+    raise RuntimeError(f"Unsupported command: {action}")
 
 
 if __name__ == "__main__":

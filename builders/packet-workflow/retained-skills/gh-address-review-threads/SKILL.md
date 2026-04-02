@@ -50,9 +50,11 @@ Boundary:
 - After validating the ack plan, record it with `<python-bin> -B <skill-dir>/scripts/manage_review_thread_run.py record-plan --manifest <manifest-json> --phase ack --validated-plan <manifest.ack.validated_plan>`.
 - Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <manifest.pre.context> --orchestrator <manifest.pre.packet_dir>/orchestrator.json --output <eval-log-json>`.
 - Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <eval-log-json> --phase build --result <manifest.pre.build_result>`.
-- After real validation runs for accepted work, record those commands with `<python-bin> -B <skill-dir>/scripts/manage_review_thread_run.py record-validation --manifest <manifest-json> --command <cmd> ...`.
+- After real validation runs for accepted work, record those commands with `<python-bin> -B <skill-dir>/scripts/manage_review_thread_run.py record-validation --manifest <manifest-json> --validation-command <cmd> ...`.
 - After accepted work is pushed, recollect a post-push snapshot, then stage it and emit reconciliation input with `<python-bin> -B <skill-dir>/scripts/manage_review_thread_run.py post-push --manifest <manifest-json> --context <post-context-json>`.
 - Rebuild packets with `--previous-context <manifest.pre.context>` and `--reconciliation-input <manifest.post.reconciliation_input>` into `<manifest.post.packet_dir>`, then use `<python-bin> -B <skill-dir>/scripts/reconcile_outdated_threads.py --context <manifest.post.context> --packet-dir <manifest.post.packet_dir> --output <manifest.complete.raw_plan>` to seed the complete-phase plan.
+- Do not parallelize the post-push lifecycle. Run `post-push`, then `build_review_packets.py`, then `reconcile_outdated_threads.py`, then complete-plan validation/apply in that exact order.
+- Treat `manage_review_thread_run.py` as the state gate for lifecycle transitions. If it rejects `record-validation`, `post-push`, or `record-plan --phase complete`, stop and fix the missing earlier phase instead of forcing later commands.
 - Read `<manifest.pre.packet_dir>/orchestrator.json` or `<manifest.post.packet_dir>/orchestrator.json` first for the active phase.
 - Keep the matching phase `global_packet.json` in view before reading any thread packet.
 - Before deciding a thread, read that packet's `discussion`, `existing_self_reply`, `reply_candidates`, `validation_candidates`, and `ownership_summary` or `shared_fix_surface`.
