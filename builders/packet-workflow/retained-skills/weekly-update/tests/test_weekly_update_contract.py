@@ -168,6 +168,41 @@ def build_fixture_context(sample: dict[str, Any]) -> dict[str, Any]:
         "repo_root": str(wl.skill_root().parents[3]),
         "repo_hash": "fixturehash",
         "repo_slug": "example/repo",
+        "repo_url": "https://example.invalid/repo",
+        "current_branch": sample["default_branch"],
+        "head_sha": "abcdef123456",
+        "branch_state": {
+            "branch": sample["default_branch"],
+            "head_sha": "abcdef123456",
+        },
+        "analysis_ref": {
+            "policy": runtime_settings["analysis_ref"]["policy"],
+            "preferred_branch_order": list(
+                runtime_settings["analysis_ref"]["preferred_branch_order"]
+            ),
+            "resolved_via": runtime_settings["analysis_ref"]["policy"],
+            "selected_ref": f"refs/heads/{sample['default_branch']}",
+            "selected_branch": sample["default_branch"],
+            "selected_branch_label": sample["default_branch"],
+            "selected_sha": "abcdef123456",
+            "selected_commit_timestamp": sample["now_utc"],
+            "workspace_branch": sample["default_branch"],
+            "workspace_branch_label": sample["default_branch"],
+            "workspace_head_sha": "abcdef123456",
+            "workspace_commit_timestamp": sample["now_utc"],
+            "workspace_detached": False,
+            "selection_matches_workspace_head": True,
+            "local_branch_count": 1,
+            "read_mode": wl.ANALYSIS_REF_READ_MODE,
+            "treeish": "abcdef123456",
+            "git_common_dir": str((wl.skill_root().parents[3] / ".git").resolve()),
+            "fallback_reason": None,
+        },
+        "workspace_branch_state": {
+            "current_branch": sample["default_branch"],
+            "head_sha": "abcdef123456",
+            "detached": False,
+        },
         "repo_profile_name": str(repo_profile.get("name") or ""),
         "repo_profile_path": str(profile_path),
         "repo_profile_summary": str(repo_profile.get("summary") or ""),
@@ -186,7 +221,7 @@ def build_fixture_context(sample: dict[str, Any]) -> dict[str, Any]:
         "source_gaps": [],
         "override_signals": {},
         "context_id": "weekly-update:20260327T120000Z:fixturehash",
-        "head_sha": "abcdef123456",
+        "notes": [f"Loaded repo profile from {profile_path}."],
     }
     context["candidate_inventory"] = wl.build_candidate_inventory(context, releases, top_level_prs, issues, classified_issues, review_findings, workflow_failures, release_issue_linkage)
     context["counts"] = {
@@ -279,6 +314,28 @@ class WeeklyUpdateContractTests(unittest.TestCase):
         self.assertEqual(Path(global_packet["repo_profile_path"]).parts[-3:], ("profiles", "default", "profile.json"))
         self.assertEqual(Path(orchestrator["repo_profile_path"]).parts[-3:], ("profiles", "default", "profile.json"))
         self.assertEqual(Path(self.build_result["repo_profile_path"]).parts[-3:], ("profiles", "default", "profile.json"))
+
+    def test_analysis_ref_metadata_is_propagated_to_context_packets_and_build_result(self) -> None:
+        analysis_ref = self.context["analysis_ref"]
+        self.assertEqual(analysis_ref["policy"], wl.DEFAULT_ANALYSIS_REF_POLICY)
+        self.assertEqual(analysis_ref["selected_branch"], "master")
+        self.assertEqual(analysis_ref["selected_sha"], "abcdef123456")
+        self.assertEqual(
+            self.packets["global_packet.json"]["analysis_ref"]["selected_sha"],
+            "abcdef123456",
+        )
+        self.assertEqual(
+            self.packets["mapping_packet.json"]["analysis_ref"]["selected_branch"],
+            "master",
+        )
+        self.assertEqual(
+            self.packets["orchestrator.json"]["analysis_ref"]["policy"],
+            wl.DEFAULT_ANALYSIS_REF_POLICY,
+        )
+        self.assertEqual(
+            self.build_result["analysis_ref_selected_sha"],
+            "abcdef123456",
+        )
 
     def test_domain_overlay_uses_normalized_builder_keys(self) -> None:
         overlay = self.packets["global_packet.json"]["domain_overlay"]

@@ -166,6 +166,8 @@ Domain overlay:
 - `missing_review_docs_are_errors`: false
 - Default repo-specific conventions stay in `repo_profile.extra.weekly_update`:
   - state namespace
+  - analysis-ref policy
+  - preferred branch order
   - review marker tokens
   - release issue title regex
   - priority marker regex

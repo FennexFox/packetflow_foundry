@@ -182,6 +182,17 @@ DEFAULT_REVIEW_ACK_MARKERS = ["phase=ack"]
 DEFAULT_REVIEW_COMPLETE_MARKERS = ["phase=complete"]
 DEFAULT_RELEASE_TITLE_REGEX = r"^\[Release\]\s*(?P<tag>v[0-9A-Za-z._-]+)"
 DEFAULT_PRIORITY_MARKERS_REGEX = r"\[(?:P[0-3]|medium|high|low)\]"
+ANALYSIS_REF_POLICY_CURRENT_HEAD = "current_head"
+ANALYSIS_REF_POLICY_FRESHEST_LOCAL_BRANCH = "freshest_local_branch"
+ANALYSIS_REF_POLICY_PREFERRED_BRANCH_ORDER = "preferred_branch_order"
+ANALYSIS_REF_POLICY_VALUES = [
+    ANALYSIS_REF_POLICY_CURRENT_HEAD,
+    ANALYSIS_REF_POLICY_FRESHEST_LOCAL_BRANCH,
+    ANALYSIS_REF_POLICY_PREFERRED_BRANCH_ORDER,
+]
+DEFAULT_ANALYSIS_REF_POLICY = ANALYSIS_REF_POLICY_FRESHEST_LOCAL_BRANCH
+ANALYSIS_REF_READ_MODE = "git-object"
+STATE_IDENTITY_SCHEMA_VERSION = 2
 CANDIDATE_FIELD_BUNDLES = [
     {
         "name": "identity",
@@ -451,8 +462,67 @@ def build_builder_compatibility(repo_profile: dict[str, Any]) -> dict[str, Any]:
     )
 
 
-def compute_repo_hash(repo_root: Path) -> str:
+def normalize_branch_name(value: Any) -> str:
+    normalized = str(value or "").strip().replace("\\", "/")
+    if normalized.startswith("refs/heads/"):
+        normalized = normalized[len("refs/heads/") :]
+    return normalized.strip("/")
+
+
+def canonical_analysis_ref_settings(value: Any) -> dict[str, Any]:
+    payload = value if isinstance(value, dict) else {}
+    requested_policy = (
+        str(payload.get("policy") or DEFAULT_ANALYSIS_REF_POLICY).strip()
+        or DEFAULT_ANALYSIS_REF_POLICY
+    )
+    policy = (
+        requested_policy
+        if requested_policy in ANALYSIS_REF_POLICY_VALUES
+        else DEFAULT_ANALYSIS_REF_POLICY
+    )
+    preferred_branch_order: list[str] = []
+    seen: set[str] = set()
+    for raw_item in payload.get("preferred_branch_order", []):
+        branch = normalize_branch_name(raw_item)
+        if not branch or branch in seen:
+            continue
+        seen.add(branch)
+        preferred_branch_order.append(branch)
+    return {
+        "policy": policy,
+        "preferred_branch_order": preferred_branch_order,
+    }
+
+
+def resolve_git_common_dir(repo_root: Path) -> Path:
+    raw_value = run_git(repo_root, ["rev-parse", "--git-common-dir"]).strip()
+    path = Path(raw_value)
+    if not path.is_absolute():
+        path = (repo_root / path).resolve()
+    return path.resolve()
+
+
+def compute_legacy_repo_hash(repo_root: Path) -> str:
     return hashlib.sha256(str(repo_root).lower().encode("utf-8")).hexdigest()[:16]
+
+
+def compute_repo_hash(
+    repo_root: Path,
+    *,
+    analysis_ref_settings: dict[str, Any] | None = None,
+) -> str:
+    payload = {
+        "schema_version": STATE_IDENTITY_SCHEMA_VERSION,
+        "git_common_dir": resolve_git_common_dir(repo_root).as_posix().lower(),
+        "analysis_ref": canonical_analysis_ref_settings(analysis_ref_settings),
+    }
+    encoded = json.dumps(
+        payload,
+        sort_keys=True,
+        ensure_ascii=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()[:16]
 
 
 def default_state_file(repo_hash: str, *, namespace: str = DEFAULT_STATE_NAMESPACE) -> Path:
@@ -486,6 +556,7 @@ def weekly_update_runtime_settings(repo_profile: dict[str, Any] | None) -> dict[
     release_issue = release_issue if isinstance(release_issue, dict) else {}
     priority_markers = payload.get("priority_markers")
     priority_markers = priority_markers if isinstance(priority_markers, dict) else {}
+    analysis_ref = canonical_analysis_ref_settings(payload.get("analysis_ref"))
     state = payload.get("state")
     state = state if isinstance(state, dict) else {}
     release_title_regex = str(
@@ -517,6 +588,7 @@ def weekly_update_runtime_settings(repo_profile: dict[str, Any] | None) -> dict[
         ],
         "priority_markers_regex": priority_markers_regex,
         "priority_marker_re": re.compile(priority_markers_regex, re.IGNORECASE),
+        "analysis_ref": analysis_ref,
     }
 
 
@@ -530,6 +602,31 @@ def load_state_marker(state_file: Path) -> tuple[dict[str, Any] | None, list[str
     if not payload.get("window_end_utc") and not payload.get("completed_at_utc"):
         return None, ["State marker is missing `window_end_utc` and `completed_at_utc`."]
     return payload, []
+
+
+def resolve_state_marker_files(
+    *,
+    repo_root: Path,
+    state_namespace: str,
+    analysis_ref_settings: dict[str, Any],
+    state_file: str | None,
+) -> tuple[Path, Path | None, str]:
+    if state_file:
+        resolved = Path(state_file).resolve()
+        return resolved, None, compute_repo_hash(
+            repo_root,
+            analysis_ref_settings=analysis_ref_settings,
+        )
+    repo_hash = compute_repo_hash(
+        repo_root,
+        analysis_ref_settings=analysis_ref_settings,
+    )
+    legacy_path = default_state_file(
+        compute_legacy_repo_hash(repo_root),
+        namespace=state_namespace,
+    )
+    resolved = default_state_file(repo_hash, namespace=state_namespace)
+    return resolved, (legacy_path if legacy_path != resolved else None), repo_hash
 
 
 def select_reporting_window(*, now_utc: datetime, window_days: int, state_marker: dict[str, Any] | None) -> dict[str, Any]:
@@ -776,6 +873,168 @@ def get_branch_state(repo_root: Path) -> dict[str, str]:
     return {
         "current_branch": run_git(repo_root, ["rev-parse", "--abbrev-ref", "HEAD"]).strip(),
         "head_sha": run_git(repo_root, ["rev-parse", "HEAD"]).strip(),
+    }
+
+
+def commit_timestamp_for_ref(repo_root: Path, ref: str) -> str:
+    return normalized_timestamp(
+        run_git(repo_root, ["show", "--no-patch", "--format=%cI", ref]).strip()
+    )
+
+
+def list_local_branch_tips(repo_root: Path) -> list[dict[str, str]]:
+    raw_output = run_git(
+        repo_root,
+        [
+            "for-each-ref",
+            "--format=%(refname)%00%(refname:short)%00%(objectname)%00%(committerdate:iso8601-strict)",
+            "refs/heads",
+        ],
+    ).strip()
+    if not raw_output:
+        return []
+    branches: list[dict[str, str]] = []
+    epoch = datetime(1970, 1, 1, tzinfo=timezone.utc)
+    for raw_line in raw_output.splitlines():
+        ref_name, branch_name, head_sha, committed_at, *_ = [part.strip() for part in raw_line.split("\0")]
+        branch = normalize_branch_name(branch_name)
+        if not ref_name or not branch or not head_sha:
+            continue
+        branches.append(
+            {
+                "ref": ref_name,
+                "branch": branch,
+                "sha": head_sha,
+                "committed_at": normalized_timestamp(committed_at),
+            }
+        )
+    return sorted(
+        branches,
+        key=lambda item: (
+            -(
+                parse_iso8601(item["committed_at"]) or epoch
+            ).timestamp(),
+            item["branch"],
+        ),
+    )
+
+
+def read_text_at_ref(repo_root: Path, treeish: str, relative_path: str) -> str:
+    repo_relative = str(relative_path or "").strip().replace("\\", "/")
+    while repo_relative.startswith("./"):
+        repo_relative = repo_relative[2:]
+    if (
+        not repo_relative
+        or repo_relative.startswith("/")
+        or repo_relative.startswith("../")
+        or "/../" in repo_relative
+    ):
+        raise ValueError("relative_path must stay within the repository root.")
+    return run_git(repo_root, ["show", f"{treeish}:{repo_relative}"])
+
+
+def resolve_analysis_ref(
+    repo_root: Path,
+    *,
+    analysis_ref_settings: dict[str, Any],
+    workspace_branch_state: dict[str, str] | None = None,
+) -> dict[str, Any]:
+    settings = canonical_analysis_ref_settings(analysis_ref_settings)
+    workspace_state = workspace_branch_state or get_branch_state(repo_root)
+    workspace_branch_label = (
+        str(workspace_state.get("current_branch") or "").strip() or "HEAD"
+    )
+    workspace_branch = (
+        normalize_branch_name(workspace_branch_label)
+        if workspace_branch_label != "HEAD"
+        else None
+    )
+    workspace_head_sha = str(workspace_state.get("head_sha") or "").strip()
+    workspace_detached = workspace_branch is None
+    workspace_committed_at = commit_timestamp_for_ref(repo_root, "HEAD")
+
+    selected_ref = "HEAD"
+    selected_branch = workspace_branch
+    selected_branch_label = workspace_branch_label
+    selected_sha = workspace_head_sha
+    selected_committed_at = workspace_committed_at
+    resolved_via = ANALYSIS_REF_POLICY_CURRENT_HEAD
+    fallback_reason = None
+    local_branch_tips = list_local_branch_tips(repo_root)
+    preferred_branch_order = list(settings["preferred_branch_order"])
+
+    if settings["policy"] == ANALYSIS_REF_POLICY_FRESHEST_LOCAL_BRANCH:
+        if local_branch_tips:
+            selected = local_branch_tips[0]
+            selected_ref = selected["ref"]
+            selected_branch = selected["branch"]
+            selected_branch_label = selected["branch"]
+            selected_sha = selected["sha"]
+            selected_committed_at = selected["committed_at"]
+            resolved_via = ANALYSIS_REF_POLICY_FRESHEST_LOCAL_BRANCH
+        else:
+            fallback_reason = (
+                "No local branch tips were available under refs/heads/*; "
+                "fell back to current HEAD."
+            )
+    elif settings["policy"] == ANALYSIS_REF_POLICY_PREFERRED_BRANCH_ORDER:
+        branch_lookup = {
+            normalize_branch_name(candidate["branch"]): candidate
+            for candidate in local_branch_tips
+        }
+        selected = next(
+            (
+                branch_lookup[branch]
+                for branch in preferred_branch_order
+                if branch in branch_lookup
+            ),
+            None,
+        )
+        if selected is not None:
+            selected_ref = selected["ref"]
+            selected_branch = selected["branch"]
+            selected_branch_label = selected["branch"]
+            selected_sha = selected["sha"]
+            selected_committed_at = selected["committed_at"]
+            resolved_via = ANALYSIS_REF_POLICY_PREFERRED_BRANCH_ORDER
+        elif local_branch_tips:
+            selected = local_branch_tips[0]
+            selected_ref = selected["ref"]
+            selected_branch = selected["branch"]
+            selected_branch_label = selected["branch"]
+            selected_sha = selected["sha"]
+            selected_committed_at = selected["committed_at"]
+            resolved_via = ANALYSIS_REF_POLICY_FRESHEST_LOCAL_BRANCH
+            fallback_reason = (
+                "None of the preferred branches were available; "
+                "fell back to the freshest local branch."
+            )
+        else:
+            fallback_reason = (
+                "No local branch tips were available under refs/heads/*; "
+                "fell back to current HEAD."
+            )
+
+    return {
+        "policy": settings["policy"],
+        "preferred_branch_order": preferred_branch_order,
+        "resolved_via": resolved_via,
+        "selected_ref": selected_ref,
+        "selected_branch": selected_branch,
+        "selected_branch_label": selected_branch_label,
+        "selected_sha": selected_sha,
+        "selected_commit_timestamp": selected_committed_at,
+        "workspace_branch": workspace_branch,
+        "workspace_branch_label": workspace_branch_label,
+        "workspace_head_sha": workspace_head_sha,
+        "workspace_commit_timestamp": workspace_committed_at,
+        "workspace_detached": workspace_detached,
+        "selection_matches_workspace_head": selected_sha == workspace_head_sha,
+        "local_branch_count": len(local_branch_tips),
+        "read_mode": ANALYSIS_REF_READ_MODE,
+        "treeish": selected_sha,
+        "git_common_dir": resolve_git_common_dir(repo_root).as_posix(),
+        "fallback_reason": fallback_reason,
     }
 
 
@@ -1157,6 +1416,12 @@ def build_context_fingerprint(context: dict[str, Any]) -> str:
             context.get("repo_profile")
         ),
         "reporting_window": context.get("reporting_window"),
+        "analysis_ref": {
+            "policy": (context.get("analysis_ref") or {}).get("policy"),
+            "resolved_via": (context.get("analysis_ref") or {}).get("resolved_via"),
+            "selected_ref": (context.get("analysis_ref") or {}).get("selected_ref"),
+            "selected_sha": (context.get("analysis_ref") or {}).get("selected_sha"),
+        },
         "release_tags": [release.get("tag_name") for release in context.get("releases", [])],
         "top_level_pr_numbers": [pr.get("number") for pr in context.get("top_level_prs", [])],
         "nested_pr_numbers": [pr.get("number") for pr in context.get("nested_prs", [])],
@@ -1256,16 +1521,36 @@ def collect_context(
     runtime_settings = weekly_update_runtime_settings(repo_profile)
     verify_gh_auth(repo_path)
     repo_meta = get_repo_metadata(repo_path)
-    branch_state = get_branch_state(repo_path)
-    repo_hash = compute_repo_hash(repo_path)
-    resolved_state_file = (
-        Path(state_file).resolve()
-        if state_file
-        else default_state_file(
-            repo_hash, namespace=runtime_settings["state_namespace"]
-        )
+    workspace_branch_state = get_branch_state(repo_path)
+    analysis_ref = resolve_analysis_ref(
+        repo_path,
+        analysis_ref_settings=runtime_settings["analysis_ref"],
+        workspace_branch_state=workspace_branch_state,
+    )
+    resolved_state_file, legacy_state_file, repo_hash = resolve_state_marker_files(
+        repo_root=repo_path,
+        state_namespace=runtime_settings["state_namespace"],
+        analysis_ref_settings=runtime_settings["analysis_ref"],
+        state_file=state_file,
     )
     marker, marker_warnings = load_state_marker(resolved_state_file)
+    state_marker_source_file = resolved_state_file if marker is not None else None
+    notes = [f"Loaded repo profile from {profile_path.as_posix()}."]
+    if (
+        marker is None
+        and not marker_warnings
+        and legacy_state_file is not None
+        and legacy_state_file.exists()
+    ):
+        legacy_marker, legacy_warnings = load_state_marker(legacy_state_file)
+        marker = legacy_marker
+        marker_warnings = legacy_warnings
+        if marker is not None:
+            state_marker_source_file = legacy_state_file
+            notes.append(
+                "Reused a legacy weekly-update state marker while transitioning "
+                "to stable repo identity keying."
+            )
     current_now = parse_iso8601(now_utc) or utc_now()
     reporting_window = select_reporting_window(now_utc=current_now, window_days=window_days, state_marker=marker)
     window_start = parse_iso8601(reporting_window["start_utc"])
@@ -1335,8 +1620,18 @@ def collect_context(
         "repo_slug": repo_meta["repo_slug"],
         "repo_url": repo_meta["repo_url"],
         "default_branch": repo_meta["default_branch"],
-        "current_branch": branch_state["current_branch"],
-        "head_sha": branch_state["head_sha"],
+        "current_branch": analysis_ref["selected_branch_label"],
+        "head_sha": analysis_ref["selected_sha"],
+        "branch_state": {
+            "branch": analysis_ref["selected_branch_label"],
+            "head_sha": analysis_ref["selected_sha"],
+        },
+        "analysis_ref": analysis_ref,
+        "workspace_branch_state": {
+            "current_branch": workspace_branch_state["current_branch"],
+            "head_sha": workspace_branch_state["head_sha"],
+            "detached": analysis_ref["workspace_detached"],
+        },
         "repo_profile_name": repo_profile.get("name"),
         "repo_profile_path": profile_path.as_posix(),
         "repo_profile_summary": repo_profile.get("summary"),
@@ -1344,6 +1639,11 @@ def collect_context(
         "builder_compatibility": build_builder_compatibility(repo_profile),
         "state_namespace": runtime_settings["state_namespace"],
         "state_file": resolved_state_file.as_posix(),
+        "state_marker_source_file": (
+            state_marker_source_file.as_posix()
+            if state_marker_source_file is not None
+            else None
+        ),
         "state_marker": marker,
         "reporting_window": reporting_window,
         "collected_at": isoformat_utc(current_now),
@@ -1358,8 +1658,16 @@ def collect_context(
         "review_findings": review_findings,
         "workflow_failures": workflow_failures,
         "source_gaps": stable_unique(source_gaps),
-        "notes": [f"Loaded repo profile from {profile_path.as_posix()}."],
+        "notes": notes,
     }
+    if analysis_ref["fallback_reason"]:
+        context["notes"].append(analysis_ref["fallback_reason"])
+    if not analysis_ref["selection_matches_workspace_head"]:
+        context["notes"].append(
+            "Local git/file evidence is pinned to "
+            f"{analysis_ref['selected_ref']} at {analysis_ref['selected_sha'][:12]} "
+            "instead of the current workspace HEAD."
+        )
     context["candidate_inventory"] = build_candidate_inventory(context, releases, top_level_prs, issues, classified_issues, review_findings, workflow_failures, release_issue_linkage)
     context["counts"] = {
         "releases": len(releases),
@@ -1436,6 +1744,29 @@ def select_review_mode(context: dict[str, Any], lint_report: dict[str, Any]) -> 
 def build_packets(context: dict[str, Any], lint_report: dict[str, Any]) -> dict[str, dict[str, Any]]:
     review_mode = select_review_mode(context, lint_report)
     candidate_lookup = {candidate["candidate_id"]: candidate for candidate in context.get("candidate_inventory") or []}
+    context_analysis_ref = dict(context.get("analysis_ref") or {})
+    analysis_ref = {
+        "policy": context_analysis_ref.get("policy"),
+        "preferred_branch_order": context_analysis_ref.get("preferred_branch_order")
+        or [],
+        "resolved_via": context_analysis_ref.get("resolved_via"),
+        "selected_ref": context_analysis_ref.get("selected_ref"),
+        "selected_branch": context_analysis_ref.get("selected_branch"),
+        "selected_branch_label": context_analysis_ref.get("selected_branch_label"),
+        "selected_sha": context_analysis_ref.get("selected_sha"),
+        "selected_commit_timestamp": context_analysis_ref.get(
+            "selected_commit_timestamp"
+        ),
+        "workspace_branch_label": context_analysis_ref.get("workspace_branch_label"),
+        "workspace_head_sha": context_analysis_ref.get("workspace_head_sha"),
+        "workspace_detached": context_analysis_ref.get("workspace_detached"),
+        "selection_matches_workspace_head": context_analysis_ref.get(
+            "selection_matches_workspace_head"
+        ),
+        "read_mode": context_analysis_ref.get("read_mode"),
+        "treeish": context_analysis_ref.get("treeish"),
+        "fallback_reason": context_analysis_ref.get("fallback_reason"),
+    }
     pr_ids = [candidate["candidate_id"] for candidate in context.get("candidate_inventory") or [] if candidate.get("section_hint") == "PRs"]
     incident_ids = [candidate["candidate_id"] for candidate in context.get("candidate_inventory") or [] if candidate["proposed_classification"] == ACTUAL_INCIDENT or candidate.get("section_hint") == "Incidents"]
     risk_ids = [
@@ -1476,6 +1807,7 @@ def build_packets(context: dict[str, Any], lint_report: dict[str, Any]) -> dict[
         "preferred_worker_families": PREFERRED_WORKER_FAMILIES,
         "packet_worker_map": PACKET_WORKER_MAP,
         "worker_selection_guidance": worker_selection_guidance,
+        "analysis_ref": analysis_ref,
         "source_gaps": context.get("source_gaps") or [],
         "candidate_schema": {"required_fields": CANDIDATE_REQUIRED_FIELDS, "proposed_classification_values": PROPOSED_CLASSIFICATIONS, "confidence_values": CONFIDENCE_VALUES, "raw_reread_reason_values": [None, *RAW_REREAD_REASONS], "source_refs_rule": "canonical citation list only; do not use evidence_files_or_links", "artifact_only_rule": "artifact_only candidates are reference-only and do not appear as standalone final section items"},
         "worker_output_contract": {
@@ -1493,6 +1825,7 @@ def build_packets(context: dict[str, Any], lint_report: dict[str, Any]) -> dict[
         "packet_id": "mapping_packet",
         "reporting_window": context.get("reporting_window"),
         "default_branch": context.get("default_branch"),
+        "analysis_ref": analysis_ref,
         "release_issue_linkage": context.get("release_issue_linkage"),
         "top_level_pr_numbers": [pr["number"] for pr in context.get("top_level_prs") or []],
         "nested_pr_numbers": [pr["number"] for pr in context.get("nested_prs") or []],
@@ -1518,6 +1851,7 @@ def build_packets(context: dict[str, Any], lint_report: dict[str, Any]) -> dict[
         "repo_profile_name": context.get("repo_profile_name"),
         "repo_profile_path": context.get("repo_profile_path"),
         "repo_profile_summary": context.get("repo_profile_summary"),
+        "analysis_ref": analysis_ref,
         "review_mode": review_mode,
         "decision_ready_packets": DECISION_READY_PACKETS,
         "worker_return_contract": WORKER_RETURN_CONTRACT,
@@ -1588,6 +1922,9 @@ def build_packet_artifacts(context: dict[str, Any], lint_report: dict[str, Any])
     build_result = {
         "repo_profile_name": context.get("repo_profile_name"),
         "repo_profile_path": context.get("repo_profile_path"),
+        "analysis_ref_policy": (context.get("analysis_ref") or {}).get("policy"),
+        "analysis_ref_selected_branch": (context.get("analysis_ref") or {}).get("selected_branch"),
+        "analysis_ref_selected_sha": (context.get("analysis_ref") or {}).get("selected_sha"),
         "review_mode": packets["orchestrator.json"].get("review_mode"),
         "selected_packets": list(packets["orchestrator.json"].get("selected_packets") or []),
         "recommended_worker_count": packets["orchestrator.json"].get("recommended_worker_count"),
@@ -1788,10 +2125,18 @@ def validate_weekly_update_plan(context: dict[str, Any], plan: dict[str, Any]) -
 
 
 def apply_plan(*, context: dict[str, Any], plan: dict[str, Any], state_file: str | None = None, dry_run: bool = False) -> dict[str, Any]:
-    repo_hash = str(context.get("repo_hash") or compute_repo_hash(Path(context["repo_root"])))
+    repo_hash = str(
+        context.get("repo_hash")
+        or compute_repo_hash(
+            Path(context["repo_root"]),
+            analysis_ref_settings=(context.get("analysis_ref") or {}),
+        )
+    )
     resolved_state_file = (
         Path(state_file).resolve()
         if state_file
+        else Path(context["state_file"]).resolve()
+        if context.get("state_file")
         else default_state_file(
             repo_hash,
             namespace=str(context.get("state_namespace") or DEFAULT_STATE_NAMESPACE),
@@ -1809,7 +2154,26 @@ def apply_plan(*, context: dict[str, Any], plan: dict[str, Any], state_file: str
     if not allow_marker_update and "allow_marker_update=false" not in stop_reasons:
         stop_reasons.append("allow_marker_update=false")
     marker_update_written = False
-    marker_payload = {"repo_slug": context.get("repo_slug"), "window_start_utc": context.get("reporting_window", {}).get("start_utc"), "window_end_utc": context.get("reporting_window", {}).get("end_utc"), "completed_at_utc": isoformat_utc(utc_now()), "primary_ref_digest": str(context.get("head_sha") or "")[:12], "evidence_fingerprint": str(plan.get("context_fingerprint") or context.get("context_fingerprint") or "")}
+    analysis_ref = context.get("analysis_ref") or {}
+    selected_sha = str(
+        analysis_ref.get("selected_sha") or context.get("head_sha") or ""
+    )
+    marker_payload = {
+        "repo_slug": context.get("repo_slug"),
+        "window_start_utc": context.get("reporting_window", {}).get("start_utc"),
+        "window_end_utc": context.get("reporting_window", {}).get("end_utc"),
+        "completed_at_utc": isoformat_utc(utc_now()),
+        "primary_ref_digest": selected_sha[:12],
+        "analysis_ref_policy": analysis_ref.get("policy"),
+        "analysis_ref": analysis_ref.get("selected_ref"),
+        "analysis_branch": analysis_ref.get("selected_branch"),
+        "analysis_sha": selected_sha,
+        "evidence_fingerprint": str(
+            plan.get("context_fingerprint")
+            or context.get("context_fingerprint")
+            or ""
+        ),
+    }
     if not dry_run and allow_marker_update and overall_confidence != "low" and not unresolved and not stop_reasons:
         write_json(resolved_state_file, marker_payload)
         marker_update_written = True

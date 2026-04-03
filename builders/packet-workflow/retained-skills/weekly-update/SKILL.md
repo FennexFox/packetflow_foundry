@@ -83,6 +83,11 @@ If the run cannot proceed, report the blocker clearly and stop at the appropriat
 - Run `<python-bin> -B <skill-dir>/scripts/collect_weekly_update_context.py --repo-root <repo-root> --output <context-json> [--profile <profile-json>]`.
 - Run `<python-bin> -B <skill-dir>/scripts/lint_weekly_update.py --context <context-json> --output <lint-json>`.
 - Run `<python-bin> -B <skill-dir>/scripts/build_weekly_update_packets.py --context <context-json> --lint <lint-json> --output-dir <packet-dir> --result-output <build-result-json>`.
+- `collect_weekly_update_context.py` resolves `repo_profile.extra.weekly_update.analysis_ref` before any local git or file evidence is interpreted.
+- Default retained behavior is `analysis_ref.policy=freshest_local_branch`: select the newest commit timestamp under `refs/heads/*`.
+- `analysis_ref.policy=current_head` preserves the old attached or detached `HEAD` behavior.
+- `analysis_ref.policy=preferred_branch_order` chooses the first configured local branch, then falls back to `freshest_local_branch`, then to `current_head` if no local branches exist.
+- Treat releases, PRs, issues, reviews, and workflow runs as repo-wide GitHub evidence. Treat any local git or file reread as selected-ref-local. When the selected ref differs from the workspace `HEAD`, use `analysis_ref.selected_sha` with `git show <sha>:<path>` or an equivalent selected-ref materialization instead of reading the detached worktree filesystem directly.
 - Read `<packet-dir>/orchestrator.json` first.
 - Keep `<packet-dir>/global_packet.json` in view before reading focused packets.
 - Treat `packet_metrics.json` and `<build-result-json>` as evaluation/regression artifacts, not runtime routing inputs.
@@ -114,6 +119,7 @@ If the run cannot proceed, report the blocker clearly and stop at the appropriat
   - directly related review, issue, and workflow-run evidence
   - structured workflow packets
   - local last-success state as baseline only
+- Repo-wide GitHub evidence stays repo-wide even when the analysis ref is redirected. Only local git and file evidence follows the selected analysis ref.
 - `Incidents` is narrow. Include only actual events that materially affected operations, validation, release, or schedule during the reporting window.
 - Put release gates, pending investigations, reusable evidence artifacts, and unresolved risks in `Blockers / Risks` instead.
 - In `Reviews`, include resolved findings once. Unresolved gate-impact findings may also appear in `Blockers / Risks`.
@@ -126,6 +132,7 @@ If the run cannot proceed, report the blocker clearly and stop at the appropriat
 - `apply_weekly_update.py` reads only the synthesized plan fields `overall_confidence`, `stop_reasons`, and `allow_marker_update`.
 - Do not let the apply step read worker footers directly.
 - Stop before marker updates when unresolved `raw_reread_reason` candidates remain or the final plan confidence is `low`.
+- Default state-marker identity is keyed by the logical repo's shared git common-dir plus the analysis-ref policy so temporary worktree paths reuse the same weekly baseline.
 
 ## Required Packets
 

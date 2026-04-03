@@ -173,7 +173,14 @@ def find_repo_name(context: dict[str, Any]) -> str | None:
 
 
 def find_branch(context: dict[str, Any]) -> str | None:
-    branch = str(context.get("branch") or "").strip()
+    analysis_ref = context.get("analysis_ref") or {}
+    branch = str(
+        analysis_ref.get("selected_branch_label")
+        or analysis_ref.get("selected_branch")
+        or context.get("current_branch")
+        or context.get("branch")
+        or ""
+    ).strip()
     if branch:
         return branch
     branch_state = context.get("branch_state") or {}
@@ -185,6 +192,15 @@ def find_branch(context: dict[str, Any]) -> str | None:
 
 
 def find_head_sha(context: dict[str, Any]) -> str | None:
+    analysis_ref = context.get("analysis_ref") or {}
+    for value in (
+        analysis_ref.get("selected_sha"),
+        context.get("head_sha"),
+        context.get("head_commit"),
+    ):
+        resolved = str(value or "").strip()
+        if resolved:
+            return resolved
     for key in ("head_sha", "head_commit"):
         value = str(context.get(key) or "").strip()
         if value:
