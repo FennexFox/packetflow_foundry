@@ -360,6 +360,154 @@ class ValidateAndApplyThreadActionPlanTests(unittest.TestCase):
             self.assertEqual(dry_run["reconciliation_summary"]["outdated_auto_resolved"], 1)
             self.assertEqual(dry_run["reconciliation_summary"]["outdated_transition_candidates"], 1)
 
+    def test_apply_skips_duplicate_add_when_live_exact_managed_reply_matches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            threads = [
+                review_thread(thread_id="t-1", path="src/app.py", line=10, reviewer_login="reviewer-a", reviewer_body="Please rename this.")
+            ]
+            context = context_with_threads(tmp, threads)
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            context_path = tmp / "context.json"
+            validated_path = tmp / "validated.json"
+            result_path = tmp / "result.json"
+            write_json(context_path, context)
+
+            validated = validate_thread_action_payload(
+                context,
+                {
+                    "thread_actions": [
+                        {
+                            "thread_id": "t-1",
+                            "decision": "accept",
+                            "ack_mode": "add",
+                            "ack_body": "Will fix this.",
+                        }
+                    ]
+                },
+                "ack",
+            )
+            self.assertTrue(validated["valid"])
+            write_json(validated_path, validated)
+
+            calls: list[tuple[str, dict[str, str]]] = []
+
+            def fake_graphql(_repo_root: Path, query: str, variables: dict[str, str]) -> dict[str, object]:
+                calls.append((query, dict(variables)))
+                if query == apply_plan.LIVE_THREAD_QUERY:
+                    return {
+                        "data": {
+                            "viewer": {"login": "codex"},
+                            "node": {
+                                "id": "t-1",
+                                "isResolved": False,
+                                "comments": {
+                                    "nodes": [
+                                        {
+                                            "id": "ack-1",
+                                            "body": "<!-- codex:review-thread v1 phase=ack thread=t-1 -->\nWill fix this.",
+                                            "createdAt": "2026-03-01T01:00:00Z",
+                                            "updatedAt": "2026-03-01T01:00:00Z",
+                                            "url": "https://example.invalid/comment/ack-1",
+                                            "author": {"login": "codex"},
+                                        }
+                                    ]
+                                },
+                            },
+                        }
+                    }
+                raise AssertionError("duplicate-preflight path should not execute a mutation")
+
+            argv = [
+                "apply_thread_action_plan.py",
+                "--context",
+                str(context_path),
+                "--plan",
+                str(validated_path),
+                "--phase",
+                "ack",
+                "--result-output",
+                str(result_path),
+            ]
+            with patch.object(sys, "argv", argv), patch.object(apply_plan, "graphql", side_effect=fake_graphql):
+                self.assertEqual(apply_plan.main(), 0)
+
+            result = json.loads(result_path.read_text(encoding="utf-8"))
+            self.assertEqual(result["results"][0]["operation"], "skip_existing_reply")
+            self.assertEqual(result["results"][0]["reason"], "live_exact_managed_reply_already_matches")
+            self.assertEqual(result["mutations"], [])
+            self.assertIsNone(result["mutation_type"])
+            self.assertEqual(len(calls), 1)
+            self.assertEqual(calls[0][1], {"threadId": "t-1"})
+
+    def test_apply_blocks_add_when_live_exact_managed_reply_differs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            threads = [
+                review_thread(thread_id="t-1", path="src/app.py", line=10, reviewer_login="reviewer-a", reviewer_body="Please rename this.")
+            ]
+            context = context_with_threads(tmp, threads)
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            context_path = tmp / "context.json"
+            validated_path = tmp / "validated.json"
+            write_json(context_path, context)
+
+            validated = validate_thread_action_payload(
+                context,
+                {
+                    "thread_actions": [
+                        {
+                            "thread_id": "t-1",
+                            "decision": "accept",
+                            "ack_mode": "add",
+                            "ack_body": "Will fix this.",
+                        }
+                    ]
+                },
+                "ack",
+            )
+            self.assertTrue(validated["valid"])
+            write_json(validated_path, validated)
+
+            def fake_graphql(_repo_root: Path, query: str, _variables: dict[str, str]) -> dict[str, object]:
+                if query == apply_plan.LIVE_THREAD_QUERY:
+                    return {
+                        "data": {
+                            "viewer": {"login": "codex"},
+                            "node": {
+                                "id": "t-1",
+                                "isResolved": False,
+                                "comments": {
+                                    "nodes": [
+                                        {
+                                            "id": "ack-1",
+                                            "body": "<!-- codex:review-thread v1 phase=ack thread=t-1 -->\nAlready replied with different text.",
+                                            "createdAt": "2026-03-01T01:00:00Z",
+                                            "updatedAt": "2026-03-01T01:00:00Z",
+                                            "url": "https://example.invalid/comment/ack-1",
+                                            "author": {"login": "codex"},
+                                        }
+                                    ]
+                                },
+                            },
+                        }
+                    }
+                raise AssertionError("conflict-preflight path should not execute a mutation")
+
+            argv = [
+                "apply_thread_action_plan.py",
+                "--context",
+                str(context_path),
+                "--plan",
+                str(validated_path),
+                "--phase",
+                "ack",
+            ]
+            with patch.object(sys, "argv", argv), patch.object(apply_plan, "graphql", side_effect=fake_graphql):
+                with self.assertRaises(RuntimeError) as exc_info:
+                    apply_plan.main()
+            self.assertIn("live exact managed ack reply already exists", str(exc_info.exception))
+
 
 if __name__ == "__main__":
     unittest.main()
