@@ -554,9 +554,6 @@ def build_outdated_recheck(
     elif not current_head_visible:
         verdict = "ambiguous"
         verdict_reason = "missing_current_head_evidence"
-    elif not request_anchor_visible:
-        verdict = "ambiguous"
-        verdict_reason = "missing_request_anchor_evidence"
     else:
         verdict = "auto-accept"
         verdict_reason = "accepted_same_run_with_current_head_evidence"

@@ -592,7 +592,7 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertEqual(build_result["outdated_auto_resolve_candidates"], 0)
             self.assertEqual(build_result["outdated_recheck_ambiguous"], 1)
 
-    def test_same_run_outdated_transition_requires_request_anchor_evidence(self) -> None:
+    def test_same_run_outdated_transition_does_not_require_request_anchor_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
             previous_threads = [
@@ -687,17 +687,17 @@ class BuildReviewPacketsTests(unittest.TestCase):
             transitioned_packet = json.loads((output_dir / "thread-01.json").read_text(encoding="utf-8"))
             build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
 
-            self.assertEqual(transitioned_packet["outdated_recheck"]["resolution_verdict"], "ambiguous")
+            self.assertEqual(transitioned_packet["outdated_recheck"]["resolution_verdict"], "auto-accept")
             self.assertEqual(
                 transitioned_packet["outdated_recheck"]["verdict_reason"],
-                "missing_request_anchor_evidence",
+                "accepted_same_run_with_current_head_evidence",
             )
             self.assertTrue(transitioned_packet["outdated_recheck"]["current_head_evidence"]["evidence_visible"])
             self.assertFalse(
                 transitioned_packet["outdated_recheck"]["current_head_evidence"]["request_anchor_visible"]
             )
-            self.assertEqual(build_result["outdated_auto_resolve_candidates"], 0)
-            self.assertEqual(build_result["outdated_recheck_ambiguous"], 1)
+            self.assertEqual(build_result["outdated_auto_resolve_candidates"], 1)
+            self.assertEqual(build_result["outdated_recheck_ambiguous"], 0)
 
 
 if __name__ == "__main__":
