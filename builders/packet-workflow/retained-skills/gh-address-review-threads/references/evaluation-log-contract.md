@@ -9,11 +9,13 @@ Track three outcomes consistently across runs:
 - quality
 - safety
 
-The log is a local operational artifact. It should default outside the repo at:
+The log is a local operational artifact. It should default under the repo-local
+scratch tree at:
 
-`~/.codex/tmp/evaluation_logs/<skill-name>/<run-id>.json`
+`<repo-root>/.codex/tmp/evaluation_logs/<skill-name>/<run-id>.json`
 
-An explicit override path is allowed, but the default must never point into the repo.
+An explicit override path is allowed, but the default should stay under
+`.codex/tmp/evaluation_logs/`.
 
 ## Top-Level Shape
 

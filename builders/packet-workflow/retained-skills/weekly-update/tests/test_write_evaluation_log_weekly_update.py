@@ -16,6 +16,25 @@ import write_evaluation_log as eval_log  # noqa: E402
 
 
 class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
+    def test_default_output_path_uses_repo_root(self) -> None:
+        repo_root = Path("repo-root")
+
+        resolved = eval_log.default_output_path(
+            repo_root,
+            "weekly-update",
+            "2026-04-04T10:00:00Z__weekly-update__abc:def",
+        )
+
+        self.assertEqual(
+            resolved,
+            repo_root
+            / ".codex"
+            / "tmp"
+            / "evaluation_logs"
+            / "weekly-update"
+            / "2026-04-04T10-00-00Z__weekly-update__abc-def.json",
+        )
+
     def test_find_branch_and_head_sha_ignore_non_dict_analysis_ref(self) -> None:
         context = {
             "analysis_ref": "main",

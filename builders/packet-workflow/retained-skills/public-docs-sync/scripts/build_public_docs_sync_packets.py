@@ -26,6 +26,8 @@ from public_docs_sync_contract import (
     dedupe_preserve,
 )
 
+DELEGATION_SAVINGS_FLOOR = 250
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
@@ -61,7 +63,7 @@ def truthy_override_signals(context: dict[str, Any], lint: dict[str, Any]) -> li
     return dedupe_preserve(signals)
 
 
-def compute_review_mode(context: dict[str, Any], lint: dict[str, Any]) -> tuple[str, bool, list[str]]:
+def compute_baseline_review_mode(context: dict[str, Any]) -> str:
     counts = context.get("counts", {})
     active_packets = int(counts.get("active_packet_count", 0))
     changed_files = int(counts.get("changed_files", 0))
@@ -73,11 +75,34 @@ def compute_review_mode(context: dict[str, Any], lint: dict[str, Any]) -> tuple[
         mode = "broad-delegation"
     elif active_packets >= 2 or (doc_changes > 0 and code_changes > 0):
         mode = "targeted-delegation"
+    return mode
 
+
+def apply_override_adjustment(
+    review_mode: str,
+    context: dict[str, Any],
+    lint: dict[str, Any],
+) -> tuple[str, bool, list[str], list[str]]:
     applied_signals = truthy_override_signals(context, lint)
     if applied_signals:
-        mode = next_mode(mode)
-    return mode, bool(applied_signals), applied_signals
+        review_mode = next_mode(review_mode)
+        return review_mode, True, applied_signals, ["override_signal"]
+    return review_mode, False, applied_signals, []
+
+
+def maybe_apply_delegation_savings_floor(
+    review_mode: str,
+    packet_metrics: dict[str, Any],
+    adjustments: list[str],
+) -> tuple[str, list[str]]:
+    estimated_savings = int(packet_metrics.get("estimated_delegation_savings", 0) or 0)
+    if (
+        review_mode == "local-only"
+        and estimated_savings >= DELEGATION_SAVINGS_FLOOR
+        and "delegation_savings_floor" not in adjustments
+    ):
+        return "targeted-delegation", [*adjustments, "delegation_savings_floor"]
+    return review_mode, adjustments
 
 
 def routed_packet_names(active_packet_names: list[str], uses_batch_packets: bool) -> list[str]:
@@ -93,6 +118,7 @@ def routed_packet_names(active_packet_names: list[str], uses_batch_packets: bool
 def recommended_workers(
     packet_names: list[str],
     review_mode: str,
+    review_mode_adjustments: list[str] | None = None,
 ) -> list[dict[str, str]]:
     if review_mode == "local-only":
         return []
@@ -109,6 +135,35 @@ def recommended_workers(
                 "instruction": "Read global_packet.json first, stay narrow, and return only evidence-backed doc drift or sync gaps.",
             }
         )
+    if (
+        review_mode == "targeted-delegation"
+        and review_mode_adjustments
+        and "delegation_savings_floor" in review_mode_adjustments
+        and len(workers) < 2
+        and packet_names
+    ):
+        used_assignments = {(item["packet"], item["agent_type"]) for item in workers}
+        for packet_name in packet_names:
+            candidate_agent_types = [
+                *(PACKET_WORKER_MAP.get(packet_name) or []),
+                "repo_mapper",
+                "docs_verifier",
+            ]
+            for agent_type in dedupe_preserve(candidate_agent_types):
+                assignment_key = (f"{packet_name}.json", agent_type)
+                if assignment_key in used_assignments:
+                    continue
+                workers.append(
+                    {
+                        "name": f"{packet_name}-{agent_type}",
+                        "agent_type": agent_type,
+                        "packet": f"{packet_name}.json",
+                        "instruction": "Read global_packet.json first, stay narrow, and return only evidence-backed doc drift or sync gaps.",
+                    }
+                )
+                used_assignments.add(assignment_key)
+                if len(workers) >= 2:
+                    return workers
     return workers
 
 
@@ -288,6 +343,8 @@ def build_batch_packet(
 def build_result_payload(
     *,
     review_mode: str,
+    review_mode_baseline: str,
+    review_mode_adjustments: list[str],
     applied_override_signals: list[str],
     active_packet_names: list[str],
     recommended: list[dict[str, str]],
@@ -299,6 +356,8 @@ def build_result_payload(
 ) -> dict[str, Any]:
     return {
         "review_mode": review_mode,
+        "review_mode_baseline": review_mode_baseline,
+        "review_mode_adjustments": review_mode_adjustments,
         "recommended_worker_count": len(recommended),
         "recommended_workers": recommended,
         "selected_packets": selected_packets,
@@ -325,7 +384,13 @@ def main() -> int:
         for name in PACKET_NAMES
         if packet_candidates.get(name, {}).get("active")
     ]
-    review_mode, override_applied, applied_override_signals = compute_review_mode(context, lint)
+    review_mode_baseline = compute_baseline_review_mode(context)
+    (
+        review_mode,
+        override_applied,
+        applied_override_signals,
+        review_mode_adjustments,
+    ) = apply_override_adjustment(review_mode_baseline, context, lint)
     uses_batch_packets = bool(
         packet_candidates.get("forms_batch_packet", {}).get("active")
         and len(packet_candidates.get("forms_batch_packet", {}).get("review_docs", [])) > 1
@@ -335,40 +400,57 @@ def main() -> int:
         selected_packets.append("batch-packet-01.json")
 
     routed_packets = routed_packet_names(active_packet_names, uses_batch_packets)
-    recommended = recommended_workers(routed_packets, review_mode)
+    recommended = recommended_workers(
+        routed_packets,
+        review_mode,
+        review_mode_adjustments,
+    )
     packet_order = ["global_packet.json", *selected_packets]
 
-    orchestrator = {
-        "skill_name": context.get("skill_name"),
-        "workflow_family": WORKFLOW_FAMILY,
-        "archetype": ARCHETYPE,
-        "orchestrator_profile": ORCHESTRATOR_PROFILE,
-        "review_mode": review_mode,
-        "decision_ready_packets": DECISION_READY_PACKETS,
-        "worker_return_contract": WORKER_RETURN_CONTRACT,
-        "worker_output_shape": WORKER_OUTPUT_SHAPE,
-        "preferred_worker_families": PREFERRED_WORKER_FAMILIES,
-        "packet_worker_map": PACKET_WORKER_MAP,
-        "worker_selection_guidance": WORKER_SELECTION_GUIDANCE,
-        "uses_batch_packets": uses_batch_packets,
-        "recommended_worker_count": len(recommended),
-        "recommended_workers": recommended,
-        "optional_workers": optional_workers(review_mode, recommended),
-        "local_responsibilities": [
-            "read global_packet.json and active focused packets",
-            "decide deterministic vs manual public-doc drift",
-            "keep marker updates blocked when manual narrative review remains",
-            "respect the fail-closed GitHub evidence policy before using remote claims",
-            "persist the last-success marker only after doc updates are done",
-        ],
-        "shared_packet": "global_packet.json",
-        "packet_order": packet_order,
-        "selected_packets": selected_packets,
-        "applied_override_signals": applied_override_signals,
-        "override_applied": override_applied,
-        "xhigh_reread_policy": XHIGH_REREAD_POLICY,
-        "raw_reread_allowed_reasons": RAW_REREAD_ALLOWED_REASONS,
-    }
+    def build_orchestrator_payload(
+        final_review_mode: str,
+        final_recommended: list[dict[str, str]],
+        final_adjustments: list[str],
+    ) -> dict[str, Any]:
+        return {
+            "skill_name": context.get("skill_name"),
+            "workflow_family": WORKFLOW_FAMILY,
+            "archetype": ARCHETYPE,
+            "orchestrator_profile": ORCHESTRATOR_PROFILE,
+            "review_mode": final_review_mode,
+            "review_mode_baseline": review_mode_baseline,
+            "review_mode_adjustments": final_adjustments,
+            "decision_ready_packets": DECISION_READY_PACKETS,
+            "worker_return_contract": WORKER_RETURN_CONTRACT,
+            "worker_output_shape": WORKER_OUTPUT_SHAPE,
+            "preferred_worker_families": PREFERRED_WORKER_FAMILIES,
+            "packet_worker_map": PACKET_WORKER_MAP,
+            "worker_selection_guidance": WORKER_SELECTION_GUIDANCE,
+            "uses_batch_packets": uses_batch_packets,
+            "recommended_worker_count": len(final_recommended),
+            "recommended_workers": final_recommended,
+            "optional_workers": optional_workers(final_review_mode, final_recommended),
+            "local_responsibilities": [
+                "read global_packet.json and active focused packets",
+                "decide deterministic vs manual public-doc drift",
+                "keep marker updates blocked when manual narrative review remains",
+                "respect the fail-closed GitHub evidence policy before using remote claims",
+                "persist the last-success marker only after doc updates are done",
+            ],
+            "shared_packet": "global_packet.json",
+            "packet_order": packet_order,
+            "selected_packets": selected_packets,
+            "applied_override_signals": applied_override_signals,
+            "override_applied": override_applied,
+            "xhigh_reread_policy": XHIGH_REREAD_POLICY,
+            "raw_reread_allowed_reasons": RAW_REREAD_ALLOWED_REASONS,
+        }
+
+    orchestrator = build_orchestrator_payload(
+        review_mode,
+        recommended,
+        review_mode_adjustments,
+    )
 
     global_packet = {
         "skill_name": context.get("skill_name"),
@@ -412,7 +494,6 @@ def main() -> int:
         "orchestrator.json": orchestrator,
         "global_packet.json": global_packet,
     }
-    write_json(output_dir / "orchestrator.json", orchestrator)
     write_json(output_dir / "global_packet.json", global_packet)
 
     for packet_name in PACKET_NAMES:
@@ -435,11 +516,38 @@ def main() -> int:
             "lint.json": lint,
         },
     )
+    review_mode, review_mode_adjustments = maybe_apply_delegation_savings_floor(
+        review_mode,
+        packet_metrics,
+        review_mode_adjustments,
+    )
+    if orchestrator["review_mode"] != review_mode:
+        recommended = recommended_workers(
+            routed_packets,
+            review_mode,
+            review_mode_adjustments,
+        )
+        orchestrator = build_orchestrator_payload(
+            review_mode,
+            recommended,
+            review_mode_adjustments,
+        )
+        packet_payloads["orchestrator.json"] = orchestrator
+        packet_metrics = compute_packet_metrics(
+            packet_payloads,
+            local_only_sources={
+                "context.json": context,
+                "lint.json": lint,
+            },
+        )
+    write_json(output_dir / "orchestrator.json", orchestrator)
     write_json(output_dir / "packet_metrics.json", packet_metrics)
 
     if args.result_output:
         build_result = build_result_payload(
             review_mode=review_mode,
+            review_mode_baseline=review_mode_baseline,
+            review_mode_adjustments=review_mode_adjustments,
             applied_override_signals=applied_override_signals,
             active_packet_names=active_packet_names,
             recommended=recommended,

@@ -12,6 +12,7 @@ PACKET_NAMES = __TASK_PACKET_NAMES_JSON__
 USES_BATCH_PACKETS = __USES_BATCH_PACKETS__
 REVIEW_MODE_OVERRIDES = __REVIEW_MODE_OVERRIDES_JSON__
 WORKER_INSTRUCTION_MAP = __WORKER_INSTRUCTION_MAP_JSON__
+DELEGATION_SAVINGS_FLOOR = 250
 
 
 def parse_args() -> argparse.Namespace:
@@ -48,7 +49,7 @@ def has_override_signal(context: dict, lint: dict) -> bool:
     return any(bool(value) for value in merged.values())
 
 
-def compute_review_mode(context: dict, lint: dict) -> tuple[str, bool]:
+def compute_baseline_review_mode(context: dict) -> str:
     counts = context.get("counts", {})
     task_packet_count = max(int(counts.get("task_packet_count", 0)), len(PACKET_NAMES))
     changed_files = int(counts.get("changed_files", task_packet_count))
@@ -59,19 +60,57 @@ def compute_review_mode(context: dict, lint: dict) -> tuple[str, bool]:
         mode = "broad-delegation"
     elif task_packet_count >= 3 or batch_count >= 2:
         mode = "targeted-delegation"
+    return mode
 
+
+def apply_override_adjustment(
+    review_mode: str,
+    context: dict,
+    lint: dict,
+) -> tuple[str, bool, list[str]]:
+    adjustments: list[str] = []
     override = has_override_signal(context, lint)
     if override:
-        mode = next_mode(mode)
-    return mode, override
+        review_mode = next_mode(review_mode)
+        adjustments.append("override_signal")
+    return review_mode, override, adjustments
 
 
-def recommended_worker_count(review_mode: str) -> int:
+def maybe_apply_delegation_savings_floor(
+    review_mode: str,
+    packet_metrics: dict,
+    adjustments: list[str],
+) -> tuple[str, list[str]]:
+    estimated_savings = int(packet_metrics.get("estimated_delegation_savings", 0) or 0)
+    if (
+        review_mode == "local-only"
+        and estimated_savings >= DELEGATION_SAVINGS_FLOOR
+        and "delegation_savings_floor" not in adjustments
+    ):
+        return "targeted-delegation", [*adjustments, "delegation_savings_floor"]
+    return review_mode, adjustments
+
+
+def base_worker_count(review_mode: str) -> int:
     return {
         "local-only": 0,
         "targeted-delegation": 2,
         "broad-delegation": 4,
     }[review_mode]
+
+
+def recommended_worker_count(
+    review_mode: str,
+    review_mode_adjustments: list[str] | None = None,
+) -> int:
+    worker_count = base_worker_count(review_mode)
+    if (
+        review_mode == "targeted-delegation"
+        and review_mode_adjustments
+        and "delegation_savings_floor" in review_mode_adjustments
+    ):
+        return max(worker_count, 2)
+    return worker_count
 
 
 def active_worker_family_order() -> list[str]:
@@ -80,28 +119,36 @@ def active_worker_family_order() -> list[str]:
     return ["context_findings", "verifiers"]
 
 
+def dedupe_preserve(items: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        deduped.append(item)
+    return deduped
+
+
 def surfaced_optional_workers(recommended_workers: list[dict]) -> list[str]:
     ordered: list[str] = []
     for family_name in active_worker_family_order():
         ordered.extend(SPEC_METADATA["preferred_worker_families"].get(family_name, []))
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for agent_type in ordered:
-        if agent_type not in seen:
-            seen.add(agent_type)
-            deduped.append(agent_type)
     recommended_agent_types = {worker["agent_type"] for worker in recommended_workers}
     return [
         agent_type
-        for agent_type in deduped
+        for agent_type in dedupe_preserve(ordered)
         if agent_type not in recommended_agent_types
     ]
 
 
-def recommended_workers(review_mode: str) -> list[dict]:
+def recommended_workers(
+    review_mode: str,
+    review_mode_adjustments: list[str] | None = None,
+) -> list[dict]:
     if review_mode == "local-only" or not SPEC_METADATA["packet_worker_map"]:
         return []
-    budget = recommended_worker_count(review_mode)
+    budget = recommended_worker_count(review_mode, review_mode_adjustments)
     workers: list[dict] = []
     seen_assignments: set[tuple[str, str]] = set()
     ordered_packets: list[str] = []
@@ -117,12 +164,48 @@ def recommended_workers(review_mode: str) -> list[dict]:
                 {
                     "agent_type": agent_type,
                     "packet": f"{packet_name}.json",
-                    "instruction": WORKER_INSTRUCTION_MAP[agent_type],
+                    "instruction": WORKER_INSTRUCTION_MAP.get(
+                        agent_type,
+                        WORKER_INSTRUCTION_MAP.get("docs_verifier", ""),
+                    ),
                 }
             )
             seen_assignments.add(assignment)
             if len(workers) >= budget:
                 return workers
+    if ordered_packets and len(workers) < budget:
+        fallback_agent_types = surfaced_optional_workers(workers)
+        if not fallback_agent_types:
+            fallback_agent_types = ["docs_verifier"]
+        packet_cursor = 0
+        stalled_packets = 0
+        while len(workers) < budget and stalled_packets < len(ordered_packets):
+            packet_name = ordered_packets[packet_cursor % len(ordered_packets)]
+            candidate_agent_types = dedupe_preserve([
+                *(SPEC_METADATA["packet_worker_map"].get(packet_name, [])),
+                *fallback_agent_types,
+            ])
+            assigned = False
+            for agent_type in candidate_agent_types:
+                if (agent_type, packet_name) in seen_assignments:
+                    continue
+                workers.append(
+                    {
+                        "agent_type": agent_type,
+                        "packet": f"{packet_name}.json",
+                        "instruction": WORKER_INSTRUCTION_MAP.get(
+                            agent_type,
+                            WORKER_INSTRUCTION_MAP.get("docs_verifier", ""),
+                        ),
+                    }
+                )
+                seen_assignments.add((agent_type, packet_name))
+                assigned = True
+                stalled_packets = 0
+                break
+            if not assigned:
+                stalled_packets += 1
+            packet_cursor += 1
     return workers
 
 
@@ -139,6 +222,8 @@ def packet_order() -> list[str]:
 def orchestrator_payload(
     context: dict,
     review_mode: str,
+    review_mode_baseline: str,
+    review_mode_adjustments: list[str],
     override: bool,
     concrete_workers: list[dict],
     ordered_packets: list[str],
@@ -152,7 +237,9 @@ def orchestrator_payload(
         "repo_profile_path": context.get("repo_profile_path"),
         "repo_profile_summary": context.get("repo_profile_summary"),
         "review_mode": review_mode,
-        "recommended_worker_count": recommended_worker_count(review_mode),
+        "review_mode_baseline": review_mode_baseline,
+        "review_mode_adjustments": review_mode_adjustments,
+        "recommended_worker_count": len(concrete_workers),
         "recommended_workers": concrete_workers,
         "optional_workers": surfaced_optional_workers(concrete_workers),
         "local_responsibilities": [
@@ -249,10 +336,13 @@ def packet_metrics_payload(context: dict, lint: dict, packet_payloads: dict[str,
         for name, payload in packet_payloads.items()
     }
     ordered_sizes = sorted(packet_sizes.values(), reverse=True)
+    local_only_packets = {"orchestrator.json"}
+    if SPEC_METADATA.get("shared_local_packet"):
+        local_only_packets.add(SPEC_METADATA["shared_local_packet"])
     worker_facing_packets = {
         name: size
         for name, size in packet_sizes.items()
-        if name != "synthesis_packet.json"
+        if name not in local_only_packets
     }
     worker_facing_bytes = sum(worker_facing_packets.values())
     local_only_bytes = dump_json_bytes(context)
@@ -280,37 +370,62 @@ __LINT_LOAD_BLOCK__
     output_dir = Path(args.output_dir).resolve()
     output_dir.mkdir(parents=True, exist_ok=True)
 
-    review_mode, override = compute_review_mode(context, lint)
     ordered_packets = packet_order()
-    concrete_workers = recommended_workers(review_mode)
+    review_mode_baseline = compute_baseline_review_mode(context)
+    review_mode, override, review_mode_adjustments = apply_override_adjustment(
+        review_mode_baseline,
+        context,
+        lint,
+    )
 
-    packet_payloads: dict[str, dict] = {
-        "orchestrator.json": orchestrator_payload(
-            context,
-            review_mode,
-            override,
-            concrete_workers,
-            ordered_packets,
-        ),
-        "global_packet.json": global_packet_payload(context),
-    }
-    if SPEC_METADATA.get("shared_local_packet"):
-        packet_payloads[SPEC_METADATA["shared_local_packet"]] = synthesis_packet_payload(
-            context,
-            review_mode,
+    def build_runtime_packets(
+        final_review_mode: str,
+        adjustments: list[str],
+    ) -> dict[str, dict]:
+        concrete_workers = recommended_workers(
+            final_review_mode,
+            adjustments,
         )
-
-    for packet_name in PACKET_NAMES:
-        packet_payloads[f"{packet_name}.json"] = __FOCUSED_PACKET_TEMPLATE__
-
-    if USES_BATCH_PACKETS:
-        packet_payloads["batch-packet-01.json"] = {
-            "packet_id": "batch-packet-01",
-            "packet_kind": "batch",
-            "packet_targets": PACKET_NAMES,
-            "context_id": context.get("context_id"),
-            "todo": "Group related singleton packets here when the workflow benefits from clustering.",
+        packet_payloads: dict[str, dict] = {
+            "orchestrator.json": orchestrator_payload(
+                context,
+                final_review_mode,
+                review_mode_baseline,
+                adjustments,
+                override,
+                concrete_workers,
+                ordered_packets,
+            ),
+            "global_packet.json": global_packet_payload(context),
         }
+        if SPEC_METADATA.get("shared_local_packet"):
+            packet_payloads[SPEC_METADATA["shared_local_packet"]] = synthesis_packet_payload(
+                context,
+                final_review_mode,
+            )
+
+        for packet_name in PACKET_NAMES:
+            packet_payloads[f"{packet_name}.json"] = __FOCUSED_PACKET_TEMPLATE__
+
+        if USES_BATCH_PACKETS:
+            packet_payloads["batch-packet-01.json"] = {
+                "packet_id": "batch-packet-01",
+                "packet_kind": "batch",
+                "packet_targets": PACKET_NAMES,
+                "context_id": context.get("context_id"),
+                "todo": "Group related singleton packets here when the workflow benefits from clustering.",
+            }
+        return packet_payloads
+
+    packet_payloads = build_runtime_packets(review_mode, review_mode_adjustments)
+    provisional_packet_metrics = packet_metrics_payload(context, lint, packet_payloads)
+    review_mode, review_mode_adjustments = maybe_apply_delegation_savings_floor(
+        review_mode,
+        provisional_packet_metrics,
+        review_mode_adjustments,
+    )
+    if review_mode != packet_payloads["orchestrator.json"]["review_mode"]:
+        packet_payloads = build_runtime_packets(review_mode, review_mode_adjustments)
 
     for file_name, payload in packet_payloads.items():
         write_json(output_dir / file_name, payload)
@@ -328,7 +443,11 @@ __LINT_LOAD_BLOCK__
         "repo_profile_path": context.get("repo_profile_path"),
         "repo_profile_summary": context.get("repo_profile_summary"),
         "review_mode": review_mode,
-        "recommended_worker_count": recommended_worker_count(review_mode),
+        "review_mode_baseline": review_mode_baseline,
+        "review_mode_adjustments": review_mode_adjustments,
+        "recommended_worker_count": len(
+            packet_payloads["orchestrator.json"]["recommended_workers"]
+        ),
         "packet_files": ordered_packets,
     }
     if SPEC_METADATA.get("shared_local_packet"):

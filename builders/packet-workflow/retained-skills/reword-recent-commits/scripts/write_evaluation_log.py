@@ -429,8 +429,10 @@ def safe_filename(value: str) -> str:
     return sanitized or "evaluation-log"
 
 
-def default_output_path(skill_name: str, run_id: str) -> Path:
-    return Path.home() / ".codex" / "tmp" / "evaluation_logs" / skill_name / f"{safe_filename(run_id)}.json"
+def default_output_path(repo_root: Any, skill_name: str, run_id: str) -> Path:
+    repo_root_text = str(repo_root) if repo_root is not None else ""
+    repo_path = Path(repo_root_text) if repo_root_text else Path(".").resolve()
+    return repo_path / ".codex" / "tmp" / "evaluation_logs" / skill_name / f"{safe_filename(run_id)}.json"
 
 
 def build_base_log(
@@ -477,6 +479,10 @@ def build_base_log(
         },
         "orchestration": {
             "review_mode": orchestrator.get("review_mode"),
+            "review_mode_baseline": orchestrator.get("review_mode_baseline"),
+            "review_mode_adjustments": list_of_strings(
+                orchestrator.get("review_mode_adjustments")
+            ),
             "override_signals": normalize_override_signals(orchestrator),
             "worker_count": safe_int(orchestrator.get("recommended_worker_count")) or len(worker_roles(orchestrator)),
             "worker_roles": worker_roles(orchestrator),
@@ -731,6 +737,15 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
         orchestration = log.setdefault("orchestration", {})
         if result.get("review_mode"):
             orchestration["review_mode"] = result.get("review_mode")
+        if result.get("review_mode_baseline"):
+            orchestration["review_mode_baseline"] = result.get(
+                "review_mode_baseline"
+            )
+        review_mode_adjustments = list_of_strings(
+            result.get("review_mode_adjustments")
+        )
+        if review_mode_adjustments:
+            orchestration["review_mode_adjustments"] = review_mode_adjustments
         worker_count = safe_int(result.get("recommended_worker_count"))
         if worker_count is not None:
             orchestration["worker_count"] = worker_count
@@ -1035,7 +1050,7 @@ def main() -> int:
         orchestrator = load_json(Path(args.orchestrator))
         lint_report = load_json(Path(args.lint)) if args.lint else None
         payload = build_base_log(script_path, context, orchestrator, lint_report)
-        output = Path(args.output).resolve() if args.output else default_output_path(payload["skill"]["name"], payload["run_id"])
+        output = Path(args.output).resolve() if args.output else default_output_path((payload.get("repo") or {}).get("repo_root"), payload["skill"]["name"], payload["run_id"])
         write_json(output, payload)
         print_summary(output, payload)
         return 0

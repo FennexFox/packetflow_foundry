@@ -25,35 +25,48 @@ class BuildPublicDocsSyncPacketsContractTests(unittest.TestCase):
         self.assertEqual(packets.PACKET_WORKER_MAP["claims_packet"], ["large_diff_auditor", "repo_mapper"])
         self.assertEqual(packets.PACKET_WORKER_MAP["batch-packet-01"], ["docs_verifier"])
         self.assertEqual(
-            packets.compute_review_mode(
-                {"counts": {"active_packet_count": 1, "changed_files": 3, "doc_changes": 1, "code_changes": 0}},
-                {"override_signals": {}},
+            packets.compute_baseline_review_mode(
+                {"counts": {"active_packet_count": 1, "changed_files": 3, "doc_changes": 1, "code_changes": 0}}
             ),
-            ("local-only", False, []),
+            "local-only",
         )
         self.assertEqual(
-            packets.compute_review_mode(
-                {"counts": {"active_packet_count": 2, "changed_files": 3, "doc_changes": 1, "code_changes": 0}},
-                {"override_signals": {}},
+            packets.compute_baseline_review_mode(
+                {"counts": {"active_packet_count": 2, "changed_files": 3, "doc_changes": 1, "code_changes": 0}}
             ),
-            ("targeted-delegation", False, []),
+            "targeted-delegation",
         )
         self.assertEqual(
-            packets.compute_review_mode(
-                {"counts": {"active_packet_count": 4, "changed_files": 3, "doc_changes": 1, "code_changes": 0}},
-                {"override_signals": {}},
+            packets.compute_baseline_review_mode(
+                {"counts": {"active_packet_count": 4, "changed_files": 3, "doc_changes": 1, "code_changes": 0}}
             ),
-            ("broad-delegation", False, []),
+            "broad-delegation",
         )
         self.assertEqual(
-            packets.compute_review_mode(
+            packets.apply_override_adjustment(
+                "local-only",
                 {
-                    "counts": {"active_packet_count": 1, "changed_files": 3, "doc_changes": 1, "code_changes": 0},
                     "override_signals": {"high_churn": True},
                 },
                 {"override_signals": {}},
             ),
-            ("targeted-delegation", True, ["high_churn"]),
+            ("targeted-delegation", True, ["high_churn"], ["override_signal"]),
+        )
+        self.assertEqual(
+            packets.maybe_apply_delegation_savings_floor(
+                "local-only",
+                {"estimated_delegation_savings": 249},
+                [],
+            ),
+            ("local-only", []),
+        )
+        self.assertEqual(
+            packets.maybe_apply_delegation_savings_floor(
+                "local-only",
+                {"estimated_delegation_savings": 250},
+                [],
+            ),
+            ("targeted-delegation", ["delegation_savings_floor"]),
         )
         recommended = packets.recommended_workers(
             ["claims_packet", "reporting_packet", "workflow_packet"],
@@ -69,6 +82,13 @@ class BuildPublicDocsSyncPacketsContractTests(unittest.TestCase):
             ),
         )
         self.assertEqual([item["agent_type"] for item in optional], ["repo_mapper", "log_triager"])
+        promoted = packets.recommended_workers(
+            ["claims_packet"],
+            "targeted-delegation",
+            ["delegation_savings_floor"],
+        )
+        self.assertEqual(len(promoted), 2)
+        self.assertEqual(promoted[1]["agent_type"], "repo_mapper")
 
     def test_packet_emission_result_output_and_metrics_sidecar(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

@@ -9,11 +9,12 @@ Track three outcomes consistently:
 - quality
 - safety
 
-Default log path:
+Default repo-local log path:
 
-`~/.codex/tmp/evaluation_logs/weekly-update/<run-id>.json`
+`<repo-root>/.codex/tmp/evaluation_logs/weekly-update/<run-id>.json`
 
-The default path must stay outside the repo. An explicit override path is allowed.
+The default path should stay under `.codex/tmp/evaluation_logs/`. An explicit
+override path is allowed.
 
 ## Common Envelope
 

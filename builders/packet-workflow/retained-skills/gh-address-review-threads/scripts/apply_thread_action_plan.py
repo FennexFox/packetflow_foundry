@@ -5,18 +5,22 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
 from pathlib import Path
 from typing import Any
 
-from thread_action_contract import load_normalized_plan_envelope
+from thread_action_contract import comment_sort_key, load_normalized_plan_envelope
 
 
 PHASES = {"ack", "complete"}
 DECISIONS = {"accept", "reject", "defer", "defer-outdated"}
 MARKER_PREFIX = "<!-- codex:review-thread v1 phase={phase} thread={thread_id} -->"
 MANAGED_MARKER_START = "<!-- codex:review-thread v1 "
+MARKER_RE = re.compile(
+    r"\A<!--\s*codex:review-thread v1 phase=(ack|complete) thread=([A-Za-z0-9_:-]+)\s*-->\s*(?:\n|$)"
+)
 
 ADD_REPLY_MUTATION = """\
 mutation($threadId: ID!, $body: String!) {
@@ -65,6 +69,32 @@ mutation($threadId: ID!) {
 }
 """
 
+LIVE_THREAD_QUERY = """\
+query($threadId: ID!) {
+  viewer {
+    login
+  }
+  node(id: $threadId) {
+    ... on PullRequestReviewThread {
+      id
+      isResolved
+      comments(first: 100) {
+        nodes {
+          id
+          body
+          createdAt
+          updatedAt
+          url
+          author {
+            login
+          }
+        }
+      }
+    }
+  }
+}
+"""
+
 
 def load_json(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8-sig"))
@@ -108,6 +138,13 @@ def ensure_marker(body: str, phase: str, thread_id: str) -> str:
     return marker if not body else marker + "\n" + body
 
 
+def parse_marker(body: str) -> tuple[str | None, str | None]:
+    match = MARKER_RE.match(body.lstrip("\ufeff"))
+    if not match:
+        return None, None
+    return match.group(1), match.group(2)
+
+
 def thread_lookup(context: dict[str, Any]) -> dict[str, dict[str, Any]]:
     return {str(thread["thread_id"]): thread for thread in context.get("threads", [])}
 
@@ -132,6 +169,73 @@ def graphql(repo_root: Path, query: str, variables: dict[str, Any]) -> dict[str,
     if payload.get("errors"):
         raise RuntimeError(json.dumps(payload["errors"], indent=2, ensure_ascii=True))
     return payload
+
+
+def load_live_thread_comments(repo_root: Path, thread_id: str) -> list[dict[str, Any]]:
+    payload = graphql(repo_root, LIVE_THREAD_QUERY, {"threadId": thread_id})
+    viewer_login = str((payload.get("data") or {}).get("viewer", {}).get("login") or "")
+    node = ((payload.get("data") or {}).get("node") or {})
+    if not isinstance(node, dict) or str(node.get("id") or "") != thread_id:
+        raise RuntimeError(f"thread {thread_id}: live thread lookup failed")
+    comments = []
+    for raw_comment in ((node.get("comments") or {}).get("nodes") or []):
+        if not isinstance(raw_comment, dict):
+            continue
+        body = str(raw_comment.get("body") or "")
+        phase, marker_thread = parse_marker(body)
+        comments.append(
+            {
+                "id": raw_comment.get("id"),
+                "body": body,
+                "created_at": raw_comment.get("createdAt"),
+                "updated_at": raw_comment.get("updatedAt"),
+                "url": raw_comment.get("url"),
+                "author_login": (raw_comment.get("author") or {}).get("login"),
+                "is_self": (raw_comment.get("author") or {}).get("login") == viewer_login,
+                "managed_phase": phase,
+                "managed_thread_id": marker_thread,
+                "has_exact_managed_marker": bool(phase and marker_thread == thread_id),
+            }
+        )
+    return comments
+
+
+def latest_live_exact_managed_reply(
+    repo_root: Path,
+    *,
+    thread_id: str,
+    phase: str,
+) -> dict[str, Any] | None:
+    comments = load_live_thread_comments(repo_root, thread_id)
+    exact_matches = [
+        comment
+        for comment in comments
+        if comment.get("is_self")
+        and comment.get("managed_phase") == phase
+        and comment.get("has_exact_managed_marker")
+    ]
+    if not exact_matches:
+        return None
+    exact_matches.sort(key=comment_sort_key)
+    return exact_matches[-1]
+
+
+def preflight_add_reply(
+    repo_root: Path,
+    *,
+    thread_id: str,
+    phase: str,
+    managed_body: str,
+) -> dict[str, Any] | None:
+    existing = latest_live_exact_managed_reply(repo_root, thread_id=thread_id, phase=phase)
+    if existing is None:
+        return None
+    normalized_existing_body = ensure_marker(str(existing.get("body") or ""), phase, thread_id)
+    if normalized_existing_body == managed_body:
+        return existing
+    raise RuntimeError(
+        f"thread {thread_id}: live exact managed {phase} reply already exists; recollect context and revalidate before applying"
+    )
 
 
 def write_json_output(path: Path | None, payload: dict[str, Any]) -> None:
@@ -267,6 +371,26 @@ def main() -> int:
         op_type = operation["operation"]
         variables = dict(operation["variables"])
         if op_type == "add_reply":
+            existing = preflight_add_reply(
+                repo_root,
+                thread_id=str(variables["threadId"]),
+                phase=str(operation["phase"]),
+                managed_body=str(variables["body"]),
+            )
+            if existing is not None:
+                results.append(
+                    {
+                        "thread_id": operation["thread_id"],
+                        "phase": operation["phase"],
+                        "operation": "skip_existing_reply",
+                        "result": {
+                            "id": existing.get("id"),
+                            "url": existing.get("url"),
+                        },
+                        "reason": "live_exact_managed_reply_already_matches",
+                    }
+                )
+                continue
             payload = graphql(repo_root, ADD_REPLY_MUTATION, variables)
             response = payload["data"]["addPullRequestReviewThreadReply"]["comment"]
         elif op_type == "update_reply":
@@ -286,6 +410,15 @@ def main() -> int:
             }
         )
 
+    mutations = [
+        {
+            "kind": item["operation"],
+            "thread_id": item["thread_id"],
+            "phase": item["phase"],
+        }
+        for item in results
+        if item["operation"] in {"add_reply", "update_reply", "resolve_thread"}
+    ]
     payload = {
         "dry_run": False,
         "apply_succeeded": True,
@@ -296,15 +429,8 @@ def main() -> int:
         "warnings": validated.get("warnings", []),
         "normalized_thread_actions": entries,
         "results": results,
-        "mutations": [
-            {
-                "kind": item["operation"],
-                "thread_id": item["thread_id"],
-                "phase": item["phase"],
-            }
-            for item in results
-        ],
-        "mutation_type": results[0]["operation"] if results else None,
+        "mutations": mutations,
+        "mutation_type": mutations[0]["kind"] if mutations else None,
     }
     if isinstance(validated.get("reconciliation_summary"), dict):
         payload["reconciliation_summary"] = validated["reconciliation_summary"]

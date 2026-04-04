@@ -36,7 +36,7 @@ Use this skill only for repo packet workflows that follow `collect -> optional l
 - The generator writes the thin discovery wrapper to `../../../.agents/skills/<skill-name>/`.
 - Generated skills should treat `../../../.codex/tmp/` as the only repo-local home for temporary, helper, scratch, and ad hoc operator-input files that are not meant for source control.
 - Generated skills should place runtime artifacts under the fixed gitignored repo-local root `../../../.codex/tmp/packet-workflow/<skill-name>/<run-id>/`.
-- Generated skills should default evaluation logging to `~/.codex/tmp/evaluation_logs/<skill-name>/<run-id>.json` and use the fixed gitignored `.codex/tmp/` fallback only when sandbox rules require repo-local writes.
+- Generated skills should default evaluation logging to `<repo-root>/.codex/tmp/evaluation_logs/<skill-name>/<run-id>.json` and keep `.codex/tmp/` gitignored.
 
 4. Validate the generated skill immediately.
 - Run `python <codex-home>/skills/.system/skill-creator/scripts/quick_validate.py ../../../.agents/skills/<skill-name>`.

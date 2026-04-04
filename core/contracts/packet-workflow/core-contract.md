@@ -19,8 +19,10 @@ Optional runtime additions:
   temporary, helper, runtime-artifact, and ad hoc operator-input files.
 - If a transient file must live inside the repo, place it under `.codex/tmp/`
   rather than the repo root or another tracked directory.
-- Evaluation logs may default outside the repo under `~/.codex/tmp/`; if a
-  repo-local fallback is required, keep it under `.codex/tmp/` as well.
+- Evaluation logs default under the repo-local `.codex/tmp/evaluation_logs/`
+  tree.
+- Keep evaluation logs gitignored with the rest of `.codex/tmp/` scratch
+  artifacts.
 
 ## Shared Review Modes
 
@@ -28,6 +30,8 @@ The shared modes are:
 - `local-only`
 - `targeted-delegation`
 - `broad-delegation`
+
+Implementations may record `review_mode_baseline` plus `review_mode_adjustments` alongside the final `review_mode`. A `local-only` baseline may still be promoted to `targeted-delegation` when build-time delegation savings cross the shared floor.
 
 Default review-mode support and default override signals live in `../../defaults/packet-workflow/review-modes.json`.
 

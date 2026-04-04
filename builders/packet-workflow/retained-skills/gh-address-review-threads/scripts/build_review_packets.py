@@ -16,6 +16,7 @@ from review_thread_packet_contract import (
     BROAD_TARGET_LIMIT,
     CHURN_OVERRIDE_LIMIT,
     COMMON_PATH_CONTRACT,
+    DELEGATION_SAVINGS_FLOOR,
     DECISION_READY_PACKETS,
     LOCAL_THREAD_LIMIT,
     MEANINGFUL_GENERATED_FILE_MIN_COUNT,
@@ -553,9 +554,6 @@ def build_outdated_recheck(
     elif not current_head_visible:
         verdict = "ambiguous"
         verdict_reason = "missing_current_head_evidence"
-    elif not request_anchor_visible:
-        verdict = "ambiguous"
-        verdict_reason = "missing_request_anchor_evidence"
     else:
         verdict = "auto-accept"
         verdict_reason = "accepted_same_run_with_current_head_evidence"
@@ -810,12 +808,11 @@ def cluster_non_outdated_threads(threads: list[dict[str, Any]]) -> list[dict[str
     )
 
 
-def determine_review_mode(
+def determine_baseline_review_mode(
     unresolved_non_outdated_count: int,
     active_path_count: int,
     active_area_count: int,
     analysis_target_count: int,
-    override_signals: list[dict[str, str]],
 ) -> str:
     if unresolved_non_outdated_count <= LOCAL_THREAD_LIMIT and active_path_count <= 1 and active_area_count <= 1:
         review_mode = "local-only"
@@ -823,12 +820,48 @@ def determine_review_mode(
         review_mode = "broad-delegation"
     else:
         review_mode = "targeted-delegation"
+    return review_mode
 
+
+def apply_override_adjustment(
+    review_mode: str,
+    override_signals: list[dict[str, str]],
+) -> tuple[str, list[str]]:
+    adjustments: list[str] = []
     if override_signals and review_mode == "local-only":
         review_mode = "targeted-delegation"
+        adjustments.append("override_signal")
     elif override_signals and review_mode == "targeted-delegation":
         review_mode = "broad-delegation"
-    return review_mode
+        adjustments.append("override_signal")
+    return review_mode, adjustments
+
+
+def maybe_apply_delegation_savings_floor(
+    review_mode: str,
+    packet_metrics: dict[str, Any],
+    adjustments: list[str],
+) -> tuple[str, list[str]]:
+    estimated_savings = int(packet_metrics.get("estimated_delegation_savings", 0) or 0)
+    if (
+        review_mode == "local-only"
+        and estimated_savings >= DELEGATION_SAVINGS_FLOOR
+        and "delegation_savings_floor" not in adjustments
+    ):
+        return "targeted-delegation", [*adjustments, "delegation_savings_floor"]
+    return review_mode, adjustments
+
+
+def recommended_worker_minimum(
+    review_mode: str,
+    review_mode_adjustments: list[str],
+) -> int:
+    if (
+        review_mode == "targeted-delegation"
+        and "delegation_savings_floor" in review_mode_adjustments
+    ):
+        return 2
+    return 0
 
 
 def main() -> int:
@@ -1220,12 +1253,15 @@ def main() -> int:
     ]
     analysis_target_count = len(batch_files) + len(singleton_packets)
     packet_worker_map = derive_packet_worker_map(batch_files + singleton_packets)
-    review_mode = determine_review_mode(
+    review_mode_baseline = determine_baseline_review_mode(
         unresolved_non_outdated_count=len(unresolved_non_outdated),
         active_path_count=len(active_paths),
         active_area_count=len(active_areas),
         analysis_target_count=analysis_target_count,
-        override_signals=override_signals,
+    )
+    review_mode, review_mode_adjustments = apply_override_adjustment(
+        review_mode_baseline,
+        override_signals,
     )
 
     recommended_workers = derive_recommended_workers(
@@ -1233,6 +1269,10 @@ def main() -> int:
         global_packet_name=global_packet_name,
         analysis_packet_names=batch_files + singleton_packets,
         packet_worker_map=packet_worker_map,
+        minimum_count=recommended_worker_minimum(
+            review_mode,
+            review_mode_adjustments,
+        ),
     )
     optional_workers = derive_optional_workers(
         review_mode=review_mode,
@@ -1300,6 +1340,8 @@ def main() -> int:
         "repo_profile_path": context.get("repo_profile_path"),
         "repo_profile_summary": context.get("repo_profile_summary"),
         "review_mode": review_mode,
+        "review_mode_baseline": review_mode_baseline,
+        "review_mode_adjustments": review_mode_adjustments,
         "shared_packet": global_packet_name,
         "context_fingerprint": context_fingerprint(context),
         "decision_ready_packets": DECISION_READY_PACKETS,
@@ -1361,11 +1403,53 @@ def main() -> int:
             "override_signals": override_signals,
         },
     )
+    review_mode, review_mode_adjustments = maybe_apply_delegation_savings_floor(
+        review_mode,
+        packet_metrics,
+        review_mode_adjustments,
+    )
+    recommended_workers = derive_recommended_workers(
+        review_mode=review_mode,
+        global_packet_name=global_packet_name,
+        analysis_packet_names=batch_files + singleton_packets,
+        packet_worker_map=packet_worker_map,
+        minimum_count=recommended_worker_minimum(
+            review_mode,
+            review_mode_adjustments,
+        ),
+    )
+    optional_workers = derive_optional_workers(
+        review_mode=review_mode,
+        global_packet_name=global_packet_name,
+        optional_qa_packets=(batch_files + singleton_packets)[:6],
+    )
+    orchestrator["review_mode"] = review_mode
+    orchestrator["review_mode_baseline"] = review_mode_baseline
+    orchestrator["review_mode_adjustments"] = review_mode_adjustments
+    orchestrator["recommended_worker_count"] = len(recommended_workers)
+    orchestrator["optional_worker_count"] = len(optional_workers)
+    orchestrator["recommended_workers"] = recommended_workers
+    orchestrator["optional_workers"] = optional_workers
+    runtime_payloads["orchestrator.json"] = orchestrator
+    write_json(output_dir / "orchestrator.json", orchestrator)
+    packet_metrics = compute_packet_metrics(
+        runtime_payloads,
+        common_path_packet_names=common_path_packet_names,
+        local_only_sources={
+            "context": context,
+            "threads": unresolved_threads,
+            "pr": pr,
+            "changed_files": changed_files,
+            "override_signals": override_signals,
+        },
+    )
     packet_metrics_path = output_dir / "packet_metrics.json"
     write_json(packet_metrics_path, packet_metrics)
 
     build_result = build_result_payload(
         review_mode=review_mode,
+        review_mode_baseline=review_mode_baseline,
+        review_mode_adjustments=review_mode_adjustments,
         recommended_workers=recommended_workers,
         optional_workers=optional_workers,
         thread_batch_count=len(batch_files),

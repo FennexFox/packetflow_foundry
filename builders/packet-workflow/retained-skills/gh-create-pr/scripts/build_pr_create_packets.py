@@ -11,6 +11,8 @@ from typing import Any
 import lint_pr_create as lint_tools
 import pr_create_contract as contract
 
+DELEGATION_SAVINGS_FLOOR = 250
+
 
 def load_json(path: Path) -> dict[str, Any]:
     return contract.load_json(path)
@@ -25,12 +27,10 @@ def active_groups(group_summary: dict[str, dict[str, object]]) -> list[str]:
     return [name for name in ordered_names if (group_summary.get(name) or {}).get("count", 0) > 0]
 
 
-def determine_review_mode(context: dict[str, Any], lint_report: dict[str, Any]) -> tuple[str, int]:
+def determine_baseline_review_mode(context: dict[str, Any]) -> tuple[str, int]:
     groups = context.get("changed_file_groups") or {}
     file_count = len(list(context.get("changed_files") or []))
     group_count = len(active_groups(groups))
-    diff_totals = parse_diff_totals(context.get("diff_stat"))
-    override_signals = lint_report.get("findings", {}).get("override_signals", {})
 
     if file_count <= contract.SMALL_FILE_LIMIT and group_count <= contract.SMALL_GROUP_LIMIT:
         review_mode = "local-only"
@@ -41,7 +41,16 @@ def determine_review_mode(context: dict[str, Any], lint_report: dict[str, Any]) 
     else:
         review_mode = "targeted-delegation"
         worker_count = 2
+    return review_mode, worker_count
 
+
+def apply_override_adjustment(
+    review_mode: str,
+    worker_count: int,
+    lint_report: dict[str, Any],
+) -> tuple[str, int, list[str]]:
+    adjustments: list[str] = []
+    override_signals = lint_report.get("findings", {}).get("override_signals", {})
     if any(bool(value) for value in override_signals.values()):
         if review_mode == "local-only":
             review_mode = "targeted-delegation"
@@ -49,10 +58,37 @@ def determine_review_mode(context: dict[str, Any], lint_report: dict[str, Any]) 
         elif review_mode == "targeted-delegation":
             review_mode = "broad-delegation"
             worker_count = 4
+        adjustments.append("override_signal")
+    return review_mode, worker_count, adjustments
 
+
+def maybe_apply_delegation_savings_floor(
+    review_mode: str,
+    worker_count: int,
+    packet_metrics: dict[str, Any],
+    adjustments: list[str],
+) -> tuple[str, int, list[str]]:
+    estimated_savings = int(packet_metrics.get("estimated_delegation_savings", 0) or 0)
+    if (
+        review_mode == "local-only"
+        and estimated_savings >= DELEGATION_SAVINGS_FLOOR
+        and "delegation_savings_floor" not in adjustments
+    ):
+        return "targeted-delegation", max(worker_count, 2), [*adjustments, "delegation_savings_floor"]
+    return review_mode, worker_count, adjustments
+
+
+def finalize_worker_count(
+    review_mode: str,
+    worker_count: int,
+    adjustments: list[str],
+    diff_totals: dict[str, int],
+) -> int:
     if review_mode == "broad-delegation" and diff_totals.get("churn", 0) >= 3000:
         worker_count = 4
-    return review_mode, worker_count
+    if review_mode == "targeted-delegation" and "delegation_savings_floor" in adjustments:
+        worker_count = max(worker_count, 2)
+    return worker_count
 
 
 def build_rules_packet(context: dict[str, Any], drafting_basis: dict[str, Any]) -> dict[str, Any]:
@@ -298,7 +334,13 @@ def build_worker_specs(
 
 def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any]]:
     groups = context.get("changed_file_groups") or {}
-    review_mode, worker_count = determine_review_mode(context, lint_report)
+    diff_totals = parse_diff_totals(context.get("diff_stat")) or {}
+    review_mode_baseline, worker_count = determine_baseline_review_mode(context)
+    review_mode, worker_count, review_mode_adjustments = apply_override_adjustment(
+        review_mode_baseline,
+        worker_count,
+        lint_report,
+    )
     drafting_basis = lint_report.get("drafting_basis") or {}
     runtime_active = int((groups.get("runtime") or {}).get("count", 0)) > 0
     process_active = any(int((groups.get(name) or {}).get("count", 0)) > 0 for name in ("automation", "docs", "config"))
@@ -338,6 +380,40 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
     packet_metrics["common_path_sufficient"] = True
     packet_metrics["raw_reread_count"] = 0
     packet_metrics["packet_insufficiency_is_failure"] = True
+    review_mode, worker_count, review_mode_adjustments = maybe_apply_delegation_savings_floor(
+        review_mode,
+        worker_count,
+        packet_metrics,
+        review_mode_adjustments,
+    )
+    worker_count = finalize_worker_count(
+        review_mode,
+        worker_count,
+        review_mode_adjustments,
+        diff_totals,
+    )
+    if packet_payloads["global_packet.json"]["review_mode"] != review_mode:
+        packet_payloads["global_packet.json"] = build_global_packet(
+            context,
+            review_mode=review_mode,
+            focused_packet_hint=focused_hint,
+            lint_report=lint_report,
+        )
+        packet_payloads["synthesis_packet.json"] = build_synthesis_packet(
+            context,
+            review_mode=review_mode,
+            lint_report=lint_report,
+            drafting_basis=drafting_basis,
+        )
+        packet_metrics = contract.compute_packet_metrics(
+            packet_payloads,
+            common_path_packet_names=common_path_packets,
+            raw_local_payload=raw_local_bundle(context, lint_report),
+        )
+        packet_metrics["common_path_packets"] = common_path_packets
+        packet_metrics["common_path_sufficient"] = True
+        packet_metrics["raw_reread_count"] = 0
+        packet_metrics["packet_insufficiency_is_failure"] = True
 
     recommended_workers, optional_workers = build_worker_specs(
         review_mode=review_mode,
@@ -349,6 +425,8 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
     packet_files = list(packet_payloads.keys()) + ["orchestrator.json"]
     build_result = {
         "review_mode": review_mode,
+        "review_mode_baseline": review_mode_baseline,
+        "review_mode_adjustments": review_mode_adjustments,
         "recommended_worker_count": len(recommended_workers),
         "optional_worker_count": len(optional_workers),
         "packet_files": packet_files,
@@ -366,6 +444,8 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         "repo_profile_path": context.get("repo_profile_path"),
         "repo_profile_summary": context.get("repo_profile_summary"),
         "review_mode": review_mode,
+        "review_mode_baseline": review_mode_baseline,
+        "review_mode_adjustments": review_mode_adjustments,
         "recommended_worker_count": len(recommended_workers),
         "optional_worker_count": len(optional_workers),
         "shared_packet": "global_packet.json",

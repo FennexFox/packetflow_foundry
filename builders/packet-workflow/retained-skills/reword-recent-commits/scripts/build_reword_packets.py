@@ -48,8 +48,6 @@ GENERATED_FILE_PATTERNS = (
     re.compile(r"(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|poetry\.lock|cargo\.lock)$"),
     re.compile(r"\.min\.(js|css)$"),
 )
-
-
 def parse_shortstat(shortstat: str) -> dict[str, int]:
     files = re.search(r"(\d+)\s+files?\s+changed", shortstat)
     insertions = re.search(r"(\d+)\s+insertions?\(\+\)", shortstat)
@@ -245,11 +243,10 @@ def commit_quality_escape_hints(commit: dict[str, Any]) -> list[dict[str, Any]]:
     return hints
 
 
-def determine_review_mode(
+def determine_baseline_review_mode(
     commit_count: int,
     unique_file_count: int,
     active_area_count: int,
-    override_signals: list[dict[str, str]],
 ) -> tuple[str, int]:
     if commit_count <= LOCAL_COMMIT_LIMIT and unique_file_count <= LOCAL_FILE_LIMIT and active_area_count <= LOCAL_AREA_LIMIT:
         review_mode = "local-only"
@@ -257,17 +254,29 @@ def determine_review_mode(
         review_mode = "broad-delegation"
     else:
         review_mode = "targeted-delegation"
-
-    if override_signals and review_mode == "local-only":
-        review_mode = "targeted-delegation"
-    elif override_signals and review_mode == "targeted-delegation":
-        review_mode = "broad-delegation"
-
     if review_mode == "local-only":
         return review_mode, 0
     if review_mode == "targeted-delegation":
         return review_mode, 2
     return review_mode, 3 if commit_count <= 6 else 4
+
+
+def apply_override_adjustment(
+    review_mode: str,
+    worker_count: int,
+    commit_count: int,
+    override_signals: list[dict[str, str]],
+) -> tuple[str, int, list[str]]:
+    adjustments: list[str] = []
+    if override_signals and review_mode == "local-only":
+        review_mode = "targeted-delegation"
+        worker_count = 2
+        adjustments.append("override_signal")
+    elif override_signals and review_mode == "targeted-delegation":
+        review_mode = "broad-delegation"
+        worker_count = 3 if commit_count <= 6 else 4
+        adjustments.append("override_signal")
+    return review_mode, worker_count, adjustments
 
 
 def chunk_commit_indexes(commit_indexes: list[int], chunks: int) -> list[list[int]]:
@@ -286,6 +295,8 @@ def packet_name_for_commit(commit_index: int) -> str:
 def build_result_payload(
     *,
     review_mode: str,
+    review_mode_baseline: str,
+    review_mode_adjustments: list[str],
     recommended_workers: list[dict[str, Any]],
     packet_files: list[str],
     active_packets: list[str],
@@ -297,6 +308,8 @@ def build_result_payload(
 ) -> dict[str, Any]:
     return {
         "review_mode": review_mode,
+        "review_mode_baseline": review_mode_baseline,
+        "review_mode_adjustments": review_mode_adjustments,
         "recommended_worker_count": len(recommended_workers),
         "recommended_workers": recommended_workers,
         "packet_files": packet_files,
@@ -498,10 +511,15 @@ def main() -> int:
             }
         )
 
-    review_mode, worker_count = determine_review_mode(
+    review_mode_baseline, worker_count = determine_baseline_review_mode(
         commit_count=len(commits),
         unique_file_count=unique_file_count,
         active_area_count=len(area_names),
+    )
+    review_mode, worker_count, review_mode_adjustments = apply_override_adjustment(
+        review_mode_baseline,
+        worker_count,
+        len(commits),
         override_signals=override_signals,
     )
 
@@ -641,6 +659,8 @@ def main() -> int:
         "repo_profile_path": plan.get("repo_profile_path"),
         "repo_profile_summary": plan.get("repo_profile_summary"),
         "review_mode": review_mode,
+        "review_mode_baseline": review_mode_baseline,
+        "review_mode_adjustments": review_mode_adjustments,
         "worker_budget": len(recommended_workers),
         "recommended_worker_count": len(recommended_workers),
         "optional_worker_count": len(optional_workers),
@@ -711,6 +731,83 @@ def main() -> int:
         local_only_sources={"rules": rules, "plan": plan},
         shared_packets=COMMON_PATH_CONTRACT["shared_packets"],
     )
+    if orchestrator["review_mode"] != review_mode:
+        recommended_workers = []
+        optional_workers = []
+        if review_mode == "targeted-delegation":
+            recommended_workers.append(
+                {
+                    "name": "rules",
+                    "agent_type": "docs_verifier",
+                    "packets": ["global_packet.json", "rules_packet.json"],
+                    "responsibility": "Extract hard commit-message rules and preferred scope vocabulary.",
+                    "reasoning_effort": "medium",
+                }
+            )
+            recommended_workers.append(
+                {
+                    "name": "commit-intent",
+                    "agent_type": "evidence_summarizer",
+                    "packets": ["global_packet.json", *commit_packet_names],
+                    "responsibility": "Summarize each targeted commit's primary intent and rewrite constraints.",
+                    "reasoning_effort": "medium",
+                    "model": "gpt-5.4-mini",
+                }
+            )
+        elif review_mode == "broad-delegation":
+            recommended_workers.append(
+                {
+                    "name": "rules",
+                    "agent_type": "docs_verifier",
+                    "packets": ["global_packet.json", "rules_packet.json"],
+                    "responsibility": "Extract hard commit-message rules and preferred scope vocabulary.",
+                    "reasoning_effort": "medium",
+                }
+            )
+            commit_worker_count = max(1, worker_count - 1)
+            for batch_index, batch in enumerate(chunk_commit_indexes(commit_indexes, commit_worker_count), start=1):
+                packets = ["global_packet.json"] + [packet_name_for_commit(index) for index in batch]
+                recommended_workers.append(
+                    {
+                        "name": f"commit-batch-{batch_index}",
+                        "agent_type": "evidence_summarizer",
+                        "packets": packets,
+                        "responsibility": "Summarize commit intent and rewrite constraints for this commit batch.",
+                        "reasoning_effort": "medium",
+                        "model": "gpt-5.4-mini",
+                    }
+                )
+            optional_workers.append(
+                {
+                    "name": "qa",
+                    "agent_type": "large_diff_auditor",
+                    "packets": ["global_packet.json", "rules_packet.json", *commit_packet_names],
+                    "responsibility": "Compare the drafted replacement messages against the rules and per-commit evidence.",
+                    "reasoning_effort": "medium",
+                    "when": "Only add this pass when the rewrite covers many areas or worker findings conflict.",
+                }
+            )
+        orchestrator["review_mode"] = review_mode
+        orchestrator["review_mode_baseline"] = review_mode_baseline
+        orchestrator["review_mode_adjustments"] = review_mode_adjustments
+        orchestrator["worker_budget"] = len(recommended_workers)
+        orchestrator["recommended_worker_count"] = len(recommended_workers)
+        orchestrator["optional_worker_count"] = len(optional_workers)
+        orchestrator["recommended_workers"] = recommended_workers
+        orchestrator["optional_workers"] = optional_workers
+        (output_dir / "orchestrator.json").write_text(
+            json.dumps(orchestrator, indent=2, ensure_ascii=True) + "\n",
+            encoding="utf-8",
+        )
+    final_packet_payloads = {
+        **packet_payloads,
+        "orchestrator.json": orchestrator,
+    }
+    packet_metrics = compute_packet_metrics(
+        final_packet_payloads,
+        local_only_sources={"rules": rules, "plan": plan},
+        shared_packets=COMMON_PATH_CONTRACT["shared_packets"],
+    )
     (output_dir / "packet_metrics.json").write_text(
         json.dumps(packet_metrics, indent=2, ensure_ascii=True) + "\n",
         encoding="utf-8",
@@ -719,6 +816,8 @@ def main() -> int:
     active_packets = ["rules_packet.json", *commit_packet_names]
     build_result = build_result_payload(
         review_mode=review_mode,
+        review_mode_baseline=review_mode_baseline,
+        review_mode_adjustments=review_mode_adjustments,
         recommended_workers=recommended_workers,
         packet_files=orchestrator["packet_files"],
         active_packets=active_packets,

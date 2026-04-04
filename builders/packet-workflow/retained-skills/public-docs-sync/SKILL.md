@@ -31,7 +31,7 @@ This is a packet-driven repo workflow skill:
 - Stop and report the blocker if you cannot resolve a concrete interpreter path.
 - Resolve `<runtime-root>` to `<repo-root>/.codex/tmp/packet-workflow/public-docs-sync/<run-id>/` and keep `.codex/tmp/` gitignored.
 - Set `<packet-dir>` to `<runtime-root>/packets`.
-- Set `<eval-log-json>` to `~/.codex/tmp/evaluation_logs/public-docs-sync/<run-id>.json` by default. If the sandbox blocks that path, use `<repo-root>/.codex/tmp/evaluation_logs/public-docs-sync/<run-id>.json` as an explicit override and keep `.codex/tmp/` gitignored.
+- Set `<eval-log-json>` to `<repo-root>/.codex/tmp/evaluation_logs/public-docs-sync/<run-id>.json` by default and keep `.codex/tmp/` gitignored.
 
 ## Workflow
 
@@ -47,7 +47,7 @@ This is a packet-driven repo workflow skill:
 - This scaffold does not add an orchestrator-profile-level common-path drafting packet.
 
 2. Follow the review mode.
-- `local-only`: keep the work local.
+- `local-only`: keep the work local unless the final `review_mode` was promoted by `review_mode_adjustments=["delegation_savings_floor"]`.
 - `targeted-delegation`: use 1-2 `gpt-5.4-mini` workers on narrow packets.
 - `broad-delegation`: use 3-4 `gpt-5.4-mini` workers and add QA only when findings conflict.
 - Escalate to the next larger mode when churn is high, core runtime/config/process files span groups, or generated files are not the majority.
@@ -55,7 +55,7 @@ This is a packet-driven repo workflow skill:
 3. Keep packet analysis narrow.
 - Treat `references/core-contract.md` as the generic workflow contract and `profiles/default/profile.json` as the repo-specific overlay.
 - Read `references/public-docs-sync-contract.md` before drafting domain outputs.
-- Read `references/delegation-playbook.md` only when `review_mode` is not `local-only`.
+- Read `references/delegation-playbook.md` only when the final `review_mode` is not `local-only`.
 - Worker return contract for this skill: `generic`.
 - Worker output shape for this skill: `flat`.
 - Decision-ready packets enabled: `false`.
@@ -108,7 +108,7 @@ This is a packet-driven repo workflow skill:
 - No orchestrator-profile-specific evaluation sidecar is required.
 - Use `phase` updates for deterministic lint, validate, and apply results when those outputs exist.
 - Use `finalize` after the run to merge token usage, actual worker mix, final usability, outputs, and notes.
-- Keep the evaluation log at the contract-default outside-repo path unless you intentionally need the gitignored `.codex/tmp/` fallback.
+- Keep the evaluation log under the repo-local `.codex/tmp/evaluation_logs/` tree.
 - Keep any repo-local temporary, helper, scratch, or ad hoc input file under the fixed gitignored `.codex/tmp/` tree; packet artifacts stay under `.codex/tmp/packet-workflow/`.
 - Read `references/evaluation-log-contract.md` for the shared envelope and `references/public_docs_sync-evaluation-contract.md` for workflow-specific fields.
 

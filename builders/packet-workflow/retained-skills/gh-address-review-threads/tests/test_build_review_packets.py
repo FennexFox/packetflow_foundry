@@ -15,6 +15,7 @@ for candidate in (str(TEST_DIR), str(SCRIPT_DIR)):
         sys.path.insert(0, candidate)
 
 import build_review_packets as packets  # type: ignore  # noqa: E402
+from review_thread_packet_contract import compute_packet_metrics  # type: ignore  # noqa: E402
 from review_thread_test_support import context_with_threads, marker_conflict, review_thread, write_json  # noqa: E402
 from thread_action_contract import build_context_fingerprint  # type: ignore  # noqa: E402
 
@@ -269,6 +270,89 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertTrue(thread_packet["adjudication_basis"]["common_path_sufficient"])
             self.assertEqual(thread_packet["adjudication_basis"]["explicit_reread_reasons"], [])
 
+    def test_main_keeps_minimum_worker_count_after_savings_floor_promotion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            threads = [
+                review_thread(
+                    thread_id="t-1",
+                    path="src/app.py",
+                    line=2,
+                    reviewer_login="reviewer-a",
+                    reviewer_body="Please tighten the worker selection handling.",
+                )
+            ]
+            context = context_with_threads(tmp, threads)
+            context["conversation_comments"] = [
+                {
+                    "id": "comment-1",
+                    "body": "x" * 20000,
+                    "created_at": "2026-03-01T00:00:00Z",
+                    "updated_at": "2026-03-01T00:00:00Z",
+                    "url": "https://example.invalid/pr/11#issuecomment-1",
+                    "author_login": "reviewer-a",
+                }
+            ]
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            context_path = tmp / "context.json"
+            output_dir = tmp / "packets"
+            build_result_path = tmp / "build-result.json"
+            write_json(context_path, context)
+
+            argv = [
+                "build_review_packets.py",
+                "--context",
+                str(context_path),
+                "--repo-root",
+                context["repo_root"],
+                "--output-dir",
+                str(output_dir),
+                "--result-output",
+                str(build_result_path),
+            ]
+            with patch.object(sys, "argv", argv), patch.object(
+                packets,
+                "diff_snippet_for_path",
+                return_value=None,
+            ):
+                self.assertEqual(packets.main(), 0)
+
+            global_packet = json.loads((output_dir / "global_packet.json").read_text(encoding="utf-8"))
+            thread_packet = json.loads((output_dir / "thread-01.json").read_text(encoding="utf-8"))
+            orchestrator = json.loads((output_dir / "orchestrator.json").read_text(encoding="utf-8"))
+            packet_metrics = json.loads((output_dir / "packet_metrics.json").read_text(encoding="utf-8"))
+            build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(orchestrator["review_mode_baseline"], "local-only")
+            self.assertEqual(orchestrator["review_mode"], "targeted-delegation")
+            self.assertEqual(
+                orchestrator["review_mode_adjustments"],
+                ["delegation_savings_floor"],
+            )
+            self.assertEqual(orchestrator["recommended_worker_count"], 2)
+            self.assertEqual(len(orchestrator["recommended_workers"]), 2)
+            self.assertEqual(build_result["recommended_worker_count"], 2)
+            self.assertEqual(len(build_result["recommended_workers"]), 2)
+            self.assertEqual(packet_metrics["packet_count"], len(orchestrator["packet_files"]))
+            self.assertEqual(
+                packet_metrics,
+                compute_packet_metrics(
+                    {
+                        "global_packet.json": global_packet,
+                        "thread-01.json": thread_packet,
+                        "orchestrator.json": orchestrator,
+                    },
+                    common_path_packet_names=["global_packet.json", "thread-01.json"],
+                    local_only_sources={
+                        "context": context,
+                        "threads": threads,
+                        "pr": context["pr"],
+                        "changed_files": context["changed_files"],
+                        "override_signals": [],
+                    },
+                ),
+            )
+
     def test_main_marks_same_run_outdated_transition_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
@@ -508,7 +592,7 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertEqual(build_result["outdated_auto_resolve_candidates"], 0)
             self.assertEqual(build_result["outdated_recheck_ambiguous"], 1)
 
-    def test_same_run_outdated_transition_requires_request_anchor_evidence(self) -> None:
+    def test_same_run_outdated_transition_does_not_require_request_anchor_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
             previous_threads = [
@@ -603,17 +687,17 @@ class BuildReviewPacketsTests(unittest.TestCase):
             transitioned_packet = json.loads((output_dir / "thread-01.json").read_text(encoding="utf-8"))
             build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
 
-            self.assertEqual(transitioned_packet["outdated_recheck"]["resolution_verdict"], "ambiguous")
+            self.assertEqual(transitioned_packet["outdated_recheck"]["resolution_verdict"], "auto-accept")
             self.assertEqual(
                 transitioned_packet["outdated_recheck"]["verdict_reason"],
-                "missing_request_anchor_evidence",
+                "accepted_same_run_with_current_head_evidence",
             )
             self.assertTrue(transitioned_packet["outdated_recheck"]["current_head_evidence"]["evidence_visible"])
             self.assertFalse(
                 transitioned_packet["outdated_recheck"]["current_head_evidence"]["request_anchor_visible"]
             )
-            self.assertEqual(build_result["outdated_auto_resolve_candidates"], 0)
-            self.assertEqual(build_result["outdated_recheck_ambiguous"], 1)
+            self.assertEqual(build_result["outdated_auto_resolve_candidates"], 1)
+            self.assertEqual(build_result["outdated_recheck_ambiguous"], 0)
 
 
 if __name__ == "__main__":

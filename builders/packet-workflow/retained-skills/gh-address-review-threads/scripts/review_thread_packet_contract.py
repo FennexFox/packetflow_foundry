@@ -14,6 +14,7 @@ DECISION_READY_PACKETS = False
 WORKER_RETURN_CONTRACT = "generic"
 WORKER_OUTPUT_SHAPE = "flat"
 XHIGH_REREAD_POLICY = "packet-first local adjudication with raw rereads only for explicit exception reasons"
+DELEGATION_SAVINGS_FLOOR = 250
 
 LOCAL_THREAD_LIMIT = 1
 TARGETED_THREAD_LIMIT = 4
@@ -121,6 +122,7 @@ def derive_recommended_workers(
     global_packet_name: str,
     analysis_packet_names: list[str],
     packet_worker_map: dict[str, list[str]],
+    minimum_count: int = 0,
 ) -> list[dict[str, Any]]:
     if review_mode == "local-only":
         return []
@@ -133,26 +135,51 @@ def derive_recommended_workers(
     if review_mode == "broad-delegation" and worker_budget < 3 and len(analysis_packet_names) >= 3:
         worker_budget = 3
 
+    def build_worker(packet_name: str, agent_type: str, index: int) -> dict[str, Any]:
+        return {
+            "name": f"thread-analysis-{index}",
+            "agent_type": agent_type,
+            "packets": [global_packet_name, packet_name],
+            "responsibility": "Summarize the threaded issue, fix direction, risk, and concrete file/test scope for this packet.",
+            "reasoning_effort": "medium",
+            "model": "gpt-5.4-mini",
+            "return_contract": [
+                "thread ids",
+                "problem summary",
+                "fix direction",
+                "risk",
+                "files to edit",
+                "tests to run",
+            ],
+        }
+
     workers: list[dict[str, Any]] = []
-    for index, packet_name in enumerate(analysis_packet_names[:worker_budget], start=1):
-        workers.append(
-            {
-                "name": f"thread-analysis-{index}",
-                "agent_type": packet_worker_map.get(packet_name.removesuffix(".json"), ["packet_explorer"])[0],
-                "packets": [global_packet_name, packet_name],
-                "responsibility": "Summarize the threaded issue, fix direction, risk, and concrete file/test scope for this packet.",
-                "reasoning_effort": "medium",
-                "model": "gpt-5.4-mini",
-                "return_contract": [
-                    "thread ids",
-                    "problem summary",
-                    "fix direction",
-                    "risk",
-                    "files to edit",
-                    "tests to run",
-                ],
-            }
-        )
+    used_assignments: set[tuple[str, str]] = set()
+    for packet_name in analysis_packet_names[:worker_budget]:
+        agent_type = packet_worker_map.get(packet_name.removesuffix(".json"), ["packet_explorer"])[0]
+        workers.append(build_worker(packet_name, agent_type, len(workers) + 1))
+        used_assignments.add((packet_name, agent_type))
+
+    if minimum_count > len(workers) and analysis_packet_names:
+        packet_cursor = 0
+        while len(workers) < minimum_count:
+            packet_name = analysis_packet_names[packet_cursor % len(analysis_packet_names)]
+            candidate_agent_types = [
+                *(packet_worker_map.get(packet_name.removesuffix(".json"), []) or []),
+                "repo_mapper",
+                "docs_verifier",
+            ]
+            agent_type = next(
+                (
+                    candidate
+                    for candidate in candidate_agent_types
+                    if (packet_name, candidate) not in used_assignments
+                ),
+                "repo_mapper",
+            )
+            workers.append(build_worker(packet_name, agent_type, len(workers) + 1))
+            used_assignments.add((packet_name, agent_type))
+            packet_cursor += 1
     return workers
 
 
@@ -186,6 +213,8 @@ def derive_optional_workers(
 def build_result_payload(
     *,
     review_mode: str,
+    review_mode_baseline: str,
+    review_mode_adjustments: list[str],
     recommended_workers: list[dict[str, Any]],
     optional_workers: list[dict[str, Any]],
     thread_batch_count: int,
@@ -203,6 +232,8 @@ def build_result_payload(
 ) -> dict[str, Any]:
     return {
         "review_mode": review_mode,
+        "review_mode_baseline": review_mode_baseline,
+        "review_mode_adjustments": review_mode_adjustments,
         "recommended_worker_count": len(recommended_workers),
         "recommended_workers": recommended_workers,
         "optional_workers": optional_workers,

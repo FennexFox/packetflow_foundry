@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import hashlib
 import json
 import os
@@ -122,6 +123,7 @@ PACKET_METRIC_FIELDS = [
     "estimated_packet_tokens",
     "estimated_delegation_savings",
 ]
+DELEGATION_SAVINGS_FLOOR = 250
 CANDIDATE_REQUIRED_FIELDS = [
     "candidate_id",
     "source_type",
@@ -499,6 +501,12 @@ def canonical_analysis_ref_settings(value: Any) -> dict[str, Any]:
         "policy": policy,
         "preferred_branch_order": preferred_branch_order,
     }
+
+
+def coerce_analysis_ref_mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    return {}
 
 
 def resolve_git_common_dir(repo_root: Path) -> Path:
@@ -1441,6 +1449,7 @@ def candidate_base(**kwargs: Any) -> dict[str, Any]:
 
 
 def build_context_fingerprint(context: dict[str, Any]) -> str:
+    analysis_ref = coerce_analysis_ref_mapping(context.get("analysis_ref"))
     payload = {
         "repo_slug": context.get("repo_slug"),
         "default_branch": context.get("default_branch"),
@@ -1450,10 +1459,10 @@ def build_context_fingerprint(context: dict[str, Any]) -> str:
         ),
         "reporting_window": context.get("reporting_window"),
         "analysis_ref": {
-            "policy": (context.get("analysis_ref") or {}).get("policy"),
-            "resolved_via": (context.get("analysis_ref") or {}).get("resolved_via"),
-            "selected_ref": (context.get("analysis_ref") or {}).get("selected_ref"),
-            "selected_sha": (context.get("analysis_ref") or {}).get("selected_sha"),
+            "policy": analysis_ref.get("policy"),
+            "resolved_via": analysis_ref.get("resolved_via"),
+            "selected_ref": analysis_ref.get("selected_ref"),
+            "selected_sha": analysis_ref.get("selected_sha"),
         },
         "release_tags": [release.get("tag_name") for release in context.get("releases", [])],
         "top_level_pr_numbers": [pr.get("number") for pr in context.get("top_level_prs", [])],
@@ -1765,23 +1774,55 @@ def lint_context(context: dict[str, Any]) -> dict[str, Any]:
     return {"findings": {"errors": errors, "warnings": warnings, "info": info}, "override_signals": context.get("override_signals") or {}, "can_proceed": not errors}
 
 
-def select_review_mode(context: dict[str, Any], lint_report: dict[str, Any]) -> str:
+def baseline_review_mode(context: dict[str, Any]) -> str:
     counts = context.get("counts") or {}
     relevant_candidates = sum(1 for candidate in context.get("candidate_inventory") or [] if candidate.get("section_hint") in {"Incidents", "Reviews", "Blockers / Risks"})
-    overrides = {}
-    overrides.update(context.get("override_signals") or {})
-    overrides.update(lint_report.get("override_signals") or {})
     if int(counts.get("top_level_prs") or 0) <= 2 and relevant_candidates <= 4 and int(counts.get("releases") or 0) == 0 and int(counts.get("workflow_failures") or 0) == 0:
         return "local-only"
-    if int(counts.get("top_level_prs") or 0) >= 6 or relevant_candidates >= 10 or any(bool(value) for value in overrides.values()):
+    if int(counts.get("top_level_prs") or 0) >= 6 or relevant_candidates >= 10:
         return "broad-delegation"
     return "targeted-delegation"
 
 
+def apply_override_adjustment(
+    review_mode: str,
+    context: dict[str, Any],
+    lint_report: dict[str, Any],
+) -> tuple[str, list[str]]:
+    overrides = {}
+    overrides.update(context.get("override_signals") or {})
+    overrides.update(lint_report.get("override_signals") or {})
+    if any(bool(value) for value in overrides.values()):
+        review_modes = ["local-only", "targeted-delegation", "broad-delegation"]
+        next_index = min(review_modes.index(review_mode) + 1, len(review_modes) - 1)
+        return review_modes[next_index], ["override_signal"]
+    return review_mode, []
+
+
+def maybe_apply_delegation_savings_floor(
+    review_mode: str,
+    packet_metrics: dict[str, Any],
+    adjustments: list[str],
+) -> tuple[str, list[str]]:
+    estimated_savings = int(packet_metrics.get("estimated_delegation_savings", 0) or 0)
+    if (
+        review_mode == "local-only"
+        and estimated_savings >= DELEGATION_SAVINGS_FLOOR
+        and "delegation_savings_floor" not in adjustments
+    ):
+        return "targeted-delegation", [*adjustments, "delegation_savings_floor"]
+    return review_mode, adjustments
+
+
 def build_packets(context: dict[str, Any], lint_report: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    review_mode = select_review_mode(context, lint_report)
+    review_mode_baseline = baseline_review_mode(context)
+    review_mode, review_mode_adjustments = apply_override_adjustment(
+        review_mode_baseline,
+        context,
+        lint_report,
+    )
     candidate_lookup = {candidate["candidate_id"]: candidate for candidate in context.get("candidate_inventory") or []}
-    context_analysis_ref = dict(context.get("analysis_ref") or {})
+    context_analysis_ref = coerce_analysis_ref_mapping(context.get("analysis_ref"))
     analysis_ref = {
         "policy": context_analysis_ref.get("policy"),
         "preferred_branch_order": context_analysis_ref.get("preferred_branch_order")
@@ -1812,51 +1853,10 @@ def build_packets(context: dict[str, Any], lint_report: dict[str, Any]) -> dict[
         if candidate["proposed_classification"] in {BLOCKER_OR_RISK, ARTIFACT_ONLY}
         or (candidate.get("section_hint") == "Reviews" and candidate["proposed_classification"] == BLOCKER_OR_RISK)
     ]
-    workers = routed_workers_for_review_mode(review_mode)
-    optional_workers = derived_optional_workers(workers)
     worker_selection_guidance = {
         "routing_authority": "packet_worker_map",
         "notes": "worker_selection_guidance is explanatory only; packet_worker_map is the concrete routing source.",
         "agent_type_guidance": WORKER_SELECTION_GUIDANCE,
-    }
-    global_packet = {
-        "skill_name": SKILL_NAME,
-        "workflow_family": WORKFLOW_FAMILY,
-        "archetype": ARCHETYPE,
-        "primary_goal": PRIMARY_GOAL,
-        "repo_profile_name": context.get("repo_profile_name"),
-        "repo_profile_path": context.get("repo_profile_path"),
-        "repo_profile_summary": context.get("repo_profile_summary"),
-        "repo_profile": context.get("repo_profile"),
-        "reporting_window": context.get("reporting_window"),
-        "output_sections": OUTPUT_SECTIONS,
-        "authority_order": AUTHORITY_ORDER,
-        "stop_conditions": STOP_CONDITIONS,
-        "review_mode": review_mode,
-        "review_mode_overrides": REVIEW_MODE_OVERRIDES,
-        "decision_ready_packets": DECISION_READY_PACKETS,
-        "worker_return_contract": WORKER_RETURN_CONTRACT,
-        "worker_output_shape": WORKER_OUTPUT_SHAPE,
-        "candidate_field_bundles": CANDIDATE_FIELD_BUNDLES,
-        "worker_footer_fields": WORKER_FOOTER_FIELDS,
-        "reread_reason_values": [None, *RAW_REREAD_REASONS],
-        "domain_overlay": DOMAIN_OVERLAY,
-        "preferred_worker_families": PREFERRED_WORKER_FAMILIES,
-        "packet_worker_map": PACKET_WORKER_MAP,
-        "worker_selection_guidance": worker_selection_guidance,
-        "analysis_ref": analysis_ref,
-        "source_gaps": context.get("source_gaps") or [],
-        "candidate_schema": {"required_fields": CANDIDATE_REQUIRED_FIELDS, "proposed_classification_values": PROPOSED_CLASSIFICATIONS, "confidence_values": CONFIDENCE_VALUES, "raw_reread_reason_values": [None, *RAW_REREAD_REASONS], "source_refs_rule": "canonical citation list only; do not use evidence_files_or_links", "artifact_only_rule": "artifact_only candidates are reference-only and do not appear as standalone final section items"},
-        "worker_output_contract": {
-            "worker_output_shape": WORKER_OUTPUT_SHAPE,
-            "candidates_container": "candidates",
-            "footer_container": "footer",
-            "candidate_level_fields": CANDIDATE_REQUIRED_FIELDS,
-            "worker_footer_fields": WORKER_FOOTER_FIELDS,
-            "candidate_ids_order_rule": "candidate_ids must follow candidates[] stable discovery order exactly",
-        },
-        "reviews_rules": {"resolved_review_findings": "Reviews only", "unresolved_gate_impact_findings": "Reviews and Blockers / Risks may both include them", "excluded_noise": "generic notice, bot noise, and empty self-review"},
-        "apply_contract": {"plan_file": "weekly-update-plan.json", "reads_only": ["overall_confidence", "stop_reasons", "allow_marker_update"]},
     }
     mapping_packet = {
         "packet_id": "mapping_packet",
@@ -1880,33 +1880,102 @@ def build_packets(context: dict[str, Any], lint_report: dict[str, Any]) -> dict[
     risks_packet = focused_packet_contract("risks_packet", [candidate_lookup[candidate_id] for candidate_id in risk_ids])
     risks_packet["candidate_ids"] = risk_ids
     risks_packet["artifact_reference_candidate_ids"] = [candidate_id for candidate_id in risk_ids if candidate_lookup[candidate_id]["proposed_classification"] == ARTIFACT_ONLY]
-    orchestrator = {
-        "skill_name": SKILL_NAME,
-        "workflow_family": WORKFLOW_FAMILY,
-        "archetype": ARCHETYPE,
-        "orchestrator_profile": ORCHESTRATOR_PROFILE,
-        "repo_profile_name": context.get("repo_profile_name"),
-        "repo_profile_path": context.get("repo_profile_path"),
-        "repo_profile_summary": context.get("repo_profile_summary"),
-        "analysis_ref": analysis_ref,
-        "review_mode": review_mode,
-        "decision_ready_packets": DECISION_READY_PACKETS,
-        "worker_return_contract": WORKER_RETURN_CONTRACT,
-        "worker_output_shape": WORKER_OUTPUT_SHAPE,
-        "preferred_worker_families": PREFERRED_WORKER_FAMILIES,
-        "packet_worker_map": PACKET_WORKER_MAP,
-        "worker_selection_guidance": worker_selection_guidance,
-        "recommended_worker_count": len(workers),
-        "recommended_workers": workers,
-        "optional_workers": optional_workers,
-        "local_responsibilities": ["final adjudication", "section inclusion and exclusion", "exception-path raw reread only when needed", "final wording", "state marker update gate"],
-        "shared_packet": "global_packet.json",
-        "selected_packets": PACKET_NAMES,
-        "common_path_contract": COMMON_PATH_CONTRACT,
-        "analysis_targets": {"candidate_count": len(context.get("candidate_inventory") or []), "batch_count": 0},
-        "review_mode_overrides": REVIEW_MODE_OVERRIDES,
-    }
-    return {"orchestrator.json": orchestrator, "global_packet.json": global_packet, "mapping_packet.json": mapping_packet, "changes_packet.json": changes_packet, "incidents_packet.json": incidents_packet, "risks_packet.json": risks_packet}
+
+    def render_packets(
+        final_review_mode: str,
+        final_adjustments: list[str],
+    ) -> dict[str, dict[str, Any]]:
+        workers = routed_workers_for_review_mode(final_review_mode)
+        optional_workers = derived_optional_workers(workers)
+        global_packet = {
+            "skill_name": SKILL_NAME,
+            "workflow_family": WORKFLOW_FAMILY,
+            "archetype": ARCHETYPE,
+            "primary_goal": PRIMARY_GOAL,
+            "repo_profile_name": context.get("repo_profile_name"),
+            "repo_profile_path": context.get("repo_profile_path"),
+            "repo_profile_summary": context.get("repo_profile_summary"),
+            "repo_profile": context.get("repo_profile"),
+            "reporting_window": context.get("reporting_window"),
+            "output_sections": OUTPUT_SECTIONS,
+            "authority_order": AUTHORITY_ORDER,
+            "stop_conditions": STOP_CONDITIONS,
+            "review_mode": final_review_mode,
+            "review_mode_overrides": REVIEW_MODE_OVERRIDES,
+            "decision_ready_packets": DECISION_READY_PACKETS,
+            "worker_return_contract": WORKER_RETURN_CONTRACT,
+            "worker_output_shape": WORKER_OUTPUT_SHAPE,
+            "candidate_field_bundles": CANDIDATE_FIELD_BUNDLES,
+            "worker_footer_fields": WORKER_FOOTER_FIELDS,
+            "reread_reason_values": [None, *RAW_REREAD_REASONS],
+            "domain_overlay": DOMAIN_OVERLAY,
+            "preferred_worker_families": PREFERRED_WORKER_FAMILIES,
+            "packet_worker_map": PACKET_WORKER_MAP,
+            "worker_selection_guidance": worker_selection_guidance,
+            "analysis_ref": analysis_ref,
+            "source_gaps": context.get("source_gaps") or [],
+            "candidate_schema": {"required_fields": CANDIDATE_REQUIRED_FIELDS, "proposed_classification_values": PROPOSED_CLASSIFICATIONS, "confidence_values": CONFIDENCE_VALUES, "raw_reread_reason_values": [None, *RAW_REREAD_REASONS], "source_refs_rule": "canonical citation list only; do not use evidence_files_or_links", "artifact_only_rule": "artifact_only candidates are reference-only and do not appear as standalone final section items"},
+            "worker_output_contract": {
+                "worker_output_shape": WORKER_OUTPUT_SHAPE,
+                "candidates_container": "candidates",
+                "footer_container": "footer",
+                "candidate_level_fields": CANDIDATE_REQUIRED_FIELDS,
+                "worker_footer_fields": WORKER_FOOTER_FIELDS,
+                "candidate_ids_order_rule": "candidate_ids must follow candidates[] stable discovery order exactly",
+            },
+            "reviews_rules": {"resolved_review_findings": "Reviews only", "unresolved_gate_impact_findings": "Reviews and Blockers / Risks may both include them", "excluded_noise": "generic notice, bot noise, and empty self-review"},
+            "apply_contract": {"plan_file": "weekly-update-plan.json", "reads_only": ["overall_confidence", "stop_reasons", "allow_marker_update"]},
+        }
+        orchestrator = {
+            "skill_name": SKILL_NAME,
+            "workflow_family": WORKFLOW_FAMILY,
+            "archetype": ARCHETYPE,
+            "orchestrator_profile": ORCHESTRATOR_PROFILE,
+            "repo_profile_name": context.get("repo_profile_name"),
+            "repo_profile_path": context.get("repo_profile_path"),
+            "repo_profile_summary": context.get("repo_profile_summary"),
+            "analysis_ref": analysis_ref,
+            "review_mode": final_review_mode,
+            "review_mode_baseline": review_mode_baseline,
+            "review_mode_adjustments": final_adjustments,
+            "decision_ready_packets": DECISION_READY_PACKETS,
+            "worker_return_contract": WORKER_RETURN_CONTRACT,
+            "worker_output_shape": WORKER_OUTPUT_SHAPE,
+            "preferred_worker_families": PREFERRED_WORKER_FAMILIES,
+            "packet_worker_map": PACKET_WORKER_MAP,
+            "worker_selection_guidance": worker_selection_guidance,
+            "recommended_worker_count": len(workers),
+            "recommended_workers": workers,
+            "optional_workers": optional_workers,
+            "local_responsibilities": ["final adjudication", "section inclusion and exclusion", "exception-path raw reread only when needed", "final wording", "state marker update gate"],
+            "shared_packet": "global_packet.json",
+            "selected_packets": PACKET_NAMES,
+            "common_path_contract": COMMON_PATH_CONTRACT,
+            "analysis_targets": {"candidate_count": len(context.get("candidate_inventory") or []), "batch_count": 0},
+            "review_mode_overrides": REVIEW_MODE_OVERRIDES,
+        }
+        return {
+            "orchestrator.json": orchestrator,
+            "global_packet.json": global_packet,
+            "mapping_packet.json": mapping_packet,
+            "changes_packet.json": changes_packet,
+            "incidents_packet.json": incidents_packet,
+            "risks_packet.json": risks_packet,
+        }
+
+    packets = render_packets(review_mode, review_mode_adjustments)
+    packet_metrics = compute_packet_metrics(
+        packets,
+        raw_local_sources={"context": context, "lint": lint_report},
+    )
+    review_mode, review_mode_adjustments = maybe_apply_delegation_savings_floor(
+        review_mode,
+        packet_metrics,
+        review_mode_adjustments,
+    )
+    if packets["orchestrator.json"]["review_mode"] != review_mode:
+        packets = render_packets(review_mode, review_mode_adjustments)
+    return packets
 
 
 def count_candidates_by_proposed_classification(candidates: Iterable[dict[str, Any]]) -> dict[str, int]:
@@ -1951,6 +2020,7 @@ def compute_packet_metrics(packet_payloads: dict[str, Any], *, raw_local_sources
 def build_packet_artifacts(context: dict[str, Any], lint_report: dict[str, Any]) -> dict[str, Any]:
     packets = build_packets(context, lint_report)
     candidates = list(context.get("candidate_inventory") or [])
+    analysis_ref = coerce_analysis_ref_mapping(context.get("analysis_ref"))
     packet_metrics = compute_packet_metrics(
         packets,
         raw_local_sources={"context": context, "lint": lint_report},
@@ -1959,10 +2029,14 @@ def build_packet_artifacts(context: dict[str, Any], lint_report: dict[str, Any])
     build_result = {
         "repo_profile_name": context.get("repo_profile_name"),
         "repo_profile_path": context.get("repo_profile_path"),
-        "analysis_ref_policy": (context.get("analysis_ref") or {}).get("policy"),
-        "analysis_ref_selected_branch": (context.get("analysis_ref") or {}).get("selected_branch"),
-        "analysis_ref_selected_sha": (context.get("analysis_ref") or {}).get("selected_sha"),
+        "analysis_ref_policy": analysis_ref.get("policy"),
+        "analysis_ref_selected_branch": analysis_ref.get("selected_branch"),
+        "analysis_ref_selected_sha": analysis_ref.get("selected_sha"),
         "review_mode": packets["orchestrator.json"].get("review_mode"),
+        "review_mode_baseline": packets["orchestrator.json"].get("review_mode_baseline"),
+        "review_mode_adjustments": list(
+            packets["orchestrator.json"].get("review_mode_adjustments") or []
+        ),
         "selected_packets": list(packets["orchestrator.json"].get("selected_packets") or []),
         "recommended_worker_count": packets["orchestrator.json"].get("recommended_worker_count"),
         "recommended_workers": list(packets["orchestrator.json"].get("recommended_workers") or []),
@@ -2162,11 +2236,12 @@ def validate_weekly_update_plan(context: dict[str, Any], plan: dict[str, Any]) -
 
 
 def apply_plan(*, context: dict[str, Any], plan: dict[str, Any], state_file: str | None = None, dry_run: bool = False) -> dict[str, Any]:
+    analysis_ref = coerce_analysis_ref_mapping(context.get("analysis_ref"))
     repo_hash = str(
         context.get("repo_hash")
         or compute_repo_hash(
             Path(context["repo_root"]),
-            analysis_ref_settings=(context.get("analysis_ref") or {}),
+            analysis_ref_settings=analysis_ref,
         )
     )
     resolved_state_file = (
@@ -2191,7 +2266,6 @@ def apply_plan(*, context: dict[str, Any], plan: dict[str, Any], state_file: str
     if not allow_marker_update and "allow_marker_update=false" not in stop_reasons:
         stop_reasons.append("allow_marker_update=false")
     marker_update_written = False
-    analysis_ref = context.get("analysis_ref") or {}
     selected_sha = str(
         analysis_ref.get("selected_sha") or context.get("head_sha") or ""
     )

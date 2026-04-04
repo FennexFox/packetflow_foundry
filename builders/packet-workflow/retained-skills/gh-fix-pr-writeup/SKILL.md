@@ -29,7 +29,7 @@ Boundary:
 - Stop and report the blocker if you cannot resolve a concrete interpreter path.
 - Resolve `<runtime-root>` to `<repo-root>/.codex/tmp/packet-workflow/gh-fix-pr-writeup/<run-id>/` and keep `.codex/tmp/` gitignored.
 - Set `<packet-dir>` to `<runtime-root>/packets`.
-- Set `<eval-log-json>` to `~/.codex/tmp/evaluation_logs/gh-fix-pr-writeup/<run-id>.json` by default. If the sandbox blocks that path, use `<repo-root>/.codex/tmp/evaluation_logs/gh-fix-pr-writeup/<run-id>.json` as an explicit override and keep `.codex/tmp/` gitignored.
+- Set `<eval-log-json>` to `<repo-root>/.codex/tmp/evaluation_logs/gh-fix-pr-writeup/<run-id>.json` by default and keep `.codex/tmp/` gitignored.
 
 ## Workflow
 
@@ -48,10 +48,11 @@ Boundary:
 
 3. Follow the review mode and packet contract.
 - `local-only`
-  - use no workers
+  - use no workers unless the final `review_mode` was promoted by `review_mode_adjustments=["delegation_savings_floor"]`
   - keep drafting on `rules_packet.json`, `synthesis_packet.json`, and one focused packet at most
 - `targeted-delegation`
   - use 1-2 narrow workers on focused packets
+  - keep at least 2 workers when the promotion reason is `delegation_savings_floor`
 - `broad-delegation`
   - use 3-4 narrow workers
   - QA is still a rare exception, not the common path
@@ -133,7 +134,7 @@ Boundary:
 - After guarded apply or dry-run, merge `apply-result.json` with the `apply` phase.
 - `packet_metrics.json` and build-result metadata should drive token-efficiency and common-path regression tracking.
 - Runtime packets must stay lean and must not embed packet-size or token counters.
-- Keep the evaluation log at the contract-default outside-repo path unless you intentionally need the gitignored `.codex/tmp/` fallback.
+- Keep the evaluation log under the repo-local `.codex/tmp/evaluation_logs/` tree.
 
 ## Output
 

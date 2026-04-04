@@ -35,7 +35,7 @@ Boundary:
   - `<runtime-root>/post/`
   - `<runtime-root>/complete/`
 - Read packet locations from the manifest instead of re-deriving or reusing stale filenames from a previous run.
-- Set `<eval-log-json>` to `~/.codex/tmp/evaluation_logs/gh-address-review-threads/<run-id>.json` by default. If the sandbox blocks that path, use `<repo-root>/.codex/tmp/evaluation_logs/gh-address-review-threads/<run-id>.json` as an explicit override and keep `.codex/tmp/` gitignored.
+- Set `<eval-log-json>` to `<repo-root>/.codex/tmp/evaluation_logs/gh-address-review-threads/<run-id>.json` by default and keep `.codex/tmp/` gitignored.
 
 ## Workflow
 
@@ -60,13 +60,14 @@ Boundary:
 - Before deciding a thread, read that packet's `discussion`, `existing_self_reply`, `reply_candidates`, `validation_candidates`, and `ownership_summary` or `shared_fix_surface`.
 
 2. Follow the review mode.
-- `local-only`: keep thread analysis and code changes local.
+- `local-only`: keep thread analysis and code changes local unless the final `review_mode` was promoted by `review_mode_adjustments=["delegation_savings_floor"]`.
 - `targeted-delegation`: use 1-2 `gpt-5.4-mini` workers on thread-batch or singleton packets.
 - `broad-delegation`: use 3-4 `gpt-5.4-mini` workers and add QA only when findings conflict or the fix surface is broad.
 - Respect `review_mode_overrides` when churn, cross-group core files, or meaningful generated-file slices warrant widening the mode.
 - Treat `packet_worker_map` as the routing authority for delegated thread packets.
 - Treat `preferred_worker_families` as registry metadata only.
 - Treat `recommended_workers` and `optional_workers` as derived convenience fields only.
+- Use `review_mode_baseline` and `review_mode_adjustments` to explain when a small local baseline was promoted for token savings.
 - Read `references/review-threads-contract.md` before broad delegation or reply planning on a noisy PR.
 
 3. Keep adjudication local.
@@ -164,7 +165,7 @@ Boundary:
 - After drafting a raw phase plan, prefer `<python-bin> -B <skill-dir>/scripts/validate_thread_action_plan.py ... --output <packet-dir>/ack-validated.json` or `... --output <packet-dir>/complete-validated.json`, then merge with `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <eval-log-json> --phase validate --result <validated-json>`.
 - After `ack` or `complete`, prefer `<python-bin> -B <skill-dir>/scripts/apply_thread_action_plan.py ... --plan <validated-json> --result-output <packet-dir>/ack-result.json` or `... --plan <validated-json> --result-output <packet-dir>/complete-result.json`, then merge each result with `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <eval-log-json> --phase apply --result <result-json>`.
 - After the overall run, write `<packet-dir>/final-eval.json` with worker usage, token data when available, final usability, outputs, and notes, then run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py finalize --log <eval-log-json> --final <packet-dir>/final-eval.json`.
-- Prefer the contract-default `<eval-log-json>` outside the repo. Keep packets and helper temp files under the fixed gitignored runtime root from `## Execution Roots`.
+- Prefer the contract-default repo-local `<eval-log-json>` under `.codex/tmp/evaluation_logs/`. Keep packets and helper temp files under the fixed gitignored runtime root from `## Execution Roots`.
 - Read `references/evaluation-log-contract.md` for the shared envelope and `references/gh-address-review-threads-evaluation-contract.md` for thread-specific fields.
 - Read `references/architecture-note.md` for the rationale behind the current flat/generic contract and the criteria for revisiting hierarchy.
 - Use `<python-bin> -B <skill-dir>/scripts/smoke_gh_address_review_threads.py --repo-root <repo-root>` for an operator-facing dry-run smoke on the current branch PR.

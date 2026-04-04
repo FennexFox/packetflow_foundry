@@ -1,11 +1,11 @@
 # Delegation Playbook
 
-Read this file only when `orchestrator.json` sets `review_mode` to `targeted-delegation` or `broad-delegation`.
+Read this file only when the final `orchestrator.json` `review_mode` is `targeted-delegation` or `broad-delegation`.
 
 ## Worker Budget
 
-- `local-only`: no workers
-- `targeted-delegation`: 1-2 analysis workers
+- `local-only`: no workers on the final path
+- `targeted-delegation`: 1-2 analysis workers; keep at least 2 when `review_mode_adjustments` includes `delegation_savings_floor`
 - `broad-delegation`: 3-4 analysis workers
 - Optional QA worker: only when packet findings conflict or broad mutation needs a final coverage pass
 

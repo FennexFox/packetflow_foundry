@@ -57,13 +57,13 @@ Read `references/architecture-note.md` before changing the packet/result model o
 - Re-check `rules_packet.json` immediately before confirming the final replacement messages.
 
 2. Follow the review mode from `orchestrator.json`.
-- `local-only`: keep the rewrite fully local, but still run the same
+- `local-only`: keep the rewrite fully local for minimal plans, but still run the same
   collect/build/validate/apply driver path. This is not an amend fast path.
 - `targeted-delegation`: use the routed mini workers for `rules_packet.json` and the commit packets.
 - `broad-delegation`: use the routed mini workers and add QA only when findings conflict or the rewrite spans many areas.
 - Treat `packet_worker_map` as the routing authority and `preferred_worker_families` as explanatory metadata.
 - This pass is a metadata/doc refresh. Keep the current `task_packet_names` and `task_packet_ids` shapes; naming migration is intentionally out of scope.
-- If `spawn_agent` is unavailable or fails, stay local on the same packet workflow.
+- If `spawn_agent` is unavailable or fails, stay local on the same packet workflow even when the final `review_mode` preferred delegation.
 
 3. Respect the flat packet contract.
 - `decision_ready_packets=false`

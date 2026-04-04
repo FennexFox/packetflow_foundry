@@ -32,6 +32,7 @@ QA_RETURN_CONTRACT = contract.QA_RETURN_CONTRACT
 PREFERRED_WORKER_FAMILIES = contract.PREFERRED_WORKER_FAMILIES
 PACKET_WORKER_MAP = contract.PACKET_WORKER_MAP
 WORKER_SELECTION_GUIDANCE = contract.WORKER_SELECTION_GUIDANCE
+DELEGATION_SAVINGS_FLOOR = 250
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -134,7 +135,7 @@ def full_rewrite_likely(body: str, findings: dict[str, Any]) -> bool:
     return False
 
 
-def determine_review_mode(
+def determine_baseline_review_mode(
     *,
     file_count: int,
     group_count: int,
@@ -142,7 +143,6 @@ def determine_review_mode(
     runtime_active: bool,
     process_active: bool,
     testing_relevant: bool,
-    override_signals: list[dict[str, object]],
 ) -> tuple[str, int]:
     churn = (diff_totals or {}).get("churn", 0)
     if file_count <= SMALL_FILE_LIMIT and group_count <= SMALL_GROUP_LIMIT:
@@ -151,11 +151,6 @@ def determine_review_mode(
         review_mode = "broad-delegation"
     else:
         review_mode = "targeted-delegation"
-
-    if override_signals and review_mode == "local-only":
-        review_mode = "targeted-delegation"
-    elif override_signals and review_mode == "targeted-delegation":
-        review_mode = "broad-delegation"
 
     if review_mode == "local-only":
         return review_mode, 0
@@ -167,10 +162,64 @@ def determine_review_mode(
         (runtime_active and process_active and testing_relevant)
         or churn >= VERY_LARGE_CHURN_LIMIT
         or group_count >= 5
-        or bool(override_signals)
     ):
         worker_count = 4
     return review_mode, worker_count
+
+
+def apply_override_adjustment(
+    *,
+    review_mode: str,
+    worker_count: int,
+    group_count: int,
+    diff_totals: dict[str, int] | None,
+    runtime_active: bool,
+    process_active: bool,
+    testing_relevant: bool,
+    override_signals: list[dict[str, object]],
+) -> tuple[str, int, list[str]]:
+    adjustments: list[str] = []
+    churn = (diff_totals or {}).get("churn", 0)
+    if override_signals and review_mode == "local-only":
+        review_mode = "targeted-delegation"
+        worker_count = 2
+        adjustments.append("override_signal")
+    elif override_signals and review_mode == "targeted-delegation":
+        review_mode = "broad-delegation"
+        worker_count = 3
+        adjustments.append("override_signal")
+    elif override_signals:
+        adjustments.append("override_signal")
+
+    if review_mode == "local-only":
+        return review_mode, 0, adjustments
+    if review_mode == "targeted-delegation":
+        return review_mode, 2, adjustments
+
+    if (
+        (runtime_active and process_active and testing_relevant)
+        or churn >= VERY_LARGE_CHURN_LIMIT
+        or group_count >= 5
+        or bool(override_signals)
+    ):
+        worker_count = 4
+    return review_mode, worker_count, adjustments
+
+
+def maybe_apply_delegation_savings_floor(
+    review_mode: str,
+    worker_count: int,
+    packet_metrics: dict[str, Any],
+    adjustments: list[str],
+) -> tuple[str, int, list[str]]:
+    estimated_savings = int(packet_metrics.get("estimated_delegation_savings", 0) or 0)
+    if (
+        review_mode == "local-only"
+        and estimated_savings >= DELEGATION_SAVINGS_FLOOR
+        and "delegation_savings_floor" not in adjustments
+    ):
+        return "targeted-delegation", max(worker_count, 2), [*adjustments, "delegation_savings_floor"]
+    return review_mode, worker_count, adjustments
 
 
 def focus_packet_name(groups: dict[str, dict[str, Any]], findings: dict[str, Any]) -> str | None:
@@ -532,8 +581,17 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         generated_file_count=generated_file_count,
         generated_file_ratio=generated_file_ratio,
     )
-    review_mode, worker_count = determine_review_mode(
+    review_mode_baseline, worker_count = determine_baseline_review_mode(
         file_count=file_count,
+        group_count=group_count,
+        diff_totals=diff_totals,
+        runtime_active=runtime_active,
+        process_active=process_active,
+        testing_relevant=testing_relevant,
+    )
+    review_mode, worker_count, review_mode_adjustments = apply_override_adjustment(
+        review_mode=review_mode_baseline,
+        worker_count=worker_count,
         group_count=group_count,
         diff_totals=diff_totals,
         runtime_active=runtime_active,
@@ -578,14 +636,6 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
     if process_packet is not None:
         packet_payloads["process_packet.json"] = process_packet
 
-    recommended_workers, optional_workers = build_worker_specs(
-        review_mode=review_mode,
-        worker_count=worker_count,
-        runtime_active=runtime_active,
-        process_active=process_active,
-        testing_relevant=testing_relevant,
-    )
-
     packet_metrics = contract.compute_packet_metrics(
         packet_payloads,
         common_path_packet_names=common_path_packets,
@@ -596,10 +646,50 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
     packet_metrics["common_path_sufficient"] = True
     packet_metrics["raw_reread_count"] = 0
     packet_metrics["packet_insufficiency_is_failure"] = True
+    review_mode, worker_count, review_mode_adjustments = maybe_apply_delegation_savings_floor(
+        review_mode,
+        worker_count,
+        packet_metrics,
+        review_mode_adjustments,
+    )
+    if packet_payloads["global_packet.json"]["review_mode"] != review_mode:
+        packet_payloads["global_packet.json"] = build_global_packet(
+            context,
+            review_mode=review_mode,
+            override_signals=override_signals,
+            focused_packet_hint=focused_packet_hint,
+        )
+        packet_payloads["synthesis_packet.json"] = build_synthesis_packet(
+            context,
+            review_mode=review_mode,
+            drafting_basis=drafting_basis,
+            focused_packet_hint=focused_packet_hint,
+        )
+        synthesis_packet = packet_payloads["synthesis_packet.json"]
+        packet_metrics = contract.compute_packet_metrics(
+            packet_payloads,
+            common_path_packet_names=common_path_packets,
+            raw_local_payload=raw_local_bundle(context, lint_report),
+        )
+        packet_metrics["raw_reread_allowed_reasons"] = contract.RAW_REREAD_ALLOWED_REASONS
+        packet_metrics["common_path_packets"] = common_path_packets
+        packet_metrics["common_path_sufficient"] = True
+        packet_metrics["raw_reread_count"] = 0
+        packet_metrics["packet_insufficiency_is_failure"] = True
+
+    recommended_workers, optional_workers = build_worker_specs(
+        review_mode=review_mode,
+        worker_count=worker_count,
+        runtime_active=runtime_active,
+        process_active=process_active,
+        testing_relevant=testing_relevant,
+    )
 
     packet_files = list(packet_payloads.keys()) + ["orchestrator.json"]
     build_result = {
         "review_mode": review_mode,
+        "review_mode_baseline": review_mode_baseline,
+        "review_mode_adjustments": review_mode_adjustments,
         "recommended_worker_count": len(recommended_workers),
         "optional_worker_count": len(optional_workers),
         "packet_files": packet_files,
@@ -626,6 +716,8 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         "repo_profile_path": context.get("repo_profile_path"),
         "repo_profile_summary": context.get("repo_profile_summary"),
         "review_mode": review_mode,
+        "review_mode_baseline": review_mode_baseline,
+        "review_mode_adjustments": review_mode_adjustments,
         "recommended_worker_count": len(recommended_workers),
         "optional_worker_count": len(optional_workers),
         "shared_packet": "global_packet.json",
