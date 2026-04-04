@@ -480,9 +480,16 @@ def canonical_analysis_ref_settings(value: Any) -> dict[str, Any]:
         if requested_policy in ANALYSIS_REF_POLICY_VALUES
         else DEFAULT_ANALYSIS_REF_POLICY
     )
+    raw_preferred_branch_order = payload.get("preferred_branch_order")
+    if isinstance(raw_preferred_branch_order, list):
+        preferred_branch_order_source = raw_preferred_branch_order
+    elif isinstance(raw_preferred_branch_order, str):
+        preferred_branch_order_source = [raw_preferred_branch_order]
+    else:
+        preferred_branch_order_source = []
     preferred_branch_order: list[str] = []
     seen: set[str] = set()
-    for raw_item in payload.get("preferred_branch_order", []):
+    for raw_item in preferred_branch_order_source:
         branch = normalize_branch_name(raw_item)
         if not branch or branch in seen:
             continue
@@ -511,10 +518,12 @@ def compute_repo_hash(
     *,
     analysis_ref_settings: dict[str, Any] | None = None,
 ) -> str:
+    canonical_settings = canonical_analysis_ref_settings(analysis_ref_settings)
     payload = {
         "schema_version": STATE_IDENTITY_SCHEMA_VERSION,
         "git_common_dir": resolve_git_common_dir(repo_root).as_posix().lower(),
-        "analysis_ref": canonical_analysis_ref_settings(analysis_ref_settings),
+        # State identity is stable for one logical repo plus one analysis-ref policy.
+        "analysis_ref": {"policy": canonical_settings["policy"]},
     }
     encoded = json.dumps(
         payload,

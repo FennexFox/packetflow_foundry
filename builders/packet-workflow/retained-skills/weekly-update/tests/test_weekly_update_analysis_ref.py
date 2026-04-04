@@ -227,6 +227,17 @@ class WeeklyUpdateAnalysisRefTests(unittest.TestCase):
             self.assertEqual(context["analysis_ref"]["selected_ref"], "refs/heads/release-candidate")
             self.assertEqual(context["analysis_ref"]["selected_sha"], commits["base_sha"])
 
+    def test_canonical_analysis_ref_settings_treats_string_branch_order_as_single_entry(self) -> None:
+        settings = wl.canonical_analysis_ref_settings(
+            {
+                "policy": wl.ANALYSIS_REF_POLICY_PREFERRED_BRANCH_ORDER,
+                "preferred_branch_order": "refs/heads/release-candidate",
+            }
+        )
+
+        self.assertEqual(settings["policy"], wl.ANALYSIS_REF_POLICY_PREFERRED_BRANCH_ORDER)
+        self.assertEqual(settings["preferred_branch_order"], ["release-candidate"])
+
     def test_state_marker_identity_is_stable_across_worktree_paths_for_same_policy(
         self,
     ) -> None:
@@ -268,6 +279,29 @@ class WeeklyUpdateAnalysisRefTests(unittest.TestCase):
                 },
             )
             self.assertNotEqual(context_main["repo_hash"], fresh_hash)
+
+    def test_state_marker_identity_ignores_preferred_branch_order_contents(self) -> None:
+        with tempfile.TemporaryDirectory() as temp_dir:
+            temp_path = Path(temp_dir)
+            repo_root = temp_path / "repo"
+            self.init_detached_repo(repo_root)
+
+            ordered_hash = wl.compute_repo_hash(
+                repo_root,
+                analysis_ref_settings={
+                    "policy": wl.ANALYSIS_REF_POLICY_PREFERRED_BRANCH_ORDER,
+                    "preferred_branch_order": ["release-candidate", "newer"],
+                },
+            )
+            reordered_hash = wl.compute_repo_hash(
+                repo_root,
+                analysis_ref_settings={
+                    "policy": wl.ANALYSIS_REF_POLICY_PREFERRED_BRANCH_ORDER,
+                    "preferred_branch_order": ["newer"],
+                },
+            )
+
+            self.assertEqual(ordered_hash, reordered_hash)
 
 
 if __name__ == "__main__":
