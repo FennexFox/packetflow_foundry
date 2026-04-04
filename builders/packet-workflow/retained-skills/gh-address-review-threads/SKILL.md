@@ -35,7 +35,7 @@ Boundary:
   - `<runtime-root>/post/`
   - `<runtime-root>/complete/`
 - Read packet locations from the manifest instead of re-deriving or reusing stale filenames from a previous run.
-- Set `<eval-log-json>` to `~/.codex/tmp/evaluation_logs/gh-address-review-threads/<run-id>.json` by default. If the sandbox blocks that path, use `<repo-root>/.codex/tmp/evaluation_logs/gh-address-review-threads/<run-id>.json` as an explicit override and keep `.codex/tmp/` gitignored.
+- Set `<eval-log-json>` to `<repo-root>/.codex/tmp/evaluation_logs/gh-address-review-threads/<run-id>.json` by default and keep `.codex/tmp/` gitignored.
 
 ## Workflow
 
@@ -165,7 +165,7 @@ Boundary:
 - After drafting a raw phase plan, prefer `<python-bin> -B <skill-dir>/scripts/validate_thread_action_plan.py ... --output <packet-dir>/ack-validated.json` or `... --output <packet-dir>/complete-validated.json`, then merge with `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <eval-log-json> --phase validate --result <validated-json>`.
 - After `ack` or `complete`, prefer `<python-bin> -B <skill-dir>/scripts/apply_thread_action_plan.py ... --plan <validated-json> --result-output <packet-dir>/ack-result.json` or `... --plan <validated-json> --result-output <packet-dir>/complete-result.json`, then merge each result with `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --log <eval-log-json> --phase apply --result <result-json>`.
 - After the overall run, write `<packet-dir>/final-eval.json` with worker usage, token data when available, final usability, outputs, and notes, then run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py finalize --log <eval-log-json> --final <packet-dir>/final-eval.json`.
-- Prefer the contract-default `<eval-log-json>` outside the repo. Keep packets and helper temp files under the fixed gitignored runtime root from `## Execution Roots`.
+- Prefer the contract-default repo-local `<eval-log-json>` under `.codex/tmp/evaluation_logs/`. Keep packets and helper temp files under the fixed gitignored runtime root from `## Execution Roots`.
 - Read `references/evaluation-log-contract.md` for the shared envelope and `references/gh-address-review-threads-evaluation-contract.md` for thread-specific fields.
 - Read `references/architecture-note.md` for the rationale behind the current flat/generic contract and the criteria for revisiting hierarchy.
 - Use `<python-bin> -B <skill-dir>/scripts/smoke_gh_address_review_threads.py --repo-root <repo-root>` for an operator-facing dry-run smoke on the current branch PR.

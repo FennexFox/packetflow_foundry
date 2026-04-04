@@ -34,7 +34,7 @@ This is a packet-driven repo workflow skill:
 - Stop and report the blocker if you cannot resolve a concrete interpreter path.
 - Resolve `<runtime-root>` to `<repo-root>/.codex/tmp/packet-workflow/draft-release-copy/<run-id>/` and keep `.codex/tmp/` gitignored.
 - Set `<packet-dir>` to `<runtime-root>/packets`.
-- Set `<eval-log-json>` to `~/.codex/tmp/evaluation_logs/draft-release-copy/<run-id>.json` by default. If the sandbox blocks that path, use `<repo-root>/.codex/tmp/evaluation_logs/draft-release-copy/<run-id>.json` as an explicit override and keep `.codex/tmp/` gitignored.
+- Set `<eval-log-json>` to `<repo-root>/.codex/tmp/evaluation_logs/draft-release-copy/<run-id>.json` by default and keep `.codex/tmp/` gitignored.
 
 ## Workflow
 
@@ -118,7 +118,7 @@ This is a packet-driven repo workflow skill:
   - `packet_metrics.json` for packet sizing, byte proxies, and regression-oriented token-efficiency estimates.
 - Use `phase` updates for deterministic lint, validate, and apply results when those outputs exist.
 - Use `finalize` after the run to merge token usage, actual worker mix, final usability, outputs, and notes.
-- Keep the evaluation log at the contract-default outside-repo path unless you intentionally need the gitignored `.codex/tmp/` fallback.
+- Keep the evaluation log under the repo-local `.codex/tmp/evaluation_logs/` tree.
 - Keep any repo-local temporary, helper, scratch, or ad hoc input file under the fixed gitignored `.codex/tmp/` tree; packet artifacts stay under `.codex/tmp/packet-workflow/`.
 - Read `references/evaluation-log-contract.md` for the shared envelope and `references/release_copy-evaluation-contract.md` for workflow-specific fields.
 

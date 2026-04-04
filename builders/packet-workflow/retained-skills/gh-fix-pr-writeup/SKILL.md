@@ -29,7 +29,7 @@ Boundary:
 - Stop and report the blocker if you cannot resolve a concrete interpreter path.
 - Resolve `<runtime-root>` to `<repo-root>/.codex/tmp/packet-workflow/gh-fix-pr-writeup/<run-id>/` and keep `.codex/tmp/` gitignored.
 - Set `<packet-dir>` to `<runtime-root>/packets`.
-- Set `<eval-log-json>` to `~/.codex/tmp/evaluation_logs/gh-fix-pr-writeup/<run-id>.json` by default. If the sandbox blocks that path, use `<repo-root>/.codex/tmp/evaluation_logs/gh-fix-pr-writeup/<run-id>.json` as an explicit override and keep `.codex/tmp/` gitignored.
+- Set `<eval-log-json>` to `<repo-root>/.codex/tmp/evaluation_logs/gh-fix-pr-writeup/<run-id>.json` by default and keep `.codex/tmp/` gitignored.
 
 ## Workflow
 
@@ -134,7 +134,7 @@ Boundary:
 - After guarded apply or dry-run, merge `apply-result.json` with the `apply` phase.
 - `packet_metrics.json` and build-result metadata should drive token-efficiency and common-path regression tracking.
 - Runtime packets must stay lean and must not embed packet-size or token counters.
-- Keep the evaluation log at the contract-default outside-repo path unless you intentionally need the gitignored `.codex/tmp/` fallback.
+- Keep the evaluation log under the repo-local `.codex/tmp/evaluation_logs/` tree.
 
 ## Output
 

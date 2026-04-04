@@ -69,7 +69,7 @@ If the run cannot proceed, report the blocker clearly and stop at the appropriat
 - Stop and report the blocker if you cannot resolve a concrete interpreter path.
 - Resolve `<runtime-root>` to `<repo-root>/.codex/tmp/packet-workflow/weekly-update/<run-id>/` and keep `.codex/tmp/` gitignored.
 - Set `<packet-dir>` to `<runtime-root>/packets`.
-- Set `<eval-log-json>` to `~/.codex/tmp/evaluation_logs/weekly-update/<run-id>.json` by default. If the sandbox blocks that path, use `<repo-root>/.codex/tmp/evaluation_logs/weekly-update/<run-id>.json` as an explicit override and keep `.codex/tmp/` gitignored.
+- Set `<eval-log-json>` to `<repo-root>/.codex/tmp/evaluation_logs/weekly-update/<run-id>.json` by default and keep `.codex/tmp/` gitignored.
 
 ## Workflow
 
@@ -164,7 +164,7 @@ If the run cannot proceed, report the blocker clearly and stop at the appropriat
 - `<skill-dir>/scripts/apply_weekly_update.py`
   - Update only the last-success marker after the local plan passes the apply gate.
 - `<skill-dir>/scripts/smoke_weekly_update.py`
-  - Run an opt-in end-to-end smoke of collect → lint → build → eval init/build → validate → eval validate → apply `--dry-run` → eval apply, verify runtime packets stay lean, and confirm `--dry-run` apply does not write a marker.
+  - Run an opt-in end-to-end smoke of collect ??lint ??build ??eval init/build ??validate ??eval validate ??apply `--dry-run` ??eval apply, verify runtime packets stay lean, and confirm `--dry-run` apply does not write a marker.
 - `<skill-dir>/scripts/refresh_weekly_update_live_fixture.py`
   - Maintainer-only helper that refreshes the live sample fixture and paired plan fixtures from current repo and GitHub evidence. Keep it out of the default test path and prefer `--dry-run` before overwriting fixture files.
 
@@ -175,7 +175,7 @@ If the run cannot proceed, report the blocker clearly and stop at the appropriat
 - Use phase updates for deterministic validate and apply results when those outputs exist.
 - Keep token-efficiency counters in `packet_metrics.json` and the evaluation log only; do not treat them as runtime routing metadata.
 - Finalize the evaluation log after the run with worker usage, packet usage, confidence, marker-update status, and any stop reasons.
-- Keep the evaluation log at the contract-default outside-repo path unless you intentionally need the gitignored `.codex/tmp/` fallback.
+- Keep the evaluation log under the repo-local `.codex/tmp/evaluation_logs/` tree.
 - Read `references/evaluation-log-contract.md` for the shared envelope and `references/weekly-update-evaluation-contract.md` for workflow-specific fields.
 
 ## Output

@@ -244,7 +244,7 @@ Generated skills should inherit these assumptions unless the target workflow cle
 - refresh smoke expectations from a fresh snapshot instead of hardcoding them
 - use deterministic markers or fingerprints for reruns
 - treat optional local helpers as local-only and non-authoritative
-- emit local evaluation logs outside the repo by default
+- emit local evaluation logs under the repo-local `.codex/tmp/evaluation_logs/` tree
 
 ## Non-Goals
 

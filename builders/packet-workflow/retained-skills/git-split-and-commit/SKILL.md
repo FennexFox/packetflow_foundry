@@ -32,12 +32,12 @@ Read `references/architecture-rationale.md` before changing packet metadata, del
 - Stop and report the blocker if you cannot resolve a concrete interpreter path.
 - Resolve `<runtime-root>` to `<repo-root>/.codex/tmp/packet-workflow/git-split-and-commit/<run-id>/` and keep `.codex/tmp/` gitignored.
 - Set `<packet-dir>` to `<runtime-root>/packets`.
-- Set `<eval-log-json>` to `~/.codex/tmp/evaluation_logs/git-split-and-commit/<run-id>.json` by default. If the sandbox blocks that path, use `<repo-root>/.codex/tmp/evaluation_logs/git-split-and-commit/<run-id>.json` as an explicit override and keep `.codex/tmp/` gitignored.
+- Set `<eval-log-json>` to `<repo-root>/.codex/tmp/evaluation_logs/git-split-and-commit/<run-id>.json` by default and keep `.codex/tmp/` gitignored.
 
 ## Workflow
 
 1. Collect rules and worktree context before planning commits.
-- Write helper artifacts outside the repo root, preferably in a system temp directory.
+- Write helper artifacts under the repo-local `.codex/tmp/` scratch tree unless a specific command requires another writable location.
 - Run `<python-bin> -B <skill-dir>/scripts/collect_commit_rules.py --repo <repo-root> --output <rules-json>`.
 - Run `<python-bin> -B <skill-dir>/scripts/collect_worktree_context.py --repo <repo-root> --output <worktree-json>`.
 - Run `<python-bin> -B <skill-dir>/scripts/build_commit_packets.py --rules <rules-json> --worktree <worktree-json> --output-dir <packet-dir> --result-output <build-result-json>`.
@@ -120,7 +120,7 @@ Read `references/architecture-rationale.md` before changing packet metadata, del
 - Use `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <worktree-json> --orchestrator <packet-dir>/orchestrator.json --output <eval-log-json>` after packet generation.
 - Merge deterministic phase results with `phase` after validation or apply.
 - Finalize the evaluation log after the run with worker usage, packet usage, confidence, validation status, and any stop reasons.
-- Keep the evaluation log at the contract-default outside-repo path unless you intentionally need the gitignored `.codex/tmp/` fallback.
+- Keep the evaluation log under the repo-local `.codex/tmp/evaluation_logs/` tree.
 - Read `references/evaluation-log-contract.md` for the shared envelope and `references/git-split-and-commit-evaluation-contract.md` for commit-planning-specific fields.
 
 ## Maintenance Notes

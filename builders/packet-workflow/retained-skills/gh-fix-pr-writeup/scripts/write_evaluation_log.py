@@ -415,8 +415,9 @@ def safe_filename(value: str) -> str:
     return sanitized or "evaluation-log"
 
 
-def default_output_path(skill_name: str, run_id: str) -> Path:
-    return Path.home() / ".codex" / "tmp" / "evaluation_logs" / skill_name / f"{safe_filename(run_id)}.json"
+def default_output_path(repo_root: Any, skill_name: str, run_id: str) -> Path:
+    repo_path = Path(str(repo_root or ".")).resolve()
+    return repo_path / ".codex" / "tmp" / "evaluation_logs" / skill_name / f"{safe_filename(run_id)}.json"
 
 
 def build_base_log(
@@ -1025,7 +1026,7 @@ def main() -> int:
         orchestrator = load_json(Path(args.orchestrator))
         lint_report = load_json(Path(args.lint)) if args.lint else None
         payload = build_base_log(script_path, context, orchestrator, lint_report)
-        output = Path(args.output).resolve() if args.output else default_output_path(payload["skill"]["name"], payload["run_id"])
+        output = Path(args.output).resolve() if args.output else default_output_path((payload.get("repo") or {}).get("repo_root"), payload["skill"]["name"], payload["run_id"])
         write_json(output, payload)
         print_summary(output, payload)
         return 0

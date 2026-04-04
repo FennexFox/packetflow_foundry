@@ -791,7 +791,7 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 skill_md,
             )
             self.assertIn(
-                "~/.codex/tmp/evaluation_logs/packet-explorer-smoke/<run-id>.json",
+                "<repo-root>/.codex/tmp/evaluation_logs/packet-explorer-smoke/<run-id>.json",
                 skill_md,
             )
             self.assertIn(
@@ -805,6 +805,10 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             self.assertIn("## Shared Repo-Local Temporary File Policy", core_contract)
             self.assertIn(
                 "transient file must live inside the repo, place it under `.codex/tmp/`",
+                core_contract,
+            )
+            self.assertIn(
+                "Evaluation logs default under the repo-local `.codex/tmp/evaluation_logs/`",
                 core_contract,
             )
             self.assertIn('display_name: "Packet Explorer Smoke"', agents_yaml)
@@ -1180,6 +1184,22 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             self.assertIn("review_mode_baseline", build_result)
             self.assertIn("review_mode_adjustments", build_result)
             self.assertEqual(build_result["repo_profile_name"], "sample-repo")
+
+            default_eval_log = run_python(
+                scripts_dir / "write_evaluation_log.py",
+                "init",
+                "--context",
+                str(context_path),
+                "--orchestrator",
+                str(packets_dir / "orchestrator.json"),
+            )
+            default_eval_log_summary = json.loads(default_eval_log.stdout)
+            default_eval_log_path = Path(default_eval_log_summary["log_path"])
+            self.assertTrue(default_eval_log_path.exists())
+            self.assertEqual(
+                default_eval_log_path.parent,
+                repo_root / ".codex" / "tmp" / "evaluation_logs" / str(spec["skill_name"]),
+            )
 
             run_python(
                 scripts_dir / "write_evaluation_log.py",

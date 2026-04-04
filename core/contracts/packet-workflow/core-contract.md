@@ -19,8 +19,10 @@ Optional runtime additions:
   temporary, helper, runtime-artifact, and ad hoc operator-input files.
 - If a transient file must live inside the repo, place it under `.codex/tmp/`
   rather than the repo root or another tracked directory.
-- Evaluation logs may default outside the repo under `~/.codex/tmp/`; if a
-  repo-local fallback is required, keep it under `.codex/tmp/` as well.
+- Evaluation logs default under the repo-local `.codex/tmp/evaluation_logs/`
+  tree.
+- Keep evaluation logs gitignored with the rest of `.codex/tmp/` scratch
+  artifacts.
 
 ## Shared Review Modes
 
