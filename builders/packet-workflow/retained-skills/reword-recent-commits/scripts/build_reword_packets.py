@@ -824,6 +824,15 @@ def main() -> int:
             json.dumps(orchestrator, indent=2, ensure_ascii=True) + "\n",
             encoding="utf-8",
         )
+    final_packet_payloads = {
+        **packet_payloads,
+        "orchestrator.json": orchestrator,
+    }
+    packet_metrics = compute_packet_metrics(
+        final_packet_payloads,
+        local_only_sources={"rules": rules, "plan": plan},
+        shared_packets=COMMON_PATH_CONTRACT["shared_packets"],
+    )
     (output_dir / "packet_metrics.json").write_text(
         json.dumps(packet_metrics, indent=2, ensure_ascii=True) + "\n",
         encoding="utf-8",

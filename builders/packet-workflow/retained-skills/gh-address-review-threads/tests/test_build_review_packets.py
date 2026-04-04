@@ -15,6 +15,7 @@ for candidate in (str(TEST_DIR), str(SCRIPT_DIR)):
         sys.path.insert(0, candidate)
 
 import build_review_packets as packets  # type: ignore  # noqa: E402
+from review_thread_packet_contract import compute_packet_metrics  # type: ignore  # noqa: E402
 from review_thread_test_support import context_with_threads, marker_conflict, review_thread, write_json  # noqa: E402
 from thread_action_contract import build_context_fingerprint  # type: ignore  # noqa: E402
 
@@ -316,7 +317,10 @@ class BuildReviewPacketsTests(unittest.TestCase):
             ):
                 self.assertEqual(packets.main(), 0)
 
+            global_packet = json.loads((output_dir / "global_packet.json").read_text(encoding="utf-8"))
+            thread_packet = json.loads((output_dir / "thread-01.json").read_text(encoding="utf-8"))
             orchestrator = json.loads((output_dir / "orchestrator.json").read_text(encoding="utf-8"))
+            packet_metrics = json.loads((output_dir / "packet_metrics.json").read_text(encoding="utf-8"))
             build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
 
             self.assertEqual(orchestrator["review_mode_baseline"], "local-only")
@@ -329,6 +333,25 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertEqual(len(orchestrator["recommended_workers"]), 2)
             self.assertEqual(build_result["recommended_worker_count"], 2)
             self.assertEqual(len(build_result["recommended_workers"]), 2)
+            self.assertEqual(packet_metrics["packet_count"], len(orchestrator["packet_files"]))
+            self.assertEqual(
+                packet_metrics,
+                compute_packet_metrics(
+                    {
+                        "global_packet.json": global_packet,
+                        "thread-01.json": thread_packet,
+                        "orchestrator.json": orchestrator,
+                    },
+                    common_path_packet_names=["global_packet.json", "thread-01.json"],
+                    local_only_sources={
+                        "context": context,
+                        "threads": threads,
+                        "pr": context["pr"],
+                        "changed_files": context["changed_files"],
+                        "override_signals": [],
+                    },
+                ),
+            )
 
     def test_main_marks_same_run_outdated_transition_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

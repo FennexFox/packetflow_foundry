@@ -1435,6 +1435,17 @@ def main() -> int:
     orchestrator["optional_workers"] = optional_workers
     runtime_payloads["orchestrator.json"] = orchestrator
     write_json(output_dir / "orchestrator.json", orchestrator)
+    packet_metrics = compute_packet_metrics(
+        runtime_payloads,
+        common_path_packet_names=common_path_packet_names,
+        local_only_sources={
+            "context": context,
+            "threads": unresolved_threads,
+            "pr": pr,
+            "changed_files": changed_files,
+            "override_signals": override_signals,
+        },
+    )
     packet_metrics_path = output_dir / "packet_metrics.json"
     write_json(packet_metrics_path, packet_metrics)
 
