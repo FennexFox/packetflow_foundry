@@ -513,6 +513,26 @@ def compute_legacy_repo_hash(repo_root: Path) -> str:
     return hashlib.sha256(str(repo_root).lower().encode("utf-8")).hexdigest()[:16]
 
 
+def legacy_state_file_candidates(repo_root: Path, *, namespace: str) -> list[Path]:
+    candidates: list[Path] = []
+    seen_roots: set[str] = set()
+    for candidate_root in (
+        repo_root.resolve(),
+        resolve_git_common_dir(repo_root).parent.resolve(),
+    ):
+        root_key = candidate_root.as_posix().lower()
+        if root_key in seen_roots:
+            continue
+        seen_roots.add(root_key)
+        candidates.append(
+            default_state_file(
+                compute_legacy_repo_hash(candidate_root),
+                namespace=namespace,
+            )
+        )
+    return candidates
+
+
 def compute_repo_hash(
     repo_root: Path,
     *,
@@ -619,10 +639,10 @@ def resolve_state_marker_files(
     state_namespace: str,
     analysis_ref_settings: dict[str, Any],
     state_file: str | None,
-) -> tuple[Path, Path | None, str]:
+) -> tuple[Path, list[Path], str]:
     if state_file:
         resolved = Path(state_file).resolve()
-        return resolved, None, compute_repo_hash(
+        return resolved, [], compute_repo_hash(
             repo_root,
             analysis_ref_settings=analysis_ref_settings,
         )
@@ -630,12 +650,16 @@ def resolve_state_marker_files(
         repo_root,
         analysis_ref_settings=analysis_ref_settings,
     )
-    legacy_path = default_state_file(
-        compute_legacy_repo_hash(repo_root),
-        namespace=state_namespace,
-    )
     resolved = default_state_file(repo_hash, namespace=state_namespace)
-    return resolved, (legacy_path if legacy_path != resolved else None), repo_hash
+    legacy_paths = [
+        candidate
+        for candidate in legacy_state_file_candidates(
+            repo_root,
+            namespace=state_namespace,
+        )
+        if candidate != resolved
+    ]
+    return resolved, legacy_paths, repo_hash
 
 
 def select_reporting_window(*, now_utc: datetime, window_days: int, state_marker: dict[str, Any] | None) -> dict[str, Any]:
@@ -1536,7 +1560,7 @@ def collect_context(
         analysis_ref_settings=runtime_settings["analysis_ref"],
         workspace_branch_state=workspace_branch_state,
     )
-    resolved_state_file, legacy_state_file, repo_hash = resolve_state_marker_files(
+    resolved_state_file, legacy_state_files, repo_hash = resolve_state_marker_files(
         repo_root=repo_path,
         state_namespace=runtime_settings["state_namespace"],
         analysis_ref_settings=runtime_settings["analysis_ref"],
@@ -1545,21 +1569,25 @@ def collect_context(
     marker, marker_warnings = load_state_marker(resolved_state_file)
     state_marker_source_file = resolved_state_file if marker is not None else None
     notes = [f"Loaded repo profile from {profile_path.as_posix()}."]
-    if (
-        marker is None
-        and not marker_warnings
-        and legacy_state_file is not None
-        and legacy_state_file.exists()
-    ):
-        legacy_marker, legacy_warnings = load_state_marker(legacy_state_file)
-        marker = legacy_marker
-        marker_warnings = legacy_warnings
-        if marker is not None:
-            state_marker_source_file = legacy_state_file
-            notes.append(
-                "Reused a legacy weekly-update state marker while transitioning "
-                "to stable repo identity keying."
-            )
+    if marker is None and not marker_warnings:
+        legacy_marker_warnings: list[str] = []
+        for legacy_state_file in legacy_state_files:
+            if not legacy_state_file.exists():
+                continue
+            legacy_marker, legacy_warnings = load_state_marker(legacy_state_file)
+            if legacy_marker is not None:
+                marker = legacy_marker
+                marker_warnings = legacy_marker_warnings + legacy_warnings
+                state_marker_source_file = legacy_state_file
+                notes.append(
+                    "Reused a legacy weekly-update state marker while transitioning "
+                    "to stable repo identity keying."
+                )
+                break
+            legacy_marker_warnings.extend(legacy_warnings)
+        else:
+            if legacy_marker_warnings:
+                marker_warnings = legacy_marker_warnings
     current_now = parse_iso8601(now_utc) or utc_now()
     reporting_window = select_reporting_window(now_utc=current_now, window_days=window_days, state_marker=marker)
     window_start = parse_iso8601(reporting_window["start_utc"])
