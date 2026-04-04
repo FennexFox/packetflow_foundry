@@ -1,5 +1,5 @@
 interface:
-  display_name: "Address Review Threads"
+  display_name: "GH Address Review Threads"
   short_description: "Inspect and resolve open GitHub PR review threads"
   default_prompt: >-
     Use $gh-address-review-threads to handle unresolved PR review threads on

@@ -1,4 +1,7 @@
 interface:
   display_name: "Public Docs Sync"
-  short_description: "audit public docs with scoped packet analysis and..."
-  default_prompt: "audit public docs with scoped packet analysis and validator-normalized deterministic sync actions"
+  short_description: "Audit and synchronize public repository docs against runtime metadata and GitHub evidence"
+  default_prompt: >-
+    Use $public-docs-sync to audit tracked public docs against runtime
+    metadata and GitHub evidence, prepare deterministic sync edits, and
+    apply them only after validation.
