@@ -3,6 +3,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 import hashlib
 import json
 import os
@@ -500,6 +501,12 @@ def canonical_analysis_ref_settings(value: Any) -> dict[str, Any]:
         "policy": policy,
         "preferred_branch_order": preferred_branch_order,
     }
+
+
+def coerce_analysis_ref_mapping(value: Any) -> dict[str, Any]:
+    if isinstance(value, Mapping):
+        return dict(value)
+    return {}
 
 
 def resolve_git_common_dir(repo_root: Path) -> Path:
@@ -1442,6 +1449,7 @@ def candidate_base(**kwargs: Any) -> dict[str, Any]:
 
 
 def build_context_fingerprint(context: dict[str, Any]) -> str:
+    analysis_ref = coerce_analysis_ref_mapping(context.get("analysis_ref"))
     payload = {
         "repo_slug": context.get("repo_slug"),
         "default_branch": context.get("default_branch"),
@@ -1451,10 +1459,10 @@ def build_context_fingerprint(context: dict[str, Any]) -> str:
         ),
         "reporting_window": context.get("reporting_window"),
         "analysis_ref": {
-            "policy": (context.get("analysis_ref") or {}).get("policy"),
-            "resolved_via": (context.get("analysis_ref") or {}).get("resolved_via"),
-            "selected_ref": (context.get("analysis_ref") or {}).get("selected_ref"),
-            "selected_sha": (context.get("analysis_ref") or {}).get("selected_sha"),
+            "policy": analysis_ref.get("policy"),
+            "resolved_via": analysis_ref.get("resolved_via"),
+            "selected_ref": analysis_ref.get("selected_ref"),
+            "selected_sha": analysis_ref.get("selected_sha"),
         },
         "release_tags": [release.get("tag_name") for release in context.get("releases", [])],
         "top_level_pr_numbers": [pr.get("number") for pr in context.get("top_level_prs", [])],
@@ -1814,7 +1822,7 @@ def build_packets(context: dict[str, Any], lint_report: dict[str, Any]) -> dict[
         lint_report,
     )
     candidate_lookup = {candidate["candidate_id"]: candidate for candidate in context.get("candidate_inventory") or []}
-    context_analysis_ref = dict(context.get("analysis_ref") or {})
+    context_analysis_ref = coerce_analysis_ref_mapping(context.get("analysis_ref"))
     analysis_ref = {
         "policy": context_analysis_ref.get("policy"),
         "preferred_branch_order": context_analysis_ref.get("preferred_branch_order")
@@ -2012,6 +2020,7 @@ def compute_packet_metrics(packet_payloads: dict[str, Any], *, raw_local_sources
 def build_packet_artifacts(context: dict[str, Any], lint_report: dict[str, Any]) -> dict[str, Any]:
     packets = build_packets(context, lint_report)
     candidates = list(context.get("candidate_inventory") or [])
+    analysis_ref = coerce_analysis_ref_mapping(context.get("analysis_ref"))
     packet_metrics = compute_packet_metrics(
         packets,
         raw_local_sources={"context": context, "lint": lint_report},
@@ -2020,9 +2029,9 @@ def build_packet_artifacts(context: dict[str, Any], lint_report: dict[str, Any])
     build_result = {
         "repo_profile_name": context.get("repo_profile_name"),
         "repo_profile_path": context.get("repo_profile_path"),
-        "analysis_ref_policy": (context.get("analysis_ref") or {}).get("policy"),
-        "analysis_ref_selected_branch": (context.get("analysis_ref") or {}).get("selected_branch"),
-        "analysis_ref_selected_sha": (context.get("analysis_ref") or {}).get("selected_sha"),
+        "analysis_ref_policy": analysis_ref.get("policy"),
+        "analysis_ref_selected_branch": analysis_ref.get("selected_branch"),
+        "analysis_ref_selected_sha": analysis_ref.get("selected_sha"),
         "review_mode": packets["orchestrator.json"].get("review_mode"),
         "review_mode_baseline": packets["orchestrator.json"].get("review_mode_baseline"),
         "review_mode_adjustments": list(
@@ -2227,11 +2236,12 @@ def validate_weekly_update_plan(context: dict[str, Any], plan: dict[str, Any]) -
 
 
 def apply_plan(*, context: dict[str, Any], plan: dict[str, Any], state_file: str | None = None, dry_run: bool = False) -> dict[str, Any]:
+    analysis_ref = coerce_analysis_ref_mapping(context.get("analysis_ref"))
     repo_hash = str(
         context.get("repo_hash")
         or compute_repo_hash(
             Path(context["repo_root"]),
-            analysis_ref_settings=(context.get("analysis_ref") or {}),
+            analysis_ref_settings=analysis_ref,
         )
     )
     resolved_state_file = (
@@ -2256,7 +2266,6 @@ def apply_plan(*, context: dict[str, Any], plan: dict[str, Any], state_file: str
     if not allow_marker_update and "allow_marker_update=false" not in stop_reasons:
         stop_reasons.append("allow_marker_update=false")
     marker_update_written = False
-    analysis_ref = context.get("analysis_ref") or {}
     selected_sha = str(
         analysis_ref.get("selected_sha") or context.get("head_sha") or ""
     )

@@ -120,6 +120,25 @@ class WeeklyUpdateFailurePathTests(unittest.TestCase):
         self.assertEqual(packets["orchestrator.json"]["review_mode_adjustments"], ["override_signal"])
         self.assertGreater(len(packets["orchestrator.json"]["recommended_workers"]), 0)
 
+    def test_non_mapping_analysis_ref_is_ignored_during_packet_builds(self) -> None:
+        legacy_context = dict(self.context)
+        legacy_context["analysis_ref"] = "main"
+        normalized_context = dict(self.context)
+        normalized_context["analysis_ref"] = {}
+
+        self.assertEqual(
+            wl.build_context_fingerprint(legacy_context),
+            wl.build_context_fingerprint(normalized_context),
+        )
+
+        lint = wl.lint_context(legacy_context)
+        artifacts = wl.build_packet_artifacts(legacy_context, lint)
+
+        self.assertIsNone(artifacts["packets"]["global_packet.json"]["analysis_ref"]["policy"])
+        self.assertIsNone(artifacts["build_result"]["analysis_ref_policy"])
+        self.assertIsNone(artifacts["build_result"]["analysis_ref_selected_branch"])
+        self.assertIsNone(artifacts["build_result"]["analysis_ref_selected_sha"])
+
     def test_collect_context_surfaces_truncation_warnings_in_source_gaps(self) -> None:
         repo_path = Path("C:/repo")
         with (
