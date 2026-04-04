@@ -202,28 +202,33 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
             },
         }
 
-    def run_builder(self, context: dict, lint: dict) -> tuple[int, str, dict[str, dict]]:
+    def run_builder(self, context: dict, lint: dict, *, result_output: bool = False) -> tuple[int, str, dict[str, dict], dict | None]:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             context_path = tmp / "context.json"
             lint_path = tmp / "lint.json"
             output_dir = tmp / "packets"
+            result_path = tmp / "build.json"
             self.write_json(context_path, context)
             self.write_json(lint_path, lint)
+
+            argv = [
+                "build_release_copy_packets.py",
+                "--context",
+                str(context_path),
+                "--lint",
+                str(lint_path),
+                "--output-dir",
+                str(output_dir),
+            ]
+            if result_output:
+                argv.extend(["--result-output", str(result_path)])
 
             stdout = io.StringIO()
             with mock.patch.object(
                 sys,
                 "argv",
-                [
-                    "build_release_copy_packets.py",
-                    "--context",
-                    str(context_path),
-                    "--lint",
-                    str(lint_path),
-                    "--output-dir",
-                    str(output_dir),
-                ],
+                argv,
             ), redirect_stdout(stdout):
                 exit_code = packets.main()
 
@@ -231,7 +236,8 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
                 path.name: self.read_json(path)
                 for path in output_dir.iterdir()
             }
-            return exit_code, stdout.getvalue(), payloads
+            result_payload = self.read_json(result_path) if result_output else None
+            return exit_code, stdout.getvalue(), payloads, result_payload
 
     def test_contract_metadata_and_routing_helpers(self) -> None:
         self.assertEqual(contract.WORKFLOW_FAMILY, "release-copy")
@@ -293,13 +299,49 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
             )
         )
 
+    def test_help_and_result_output_emit_machine_readable_build_summary(self) -> None:
+        help_text = packets.build_parser().format_help()
+        self.assertIn("--result-output", help_text)
+
+        context = self.build_context()
+        lint = self.build_lint()
+
+        exit_code, stdout, payloads, result_payload = self.run_builder(context, lint, result_output=True)
+
+        self.assertEqual(exit_code, 0)
+        self.assertIsNotNone(result_payload)
+
+        stdout_payload = json.loads(stdout)
+        self.assertEqual(stdout_payload, result_payload)
+
+        orchestrator = payloads["orchestrator.json"]
+        packet_metrics = payloads["packet_metrics.json"]
+        self.assertEqual(result_payload["review_mode"], orchestrator["review_mode"])
+        self.assertEqual(result_payload["recommended_worker_count"], orchestrator["recommended_worker_count"])
+        self.assertEqual(result_payload["packet_files"], orchestrator["packet_files"])
+        self.assertEqual(result_payload["packet_metrics"], packet_metrics)
+        self.assertTrue(result_payload["packet_metrics_file"].endswith("packet_metrics.json"))
+        self.assertEqual(result_payload["packet_count"], packet_metrics["packet_count"])
+        self.assertEqual(result_payload["largest_packet_bytes"], packet_metrics["largest_packet_bytes"])
+        self.assertEqual(result_payload["largest_two_packets_bytes"], packet_metrics["largest_two_packets_bytes"])
+        self.assertEqual(result_payload["estimated_local_only_tokens"], packet_metrics["estimated_local_only_tokens"])
+        self.assertEqual(result_payload["estimated_packet_tokens"], packet_metrics["estimated_packet_tokens"])
+        self.assertEqual(result_payload["estimated_delegation_savings"], packet_metrics["estimated_delegation_savings"])
+        self.assertEqual(result_payload["packet_size_bytes"], packet_metrics["packet_size_bytes"])
+        self.assertTrue(result_payload["common_path_sufficient"])
+        self.assertEqual(
+            result_payload["synthesis_packet_sufficient_for_common_path"],
+            packet_metrics["synthesis_packet_sufficient_for_common_path"],
+        )
+
     def test_packet_emission_and_common_path_sufficiency(self) -> None:
         context = self.build_context()
         lint = self.build_lint()
 
-        exit_code, stdout, payloads = self.run_builder(context, lint)
+        exit_code, stdout, payloads, result_payload = self.run_builder(context, lint)
 
         self.assertEqual(exit_code, 0)
+        self.assertIsNone(result_payload)
         self.assertIn('"review_mode": "targeted-delegation"', stdout)
 
         expected_files = {

@@ -292,6 +292,7 @@ def main() -> int:
         context_path = temp_dir / "context.json"
         lint_path = temp_dir / "lint.json"
         packet_dir = temp_dir / "packets"
+        build_path = temp_dir / "build.json"
         plan_path = temp_dir / "release-copy-plan.json"
         validation_path = temp_dir / "validation.json"
         apply_path = temp_dir / "apply.json"
@@ -334,6 +335,8 @@ def main() -> int:
                 str(lint_path),
                 "--output-dir",
                 str(packet_dir),
+                "--result-output",
+                str(build_path),
             ],
             cwd=repo_root,
         )
@@ -348,8 +351,19 @@ def main() -> int:
         synthesis_packet = read_json(packet_dir / "synthesis_packet.json")
         orchestrator = read_json(packet_dir / "orchestrator.json")
         packet_metrics = read_json(packet_dir / "packet_metrics.json")
+        build_result = read_json(build_path)
         if synthesis_packet.get("common_path_contract", {}).get("sufficient_for_local_final_drafting") is not True:
             raise RuntimeError("synthesis_packet.json is not marked sufficient for common-path local drafting")
+        if build_result.get("packet_metrics") != packet_metrics:
+            raise RuntimeError("build result packet_metrics disagrees with packet_metrics.json")
+        if build_result.get("packet_count") != packet_metrics.get("packet_count"):
+            raise RuntimeError("build result packet_count disagrees with packet_metrics.json")
+        if build_result.get("estimated_delegation_savings") != packet_metrics.get("estimated_delegation_savings"):
+            raise RuntimeError("build result estimated_delegation_savings disagrees with packet_metrics.json")
+        if build_result.get("review_mode") != orchestrator.get("review_mode"):
+            raise RuntimeError("build result review_mode disagrees with orchestrator.json")
+        if build_result.get("common_path_sufficient") is not True:
+            raise RuntimeError("build result did not report common-path sufficiency")
 
         plan = build_smoke_plan(context, synthesis_packet)
         plan_path.write_text(json.dumps(plan, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")

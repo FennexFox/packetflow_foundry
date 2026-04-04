@@ -43,8 +43,8 @@ This is a packet-driven repo workflow skill:
 - Review the active repo profile before trusting repo-specific path bindings, review-doc lists, or deterministic lint toggles.
 - Run `<python-bin> -B <skill-dir>/scripts/collect_release_copy_context.py --repo-root <repo-root> --output <context-json>`.
 - Run `<python-bin> -B <skill-dir>/scripts/lint_release_copy.py --context <context-json> --output <lint-json>`.
-- Run `<python-bin> -B <skill-dir>/scripts/build_release_copy_packets.py --context <context-json> --lint <lint-json> --output-dir <packet-dir>`.
-- - Recommended: add `--result-output <build-result-json>` so evaluation logging can merge build-phase packet metrics without expanding runtime contract metadata.
+- Run `<python-bin> -B <skill-dir>/scripts/build_release_copy_packets.py --context <context-json> --lint <lint-json> --output-dir <packet-dir> [--result-output <build-result-json>]`.
+- - Recommended: add `--result-output <build-result-json>` so the machine-readable build summary can merge build-phase packet metrics into evaluation logging without expanding runtime contract metadata.
 - Read `<packet-dir>/orchestrator.json` first.
 - Keep `<packet-dir>/global_packet.json` in view before reading any focused packet.
 - Packet-heavy common path contract:
