@@ -47,7 +47,7 @@ This is a packet-driven repo workflow skill:
 - This scaffold does not add an orchestrator-profile-level common-path drafting packet.
 
 2. Follow the review mode.
-- `local-only`: keep the work local.
+- `local-only`: keep the work local unless the final `review_mode` was promoted by `review_mode_adjustments=["delegation_savings_floor"]`.
 - `targeted-delegation`: use 1-2 `gpt-5.4-mini` workers on narrow packets.
 - `broad-delegation`: use 3-4 `gpt-5.4-mini` workers and add QA only when findings conflict.
 - Escalate to the next larger mode when churn is high, core runtime/config/process files span groups, or generated files are not the majority.
@@ -55,7 +55,7 @@ This is a packet-driven repo workflow skill:
 3. Keep packet analysis narrow.
 - Treat `references/core-contract.md` as the generic workflow contract and `profiles/default/profile.json` as the repo-specific overlay.
 - Read `references/public-docs-sync-contract.md` before drafting domain outputs.
-- Read `references/delegation-playbook.md` only when `review_mode` is not `local-only`.
+- Read `references/delegation-playbook.md` only when the final `review_mode` is not `local-only`.
 - Worker return contract for this skill: `generic`.
 - Worker output shape for this skill: `flat`.
 - Decision-ready packets enabled: `false`.

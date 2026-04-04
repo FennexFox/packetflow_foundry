@@ -103,10 +103,11 @@ If the run cannot proceed, report the blocker clearly and stop at the appropriat
 - Worker outputs remain proposal-grade only; they never decide final classification or final weekly wording.
 
 4. Respect review mode and keep delegation narrow.
-- `local-only`: use no workers. Reserve for quiet windows with a small candidate set and no meaningful rollout or incident activity.
+- `local-only`: use no workers on the final path. Quiet windows still start here, but the final mode may promote to `targeted-delegation` when `review_mode_adjustments` includes `delegation_savings_floor`.
 - `targeted-delegation`: default mode. Use 1-2 `gpt-5.4-mini` workers on one focused packet each.
 - `broad-delegation`: use 3-4 `gpt-5.4-mini` workers only when releases, incidents, reviews, and nested PR lineage all expand the evidence surface.
 - Read `references/delegation-playbook.md` when `review_mode` is not `local-only`.
+- Use `review_mode_baseline` and `review_mode_adjustments` to explain why a quiet-window baseline still delegated.
 - Use `packet_worker_map` as the only concrete routing source for delegated packets.
 - Treat `worker_selection_guidance` and worker families as explanatory metadata only.
 - Do not ask workers to rediscover the whole repo, reread long raw diffs, or draft the final weekly update.

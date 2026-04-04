@@ -49,12 +49,12 @@ Read `references/architecture-rationale.md` before changing packet metadata, del
 - Treat `rules_packet.json + worktree_packet.json + one focused packet at a time` as the common path. Raw diff rereads are exception-only after packet generation.
 
 2. Follow the review mode from `orchestrator.json`.
-- `local-only`: keep commit planning local.
+- `local-only`: keep commit planning local unless the final `review_mode` was promoted by `review_mode_adjustments=["delegation_savings_floor"]`.
 - `targeted-delegation`: use the routed mini workers for `rules_packet.json`, `worktree_packet.json`, `candidate-batch-XX.json`, or `split-file-XX.json`.
 - `broad-delegation`: use the routed mini workers and add QA only when batches, split candidates, or findings conflict.
 - Treat `packet_worker_map` as the routing authority and `preferred_worker_families` as explanatory metadata.
 - Treat `task_packet_names` as basename-only packet metadata and `packet_order` as the file-oriented packet list.
-- If `spawn_agent` is unavailable or fails, stay local on the same packet workflow.
+- If `spawn_agent` is unavailable or fails, stay local on the same packet workflow even when the final `review_mode` preferred delegation.
 
 3. Respect the decision-ready packet contract.
 - `decision_ready_packets=true`

@@ -60,13 +60,14 @@ Boundary:
 - Before deciding a thread, read that packet's `discussion`, `existing_self_reply`, `reply_candidates`, `validation_candidates`, and `ownership_summary` or `shared_fix_surface`.
 
 2. Follow the review mode.
-- `local-only`: keep thread analysis and code changes local.
+- `local-only`: keep thread analysis and code changes local unless the final `review_mode` was promoted by `review_mode_adjustments=["delegation_savings_floor"]`.
 - `targeted-delegation`: use 1-2 `gpt-5.4-mini` workers on thread-batch or singleton packets.
 - `broad-delegation`: use 3-4 `gpt-5.4-mini` workers and add QA only when findings conflict or the fix surface is broad.
 - Respect `review_mode_overrides` when churn, cross-group core files, or meaningful generated-file slices warrant widening the mode.
 - Treat `packet_worker_map` as the routing authority for delegated thread packets.
 - Treat `preferred_worker_families` as registry metadata only.
 - Treat `recommended_workers` and `optional_workers` as derived convenience fields only.
+- Use `review_mode_baseline` and `review_mode_adjustments` to explain when a small local baseline was promoted for token savings.
 - Read `references/review-threads-contract.md` before broad delegation or reply planning on a noisy PR.
 
 3. Keep adjudication local.

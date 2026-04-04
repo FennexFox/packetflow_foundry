@@ -48,10 +48,11 @@ Boundary:
 
 3. Follow the review mode and packet contract.
 - `local-only`
-  - use no workers
+  - use no workers unless the final `review_mode` was promoted by `review_mode_adjustments=["delegation_savings_floor"]`
   - keep drafting on `rules_packet.json`, `synthesis_packet.json`, and one focused packet at most
 - `targeted-delegation`
   - use 1-2 narrow workers on focused packets
+  - keep at least 2 workers when the promotion reason is `delegation_savings_floor`
 - `broad-delegation`
   - use 3-4 narrow workers
   - QA is still a rare exception, not the common path

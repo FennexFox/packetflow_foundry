@@ -286,7 +286,7 @@ The written marker should capture:
 - `estimated_packet_tokens`
 - `estimated_delegation_savings`
 
-These numbers support regression tracking. They are not runtime branching inputs.
+These numbers support regression tracking and evaluation logging. The raw counters do not appear in runtime packet metadata, but build-time review-mode selection may derive a `delegation_savings_floor` adjustment from them.
 
 ## Apply Boundaries
 
