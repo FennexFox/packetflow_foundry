@@ -1298,6 +1298,25 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             self.assertEqual(orchestrator["recommended_worker_count"], 2)
             self.assertEqual(len(orchestrator["recommended_workers"]), 2)
             self.assertNotIn("estimated_delegation_savings", orchestrator)
+            self.assertGreater(packet_metrics["packet_size_bytes"]["orchestrator.json"], 0)
+            local_only_packets = {"orchestrator.json", orchestrator["shared_local_packet"]}
+            worker_facing_bytes = sum(
+                size
+                for name, size in packet_metrics["packet_size_bytes"].items()
+                if name not in local_only_packets
+            )
+            expected_packet_tokens = max(1, (worker_facing_bytes + 3) // 4)
+            self.assertEqual(
+                packet_metrics["estimated_packet_tokens"],
+                expected_packet_tokens,
+            )
+            self.assertEqual(
+                packet_metrics["estimated_delegation_savings"],
+                max(
+                    0,
+                    packet_metrics["estimated_local_only_tokens"] - expected_packet_tokens,
+                ),
+            )
             self.assertGreaterEqual(
                 packet_metrics["estimated_delegation_savings"],
                 250,

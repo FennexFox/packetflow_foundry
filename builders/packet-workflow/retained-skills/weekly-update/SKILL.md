@@ -164,7 +164,7 @@ If the run cannot proceed, report the blocker clearly and stop at the appropriat
 - `<skill-dir>/scripts/apply_weekly_update.py`
   - Update only the last-success marker after the local plan passes the apply gate.
 - `<skill-dir>/scripts/smoke_weekly_update.py`
-  - Run an opt-in end-to-end smoke of collect ??lint ??build ??eval init/build ??validate ??eval validate ??apply `--dry-run` ??eval apply, verify runtime packets stay lean, and confirm `--dry-run` apply does not write a marker.
+  - Run an opt-in end-to-end smoke of collect -> lint -> build -> eval init/build -> validate -> eval validate -> apply `--dry-run` -> eval apply, verify runtime packets stay lean, and confirm `--dry-run` apply does not write a marker.
 - `<skill-dir>/scripts/refresh_weekly_update_live_fixture.py`
   - Maintainer-only helper that refreshes the live sample fixture and paired plan fixtures from current repo and GitHub evidence. Keep it out of the default test path and prefer `--dry-run` before overwriting fixture files.
 

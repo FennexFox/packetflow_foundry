@@ -17,7 +17,7 @@ import write_evaluation_log as eval_log  # noqa: E402
 
 class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
     def test_default_output_path_uses_repo_root(self) -> None:
-        repo_root = Path("C:/repo")
+        repo_root = Path("repo-root")
 
         resolved = eval_log.default_output_path(
             repo_root,

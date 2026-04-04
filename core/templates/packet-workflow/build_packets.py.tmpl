@@ -336,10 +336,13 @@ def packet_metrics_payload(context: dict, lint: dict, packet_payloads: dict[str,
         for name, payload in packet_payloads.items()
     }
     ordered_sizes = sorted(packet_sizes.values(), reverse=True)
+    local_only_packets = {"orchestrator.json"}
+    if SPEC_METADATA.get("shared_local_packet"):
+        local_only_packets.add(SPEC_METADATA["shared_local_packet"])
     worker_facing_packets = {
         name: size
         for name, size in packet_sizes.items()
-        if name != "synthesis_packet.json"
+        if name not in local_only_packets
     }
     worker_facing_bytes = sum(worker_facing_packets.values())
     local_only_bytes = dump_json_bytes(context)

@@ -447,7 +447,8 @@ def safe_filename(value: str) -> str:
 
 
 def default_output_path(repo_root: Any, skill_name: str, run_id: str) -> Path:
-    repo_path = Path(str(repo_root or ".")).resolve()
+    repo_root_text = str(repo_root) if repo_root is not None else ""
+    repo_path = Path(repo_root_text) if repo_root_text else Path(".").resolve()
     return repo_path / ".codex" / "tmp" / "evaluation_logs" / skill_name / f"{safe_filename(run_id)}.json"
 
 
