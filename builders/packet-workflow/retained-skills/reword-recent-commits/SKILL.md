@@ -57,7 +57,7 @@ Read `references/architecture-note.md` before changing the packet/result model o
 - Re-check `rules_packet.json` immediately before confirming the final replacement messages.
 
 2. Follow the review mode from `orchestrator.json`.
-- `local-only`: keep the rewrite fully local unless the final `review_mode` was promoted by `review_mode_adjustments=["delegation_savings_floor"]`, but still run the same
+- `local-only`: keep the rewrite fully local for minimal plans, but still run the same
   collect/build/validate/apply driver path. This is not an amend fast path.
 - `targeted-delegation`: use the routed mini workers for `rules_packet.json` and the commit packets.
 - `broad-delegation`: use the routed mini workers and add QA only when findings conflict or the rewrite spans many areas.

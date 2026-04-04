@@ -193,7 +193,7 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
             estimate_tokens_from_bytes(json_bytes(rules_packet) + largest_commit_bytes),
         )
 
-    def test_local_review_mode_savings_floor_recomputes_final_orchestrator_metrics(self) -> None:
+    def test_local_review_mode_preserves_minimal_local_only_path(self) -> None:
         temp_dir, repo = make_repo()
         self.addCleanup(temp_dir.cleanup)
         head_commit = commit_file(repo, "src/app.py", "seed\n", "fix(app): seed")
@@ -264,8 +264,9 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
         exit_code, output_dir, orchestrator, result = self.run_script(rules, plan)
 
         self.assertEqual(exit_code, 0)
-        self.assertEqual(orchestrator["review_mode"], "targeted-delegation")
-        self.assertIn("delegation_savings_floor", orchestrator["review_mode_adjustments"])
+        self.assertEqual(orchestrator["review_mode"], "local-only")
+        self.assertEqual(orchestrator["review_mode_adjustments"], [])
+        self.assertEqual(orchestrator["recommended_worker_count"], 0)
         packet_metrics = json.loads((output_dir / "packet_metrics.json").read_text(encoding="utf-8"))
         orchestrator_payload = json.loads((output_dir / "orchestrator.json").read_text(encoding="utf-8"))
         rules_packet = json.loads((output_dir / "rules_packet.json").read_text(encoding="utf-8"))
@@ -287,6 +288,7 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
         self.assertEqual(packet_metrics, expected_metrics)
         self.assertEqual(packet_metrics["packet_count"], len(orchestrator_payload["packet_files"]))
         self.assertEqual(result["packet_metrics"], packet_metrics)
+        self.assertEqual(result["review_mode"], "local-only")
 
     def test_local_mode_surfaces_root_rewrite_blocker(self) -> None:
         temp_dir, repo = make_repo()
