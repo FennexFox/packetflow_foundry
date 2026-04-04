@@ -172,8 +172,13 @@ def find_repo_name(context: dict[str, Any]) -> str | None:
     return match.group("slug") if match else None
 
 
+def analysis_ref_payload(context: dict[str, Any]) -> dict[str, Any]:
+    payload = context.get("analysis_ref")
+    return payload if isinstance(payload, dict) else {}
+
+
 def find_branch(context: dict[str, Any]) -> str | None:
-    analysis_ref = context.get("analysis_ref") or {}
+    analysis_ref = analysis_ref_payload(context)
     branch = str(
         analysis_ref.get("selected_branch_label")
         or analysis_ref.get("selected_branch")
@@ -192,7 +197,7 @@ def find_branch(context: dict[str, Any]) -> str | None:
 
 
 def find_head_sha(context: dict[str, Any]) -> str | None:
-    analysis_ref = context.get("analysis_ref") or {}
+    analysis_ref = analysis_ref_payload(context)
     for value in (
         analysis_ref.get("selected_sha"),
         context.get("head_sha"),

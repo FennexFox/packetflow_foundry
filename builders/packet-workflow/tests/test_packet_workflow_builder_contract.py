@@ -3,9 +3,11 @@ from __future__ import annotations
 import importlib.util
 import json
 import py_compile
+import re
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -407,6 +409,63 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                     if path.is_file()
                 )
                 self.assertEqual(files, ["SKILL.md", "agents/openai.yaml"])
+
+    def test_skill_openai_metadata_is_polished_and_synced(self) -> None:
+        foundry_root = builder.foundry_root_dir()
+        retained_root = (
+            foundry_root / "builders" / "packet-workflow" / "retained-skills"
+        )
+        wrapper_root = foundry_root / ".agents" / "skills"
+        prompt_pattern = re.compile(
+            r'default_prompt:\s*(?:"Use \$[a-z0-9-]+[^"]*"|>-\n(?:\s+.*\n)*\s+Use \$[a-z0-9-]+)',
+            re.MULTILINE,
+        )
+        display_pattern = re.compile(r'display_name:\s*"([^"]+)"')
+
+        for retained_yaml_path in sorted(retained_root.glob("*/agents/openai.yaml")):
+            skill_name = retained_yaml_path.parent.parent.name
+            retained_yaml = retained_yaml_path.read_text(encoding="utf-8")
+            wrapper_yaml_path = wrapper_root / skill_name / "agents" / "openai.yaml"
+            with self.subTest(skill=skill_name):
+                self.assertNotIn("...", retained_yaml)
+                self.assertRegex(retained_yaml, prompt_pattern)
+                display_match = display_pattern.search(retained_yaml)
+                self.assertIsNotNone(display_match)
+                if skill_name.startswith("gh-"):
+                    self.assertTrue(
+                        display_match.group(1).startswith("GH "),
+                        retained_yaml,
+                    )
+                self.assertEqual(
+                    wrapper_yaml_path.read_text(encoding="utf-8"),
+                    retained_yaml,
+                )
+
+        for wrapper_yaml_path in sorted(wrapper_root.glob("*/agents/openai.yaml")):
+            skill_name = wrapper_yaml_path.parent.parent.name
+            wrapper_yaml = wrapper_yaml_path.read_text(encoding="utf-8")
+            with self.subTest(wrapper_only_skill=skill_name):
+                self.assertNotIn("...", wrapper_yaml)
+                self.assertRegex(wrapper_yaml, prompt_pattern)
+                display_match = display_pattern.search(wrapper_yaml)
+                self.assertIsNotNone(display_match)
+                if skill_name.startswith("gh-"):
+                    self.assertTrue(
+                        display_match.group(1).startswith("GH "),
+                        wrapper_yaml,
+                    )
+
+    def test_root_managed_agent_filenames_match_internal_names(self) -> None:
+        agents_dir = builder.foundry_root_dir() / ".codex" / "agents"
+        fixture_names = {
+            path.name for path in FIXTURE_AGENTS_DIR.glob("*.toml") if path.is_file()
+        }
+        found_names: set[str] = set()
+        for agent_path in sorted(agents_dir.glob("*.toml")):
+            payload = tomllib.loads(agent_path.read_text(encoding="utf-8"))
+            self.assertEqual(agent_path.stem, payload["name"])
+            found_names.add(agent_path.name)
+        self.assertEqual(found_names, fixture_names)
 
     def test_managed_agent_registry_contains_packet_explorer(self) -> None:
         self.assertIn("packet_explorer", builder.KNOWN_WORKER_AGENT_TYPES)

@@ -1,4 +1,7 @@
 interface:
   display_name: "Draft Release Copy"
-  short_description: "prepare reusable release-copy updates with packet..."
-  default_prompt: "prepare reusable release-copy updates with packet-heavy local synthesis and validator-normalized apply actions"
+  short_description: "Draft reusable release-copy updates from release evidence and publish metadata"
+  default_prompt: >-
+    Use $draft-release-copy to collect release evidence, prepare publish
+    configuration and README updates, and validate a reusable release-copy
+    plan before applying it.

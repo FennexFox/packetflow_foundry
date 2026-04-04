@@ -16,6 +16,20 @@ import write_evaluation_log as eval_log  # noqa: E402
 
 
 class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
+    def test_find_branch_and_head_sha_ignore_non_dict_analysis_ref(self) -> None:
+        context = {
+            "analysis_ref": "main",
+            "current_branch": "develop",
+            "head_sha": "abc1234",
+            "pr": {
+                "headRefName": "feature/fallback",
+                "headRefOid": "deadbeef",
+            },
+        }
+
+        self.assertEqual(eval_log.find_branch(context), "develop")
+        self.assertEqual(eval_log.find_head_sha(context), "abc1234")
+
     def test_skill_specific_data_reads_weekly_update_contract_fields(self) -> None:
         context = {
             "reporting_window": {"start_utc": "2026-03-20T00:00:00Z", "end_utc": "2026-03-27T00:00:00Z"},

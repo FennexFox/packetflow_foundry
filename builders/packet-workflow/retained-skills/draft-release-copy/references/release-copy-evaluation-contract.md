@@ -51,7 +51,7 @@ Keep these values in `skill_specific.data` when they are available:
 - `init`
   - capture the release context, lint report, and packet orchestration snapshot
 - `build`
-  - merge `packet_metrics.json` so token-efficiency and packet-size metrics live in evaluation data instead of the runtime contract
+  - merge the build result JSON and `packet_metrics.json` so review-mode metadata plus token-efficiency and packet-size metrics live in evaluation data instead of the runtime contract
 - `phase`
   - record lint, validate, dry-run, rewrite, or issue-action results
 - `finalize`

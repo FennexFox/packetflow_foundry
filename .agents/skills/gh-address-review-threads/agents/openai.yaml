@@ -1,9 +1,11 @@
 interface:
-  display_name: "Address Review Threads"
+  display_name: "GH Address Review Threads"
   short_description: "Inspect and resolve open GitHub PR review threads"
   default_prompt: >-
     Use $gh-address-review-threads to handle unresolved PR review threads on
     this branch. Collect structured thread packets, keep
     global_packet.json in view, decide accept/reject/defer/defer-outdated
     locally, and post acknowledgement and completion replies only after the
-    accepted fix is validated and pushed.
+    accepted fix is validated and pushed. After a push, allow same-run
+    non-outdated -> outdated transitions to auto-resolve only when current
+    HEAD already proves the request is satisfied.

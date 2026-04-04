@@ -20,14 +20,30 @@ Read [`architecture-note.md`](architecture-note.md) for why this skill keeps the
 ### Eval Artifacts
 
 - `packet_metrics.json`
+- optional build result JSON from `build_release_copy_packets.py --result-output`
 - `eval-log.json`
 
 ### Canonical Local Interfaces
 
 - local draft: `release-copy-plan.json`
 - validator output: normalized validation JSON from `validate_release_copy.py`
+- build result: JSON from `build_release_copy_packets.py --result-output ...`
 - apply input: validator output only
 - apply result: JSON from `apply_release_copy.py --result-output ...`
+
+## Build Result Shape
+
+When `build_release_copy_packets.py --result-output` is supplied, the build result JSON must expose:
+
+- `review_mode`
+- `recommended_worker_count`
+- `recommended_workers`
+- `optional_workers`
+- `packet_files`
+- `packet_metrics`
+- `common_path_sufficient`
+
+`packet_metrics` remains the evaluation-side home for packet sizing and token-proxy fields. The build result may mirror selected metric fields at top level for evaluation-log compatibility, but runtime routing still belongs in `orchestrator.json`.
 
 ## Builder Metadata
 
@@ -96,8 +112,10 @@ The local helper is never the authority for player-facing wording.
   - Keep worker routing, common-path drafting, and validator/apply guardrails here.
 - `packet_metrics.json` is eval-only.
   - Keep packet sizes, token-proxy estimates, and savings here.
+- build result JSON from `build_release_copy_packets.py --result-output` is eval-only.
+  - Merge build-phase review metadata and packet metrics from it without promoting those fields into runtime routing artifacts.
 - `eval-log.json` is the accumulated regression and run-quality artifact.
-  - Merge `packet_metrics.json` during the build phase instead of treating sizing metrics as runtime routing inputs.
+  - Merge `packet_metrics.json` and the build result during the build phase instead of treating sizing metrics as runtime routing inputs.
 
 ## Field Roles
 

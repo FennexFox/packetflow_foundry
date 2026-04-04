@@ -1,4 +1,4 @@
 interface:
   display_name: "Packet Workflow Skill Builder"
   short_description: "Thin entrypoint to the root packet-workflow builder"
-  default_prompt: "Use the root packet-workflow builder to scaffold a new packet-driven repo workflow skill from the authoritative core contracts, templates, and defaults in this repository."
+  default_prompt: "Use $packet-workflow-skill-builder to scaffold a new packet-driven repo workflow skill from the authoritative core contracts, templates, and defaults in this repository."

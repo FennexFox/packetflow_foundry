@@ -816,33 +816,20 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
     return packet_payloads
 
 
-def main() -> int:
-    parser = argparse.ArgumentParser(
-        description="Build compact release-copy packets for token-efficient release preparation."
-    )
-    parser.add_argument("--context", required=True, help="Path to JSON from collect_release_copy_context.py")
-    parser.add_argument("--lint", required=True, help="Path to JSON from lint_release_copy.py")
-    parser.add_argument("--output-dir", required=True, help="Directory for generated packets")
-    parser.add_argument("--result-output", help="Optional path to write build result JSON")
-    args = parser.parse_args()
-
-    context = load_json(Path(args.context))
-    lint_report = load_json(Path(args.lint))
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    packets = build_packet_payloads(context, lint_report)
-    for file_name, payload in packets.items():
-        contract.write_json(output_dir / file_name, payload)
-
+def build_result_payload(output_dir: Path, packets: dict[str, dict[str, Any]]) -> dict[str, Any]:
     orchestrator = packets["orchestrator.json"]
     packet_metrics = packets["packet_metrics.json"]
-    build_result = {
+    return {
+        "output_dir": str(output_dir),
         "review_mode": orchestrator["review_mode"],
         "review_mode_baseline": orchestrator.get("review_mode_baseline"),
         "review_mode_adjustments": list(orchestrator.get("review_mode_adjustments") or []),
-        "packet_files": list(orchestrator["packet_files"]),
         "recommended_worker_count": orchestrator["recommended_worker_count"],
+        "recommended_workers": list(orchestrator.get("recommended_workers") or []),
+        "optional_workers": list(orchestrator.get("optional_workers") or []),
+        "packet_files": list(orchestrator["packet_files"]),
+        "packet_metrics_file": str(output_dir / "packet_metrics.json"),
+        "packet_metrics": packet_metrics,
         "packet_count": packet_metrics["packet_count"],
         "largest_packet_bytes": packet_metrics["largest_packet_bytes"],
         "largest_two_packets_bytes": packet_metrics["largest_two_packets_bytes"],
@@ -850,26 +837,42 @@ def main() -> int:
         "estimated_packet_tokens": packet_metrics["estimated_packet_tokens"],
         "estimated_delegation_savings": packet_metrics["estimated_delegation_savings"],
         "packet_size_bytes": packet_metrics["packet_size_bytes"],
-        "packet_metrics": packet_metrics,
+        "common_path_sufficient": packet_metrics["synthesis_packet_sufficient_for_common_path"],
+        "synthesis_packet_sufficient_for_common_path": packet_metrics["synthesis_packet_sufficient_for_common_path"],
     }
-    if args.result_output:
-        contract.write_json(Path(args.result_output), build_result)
-    print(
-        json.dumps(
-            {
-                "output_dir": str(output_dir),
-                "review_mode": orchestrator["review_mode"],
-                "review_mode_baseline": orchestrator.get("review_mode_baseline"),
-                "review_mode_adjustments": orchestrator.get("review_mode_adjustments", []),
-                "packet_files": orchestrator["packet_files"],
-                "recommended_worker_count": orchestrator["recommended_worker_count"],
-                "packet_metrics_file": str(output_dir / "packet_metrics.json"),
-                "estimated_delegation_savings": packet_metrics["estimated_delegation_savings"],
-            },
-            indent=2,
-            ensure_ascii=True,
-        )
+
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(
+        description="Build compact release-copy packets for token-efficient release preparation."
     )
+    parser.add_argument("--context", required=True, help="Path to JSON from collect_release_copy_context.py")
+    parser.add_argument("--lint", required=True, help="Path to JSON from lint_release_copy.py")
+    parser.add_argument("--output-dir", required=True, help="Directory for generated packets")
+    parser.add_argument("--result-output", help="Optional path to write the build summary JSON")
+    return parser
+
+
+def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    return build_parser().parse_args(argv)
+
+
+def main() -> int:
+    args = parse_args()
+
+    context = load_json(Path(args.context).resolve())
+    lint_report = load_json(Path(args.lint).resolve())
+    output_dir = Path(args.output_dir).resolve()
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    packets = build_packet_payloads(context, lint_report)
+    for file_name, payload in packets.items():
+        contract.write_json(output_dir / file_name, payload)
+
+    result_payload = build_result_payload(output_dir, packets)
+    if args.result_output:
+        contract.write_json(Path(args.result_output).resolve(), result_payload)
+    print(json.dumps(result_payload, indent=2, ensure_ascii=True))
     return 0
 
 
