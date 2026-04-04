@@ -457,10 +457,11 @@ If `orchestrator_profile=packet-heavy-orchestrator`, the scaffold also emits:
 
 Runtime contract metadata and evaluation/regression metadata stay separate:
 - keep routing, authority, stop conditions, and common-path runtime signals in `orchestrator.json` / `global_packet.json`
-- keep packet sizing, byte proxies, and token-efficiency estimates in `packet_metrics.json` and evaluation logs
+- keep packet sizing, byte proxies, and token-efficiency estimates in `packet_metrics.json` and evaluation logs; only derived review-mode adjustments such as `delegation_savings_floor` may flow back into runtime metadata
 - keep repo-specific path bindings and packet-review defaults in the repo profile instead of hardcoding them into the generic core contract
 
 Generated `orchestrator.json` and `global_packet.json` keep:
+- final review-mode provenance via `review_mode`, `review_mode_baseline`, and `review_mode_adjustments`
 - worker return contract
 - worker output shape
 - decision-ready packet metadata

@@ -29,6 +29,8 @@ The shared modes are:
 - `targeted-delegation`
 - `broad-delegation`
 
+Implementations may record `review_mode_baseline` plus `review_mode_adjustments` alongside the final `review_mode`. A `local-only` baseline may still be promoted to `targeted-delegation` when build-time delegation savings cross the shared floor.
+
 Default review-mode support and default override signals live in `../../defaults/packet-workflow/review-modes.json`.
 
 ## Shared Default Authority And Stops

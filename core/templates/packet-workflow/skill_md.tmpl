@@ -46,15 +46,15 @@ __LINT_STEP__
 __COMMON_PATH_NOTE__
 
 2. Follow the review mode.
-- `local-only`: keep the work local.
+- `local-only`: keep the work local unless the final `review_mode` was promoted at build time by `review_mode_adjustments=["delegation_savings_floor"]`.
 - `targeted-delegation`: use 1-2 `gpt-5.4-mini` workers on narrow packets.
 - `broad-delegation`: use 3-4 `gpt-5.4-mini` workers and add QA only when findings conflict.
-- Escalate to the next larger mode when churn is high, core runtime/config/process files span groups, or generated files are not the majority.
+- Escalate to the next larger mode when churn is high, core runtime/config/process files span groups, generated files are not the majority, or the build recorded `delegation_savings_floor`.
 
 3. Keep packet analysis narrow.
 - Treat `references/__CORE_CONTRACT_FILE__` as the generic workflow contract and the active repo profile as the repo-specific overlay.
 - Read `references/__DOMAIN_CONTRACT_FILE__` before drafting domain outputs.
-- Read `references/delegation-playbook.md` only when `review_mode` is not `local-only`.
+- Read `references/delegation-playbook.md` only when the final `review_mode` is not `local-only`.
 - Worker return contract for this skill: `__WORKER_RETURN_CONTRACT__`.
 - Worker output shape for this skill: `__WORKER_OUTPUT_SHAPE__`.
 - Decision-ready packets enabled: `__DECISION_READY_PACKETS__`.

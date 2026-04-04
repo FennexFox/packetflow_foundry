@@ -1102,6 +1102,8 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             )
             self.assertIn("common_path_contract", orchestrator)
             self.assertNotIn("estimated_local_only_tokens", orchestrator)
+            self.assertIn("review_mode_baseline", orchestrator)
+            self.assertIn("review_mode_adjustments", orchestrator)
             self.assertTrue((packets_dir / "synthesis_packet.json").exists())
             self.assertTrue((packets_dir / "packet_metrics.json").exists())
 
@@ -1116,6 +1118,8 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 build_result["shared_local_packet"], "synthesis_packet.json"
             )
             self.assertIn("packet_metrics", build_result)
+            self.assertIn("review_mode_baseline", build_result)
+            self.assertIn("review_mode_adjustments", build_result)
             self.assertEqual(build_result["repo_profile_name"], "sample-repo")
 
             run_python(
@@ -1144,6 +1148,119 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 eval_log["skill_specific"]["data"],
             )
             self.assertEqual(eval_log["measurement"]["token_source"], "estimated")
+            self.assertIn("review_mode_baseline", eval_log["orchestration"])
+            self.assertIn("review_mode_adjustments", eval_log["orchestration"])
+
+    def test_packet_heavy_profile_uses_savings_floor_to_promote_local_only(self) -> None:
+        raw_spec = sample_spec()
+        raw_spec["skill_name"] = "packet-heavy-savings-floor"
+        raw_spec["orchestrator_profile"] = "packet-heavy-orchestrator"
+        spec = builder.derive_spec(raw_spec)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp) / str(spec["skill_name"])
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            builder.generate_files(skill_dir, spec)
+
+            scripts_dir = skill_dir / "scripts"
+            for script in scripts_dir.glob("*.py"):
+                py_compile.compile(str(script), doraise=True)
+
+            context_path = Path(tmp) / "context.json"
+            packets_dir = Path(tmp) / "packets"
+            build_result_path = Path(tmp) / "build-result.json"
+            eval_log_path = Path(tmp) / "eval-log.json"
+
+            context = {
+                "context_id": "ctx-savings-floor",
+                "repo_root": str(repo_root),
+                "repo_profile_name": "sample-repo",
+                "repo_profile_path": "profiles/sample-repo/profile.json",
+                "repo_profile_summary": "Savings-floor test profile.",
+                "repo_profile": spec["repo_profile"],
+                "counts": {
+                    "task_packet_count": 1,
+                    "changed_files": 1,
+                    "batch_count": 0,
+                },
+                "override_signals": {},
+                "notes": ["x" * 20000],
+            }
+            context_path.write_text(
+                json.dumps(context, indent=2),
+                encoding="utf-8",
+            )
+
+            run_python(
+                scripts_dir / "build_builder_tests_packets.py",
+                "--context",
+                str(context_path),
+                "--output-dir",
+                str(packets_dir),
+                "--result-output",
+                str(build_result_path),
+            )
+
+            orchestrator = json.loads(
+                (packets_dir / "orchestrator.json").read_text(encoding="utf-8")
+            )
+            build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
+            packet_metrics = json.loads(
+                (packets_dir / "packet_metrics.json").read_text(encoding="utf-8")
+            )
+
+            self.assertEqual(orchestrator["review_mode_baseline"], "local-only")
+            self.assertEqual(orchestrator["review_mode"], "targeted-delegation")
+            self.assertEqual(
+                orchestrator["review_mode_adjustments"],
+                ["delegation_savings_floor"],
+            )
+            self.assertEqual(orchestrator["recommended_worker_count"], 2)
+            self.assertEqual(len(orchestrator["recommended_workers"]), 2)
+            self.assertNotIn("estimated_delegation_savings", orchestrator)
+            self.assertGreaterEqual(
+                packet_metrics["estimated_delegation_savings"],
+                250,
+            )
+
+            self.assertEqual(build_result["review_mode_baseline"], "local-only")
+            self.assertEqual(build_result["review_mode"], "targeted-delegation")
+            self.assertEqual(
+                build_result["review_mode_adjustments"],
+                ["delegation_savings_floor"],
+            )
+            self.assertEqual(build_result["recommended_worker_count"], 2)
+
+            run_python(
+                scripts_dir / "write_evaluation_log.py",
+                "init",
+                "--context",
+                str(context_path),
+                "--orchestrator",
+                str(packets_dir / "orchestrator.json"),
+                "--output",
+                str(eval_log_path),
+            )
+            run_python(
+                scripts_dir / "write_evaluation_log.py",
+                "phase",
+                "--log",
+                str(eval_log_path),
+                "--phase",
+                "build",
+                "--result",
+                str(build_result_path),
+            )
+            eval_log = json.loads(eval_log_path.read_text(encoding="utf-8"))
+            self.assertEqual(
+                eval_log["orchestration"]["review_mode_baseline"],
+                "local-only",
+            )
+            self.assertEqual(
+                eval_log["orchestration"]["review_mode_adjustments"],
+                ["delegation_savings_floor"],
+            )
 
 
 if __name__ == "__main__":
