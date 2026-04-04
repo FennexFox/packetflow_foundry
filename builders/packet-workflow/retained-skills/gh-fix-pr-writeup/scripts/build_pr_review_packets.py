@@ -171,6 +171,7 @@ def apply_override_adjustment(
     *,
     review_mode: str,
     worker_count: int,
+    group_count: int,
     diff_totals: dict[str, int] | None,
     runtime_active: bool,
     process_active: bool,
@@ -591,6 +592,7 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
     review_mode, worker_count, review_mode_adjustments = apply_override_adjustment(
         review_mode=review_mode_baseline,
         worker_count=worker_count,
+        group_count=group_count,
         diff_totals=diff_totals,
         runtime_active=runtime_active,
         process_active=process_active,

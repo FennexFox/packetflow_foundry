@@ -215,6 +215,22 @@ class BuildPrReviewPacketsTests(unittest.TestCase):
         self.assertIn("current_failures", synthesis_packet)
         self.assertEqual(orchestrator["common_path_contract"]["required_packets"], ["rules_packet.json", "synthesis_packet.json"])
 
+    def test_apply_override_adjustment_handles_broad_mode_group_count(self) -> None:
+        review_mode, worker_count, adjustments = packets.apply_override_adjustment(
+            review_mode="broad-delegation",
+            worker_count=3,
+            group_count=5,
+            diff_totals={"churn": 10},
+            runtime_active=True,
+            process_active=True,
+            testing_relevant=True,
+            override_signals=[],
+        )
+
+        self.assertEqual(review_mode, "broad-delegation")
+        self.assertEqual(worker_count, 4)
+        self.assertEqual(adjustments, [])
+
     def test_small_full_rewrite_does_not_force_qa(self) -> None:
         output_dir, build_result = self.run_builder(base_context(broad=False), lint_payload())
         orchestrator = json.loads((output_dir / "orchestrator.json").read_text(encoding="utf-8"))
