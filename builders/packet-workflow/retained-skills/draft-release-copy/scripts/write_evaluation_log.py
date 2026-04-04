@@ -745,13 +745,28 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
         skill_name = ((log.get("skill") or {}).get("name") or "").strip()
         if skill_name == "draft-release-copy":
             skill_data = ((log.setdefault("skill_specific", {}).setdefault("data", {})))
-            packet_count = safe_int(result.get("packet_count"))
-            largest_packet = safe_int(result.get("largest_packet_bytes"))
-            largest_two_packets = safe_int(result.get("largest_two_packets_bytes"))
-            estimated_local_only = safe_int(result.get("estimated_local_only_tokens"))
-            estimated_packet_tokens = safe_int(result.get("estimated_packet_tokens"))
-            estimated_savings = safe_int(result.get("estimated_delegation_savings"))
-            packet_size_bytes = result.get("packet_size_bytes") if isinstance(result.get("packet_size_bytes"), dict) else {}
+            packet_metrics = result.get("packet_metrics") if isinstance(result.get("packet_metrics"), dict) else {}
+            packet_count = safe_int(packet_metrics.get("packet_count"))
+            if packet_count is None:
+                packet_count = safe_int(result.get("packet_count"))
+            largest_packet = safe_int(packet_metrics.get("largest_packet_bytes"))
+            if largest_packet is None:
+                largest_packet = safe_int(result.get("largest_packet_bytes"))
+            largest_two_packets = safe_int(packet_metrics.get("largest_two_packets_bytes"))
+            if largest_two_packets is None:
+                largest_two_packets = safe_int(result.get("largest_two_packets_bytes"))
+            estimated_local_only = safe_int(packet_metrics.get("estimated_local_only_tokens"))
+            if estimated_local_only is None:
+                estimated_local_only = safe_int(result.get("estimated_local_only_tokens"))
+            estimated_packet_tokens = safe_int(packet_metrics.get("estimated_packet_tokens"))
+            if estimated_packet_tokens is None:
+                estimated_packet_tokens = safe_int(result.get("estimated_packet_tokens"))
+            estimated_savings = safe_int(packet_metrics.get("estimated_delegation_savings"))
+            if estimated_savings is None:
+                estimated_savings = safe_int(result.get("estimated_delegation_savings"))
+            packet_size_bytes = packet_metrics.get("packet_size_bytes") if isinstance(packet_metrics.get("packet_size_bytes"), dict) else {}
+            if not packet_size_bytes and isinstance(result.get("packet_size_bytes"), dict):
+                packet_size_bytes = result.get("packet_size_bytes")
 
             if packet_count is not None:
                 skill_data["packet_count"] = packet_count

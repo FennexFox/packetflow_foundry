@@ -72,7 +72,12 @@ def replace_publish_fields(text: str, fields: dict[str, str]) -> str:
         value = str(fields[field_name])
         escaped = xml_utils.escape(value, {'"': "&quot;"})
         pattern = re.compile(rf"(<{tag_name}\s+Value=\")([^\"]*)(\"\s*/>)")
-        updated, count = pattern.subn(rf"\1{escaped}\3", updated, count=1)
+        # Use a callable replacement so numeric-leading values are never parsed as backreferences.
+        updated, count = pattern.subn(
+            lambda match, replacement=escaped: match.group(1) + replacement + match.group(3),
+            updated,
+            count=1,
+        )
         if count != 1:
             raise RuntimeError(f"unsupported layout: missing <{tag_name} Value=\"...\" /> field")
 

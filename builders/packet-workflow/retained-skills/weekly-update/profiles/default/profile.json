@@ -9,6 +9,10 @@
       "priority_markers": {
         "regex": "\\[(?:P[0-3]|medium|high|low)\\]"
       },
+      "analysis_ref": {
+        "policy": "freshest_local_branch",
+        "preferred_branch_order": []
+      },
       "release_issue": {
         "title_regex": "^\\[Release\\]\\s*(?P<tag>v[0-9A-Za-z._-]+)$"
       },

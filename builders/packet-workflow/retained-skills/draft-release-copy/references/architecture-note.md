@@ -48,6 +48,7 @@ If this path fails because the packet set is not sufficient, treat that as packe
   - validator/apply inputs and outputs
 - eval contract:
   - `packet_metrics.json`
+  - optional build result JSON from `build_release_copy_packets.py --result-output`
   - `eval-log.json`
   - smoke summaries
 

@@ -65,6 +65,23 @@ Use evidence in this order:
 
 The last-success marker is never a facts source for the weekly narrative. It is only a baseline source for the reporting window.
 
+## Analysis Ref Semantics
+
+- Resolve `analysis_ref` before any local git or file evidence is collected or reread.
+- Repo-wide GitHub evidence remains repo-wide:
+  - releases
+  - PR summaries and details
+  - issues
+  - review comments
+  - workflow runs
+- Local git and file evidence is selected-ref-local and must follow `analysis_ref.selected_ref` and `analysis_ref.selected_sha`.
+- Default retained behavior is `analysis_ref.policy=freshest_local_branch`.
+- `freshest_local_branch` selects the tip under `refs/heads/*` with the newest commit timestamp.
+- `current_head` preserves the old attached or detached `HEAD` behavior.
+- `preferred_branch_order` selects the first configured local branch, then falls back to `freshest_local_branch`, then to `current_head` when no local branches exist.
+- When the selected ref differs from the current workspace `HEAD`, use `git show <analysis_ref.selected_sha>:<repo-relative-path>` or an equivalent selected-ref materialization for local rereads instead of the worktree filesystem.
+- State-marker identity is keyed by the logical repo's shared git common-dir plus the analysis-ref policy so ephemeral worktree paths do not fragment weekly history.
+
 ## Review Mode Guidance
 
 - `local-only`
@@ -247,6 +264,7 @@ Keep shared workflow facts here:
 - primary goal
 - authority order
 - stop conditions
+- `analysis_ref`
 - review mode
 - worker budget
 - section rules
@@ -276,6 +294,7 @@ Raw reread stays exception-only and must remain candidate-scoped through `raw_re
 Keep the evidence map here:
 - reporting window
 - default branch
+- `analysis_ref`
 - release-to-issue linkage
 - top-level versus nested PR lineage
 - candidate inventory index
@@ -400,6 +419,8 @@ Marker updates are blocked when:
 - unresolved `raw_reread_reason` exceptions remain after adjudication
 - `overall_confidence` is `low`
 - `allow_marker_update` is `false`
+
+Default state-marker lookup and write paths are derived from the logical repo identity plus the resolved analysis-ref policy, not from an ephemeral worktree root path. The collector may read a legacy path once during migration, but successful apply writes the stable marker path.
 
 ## Notes
 

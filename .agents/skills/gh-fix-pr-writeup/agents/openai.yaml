@@ -1,5 +1,5 @@
 interface:
-  display_name: "Fix PR Writeup"
+  display_name: "GH Fix PR Writeup"
   short_description: "Audit and repair PR title/body"
   default_prompt: >-
     Use $gh-fix-pr-writeup to verify a PR title and body against repository

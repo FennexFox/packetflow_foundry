@@ -169,6 +169,21 @@ class ApplyReleaseCopyPlanTests(unittest.TestCase):
             mutation_kinds = [item["kind"] for item in payload["mutations"]]
             self.assertEqual(mutation_kinds, ["publish_configuration", "readme"])
 
+    def test_apply_supports_numeric_mod_version_values(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            normalized_plan, publish_path, _readme_path = self.build_normalized_plan(tmp)
+            normalized_plan["publish_update"]["fields"]["mod_version"] = "10.0.0"
+            validation = self.validation_payload(normalized_plan)
+
+            exit_code, _stdout, payload = self.run_apply(validation)
+
+            self.assertEqual(exit_code, 0)
+            self.assertTrue(payload["apply_succeeded"])
+            publish_mutation = next(item for item in payload["mutations"] if item["kind"] == "publish_configuration")
+            self.assertIn("mod_version", publish_mutation["fields"])
+            self.assertIn('<ModVersion Value="10.0.0" />', publish_path.read_text(encoding="utf-8"))
+
     def test_apply_rejects_tampered_validator_output(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

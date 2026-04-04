@@ -31,13 +31,15 @@ class WriteEvaluationLogReleaseCopyTests(unittest.TestCase):
         result = {
             "review_mode": "targeted-delegation",
             "recommended_worker_count": 2,
-            "packet_count": 8,
-            "largest_packet_bytes": 1200,
-            "largest_two_packets_bytes": 2100,
-            "estimated_local_only_tokens": 1800,
-            "estimated_packet_tokens": 950,
-            "estimated_delegation_savings": 850,
-            "packet_size_bytes": {"worker_facing_total": 3800, "raw_local_source_bytes": 7200},
+            "packet_metrics": {
+                "packet_count": 8,
+                "largest_packet_bytes": 1200,
+                "largest_two_packets_bytes": 2100,
+                "estimated_local_only_tokens": 1800,
+                "estimated_packet_tokens": 950,
+                "estimated_delegation_savings": 850,
+                "packet_size_bytes": {"worker_facing_total": 3800, "raw_local_source_bytes": 7200},
+            },
         }
 
         eval_log.apply_phase_update(log, "build", result, duration=0.5)
