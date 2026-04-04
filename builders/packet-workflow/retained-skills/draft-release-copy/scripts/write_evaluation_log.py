@@ -485,6 +485,10 @@ def build_base_log(
         },
         "orchestration": {
             "review_mode": orchestrator.get("review_mode"),
+            "review_mode_baseline": orchestrator.get("review_mode_baseline"),
+            "review_mode_adjustments": list_of_strings(
+                orchestrator.get("review_mode_adjustments")
+            ),
             "override_signals": normalize_override_signals(orchestrator),
             "worker_count": safe_int(orchestrator.get("recommended_worker_count")) or len(worker_roles(orchestrator)),
             "worker_roles": worker_roles(orchestrator),
@@ -739,6 +743,15 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
         orchestration = log.setdefault("orchestration", {})
         if result.get("review_mode"):
             orchestration["review_mode"] = result.get("review_mode")
+        if result.get("review_mode_baseline"):
+            orchestration["review_mode_baseline"] = result.get(
+                "review_mode_baseline"
+            )
+        review_mode_adjustments = list_of_strings(
+            result.get("review_mode_adjustments")
+        )
+        if review_mode_adjustments:
+            orchestration["review_mode_adjustments"] = review_mode_adjustments
         worker_count = safe_int(result.get("recommended_worker_count"))
         if worker_count is not None:
             orchestration["worker_count"] = worker_count

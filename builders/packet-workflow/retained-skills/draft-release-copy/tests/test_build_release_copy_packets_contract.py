@@ -262,16 +262,35 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         )
         self.assertEqual(packets.packet_worker_map()["publish_packet"], ["large_diff_auditor"])
         self.assertEqual(packets.packet_worker_map()["checklist_packet"], ["docs_verifier", "repo_mapper"])
-        self.assertEqual(packets.review_mode(5, 2, []), ("local-only", 0))
-        self.assertEqual(packets.review_mode(9, 2, []), ("targeted-delegation", 2))
-        self.assertEqual(packets.review_mode(21, 4, []), ("broad-delegation", 3))
+        self.assertEqual(packets.baseline_review_mode(5, 2), ("local-only", 0))
+        self.assertEqual(packets.baseline_review_mode(9, 2), ("targeted-delegation", 2))
+        self.assertEqual(packets.baseline_review_mode(21, 4), ("broad-delegation", 3))
         self.assertEqual(
-            packets.review_mode(4, 1, [{"reason": "override", "detail": "x"}]),
-            ("targeted-delegation", 2),
+            packets.apply_override_adjustment(
+                "local-only",
+                0,
+                1,
+                [{"reason": "override", "detail": "x"}],
+            ),
+            ("targeted-delegation", 2, ["override_signal"]),
         )
         self.assertEqual(
-            packets.review_mode(12, 2, [{"reason": "override", "detail": "x"}]),
-            ("broad-delegation", 3),
+            packets.apply_override_adjustment(
+                "targeted-delegation",
+                2,
+                2,
+                [{"reason": "override", "detail": "x"}],
+            ),
+            ("broad-delegation", 3, ["override_signal"]),
+        )
+        self.assertEqual(
+            packets.maybe_apply_delegation_savings_floor(
+                "local-only",
+                0,
+                {"estimated_delegation_savings": 250},
+                [],
+            ),
+            ("targeted-delegation", 2, ["delegation_savings_floor"]),
         )
         self.assertEqual(
             packets.handoff_command(
@@ -365,6 +384,8 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         self.assertEqual(orchestrator["shared_packet"], "global_packet.json")
         self.assertEqual(orchestrator["shared_local_packet"], "synthesis_packet.json")
         self.assertEqual(orchestrator["routing_contract"], contract.runtime_field_roles())
+        self.assertEqual(orchestrator["review_mode_baseline"], "targeted-delegation")
+        self.assertEqual(orchestrator["review_mode_adjustments"], [])
         self.assertEqual(
             orchestrator["common_path_contract"]["required_packets"],
             ["global_packet.json", "synthesis_packet.json"],

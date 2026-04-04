@@ -217,8 +217,13 @@ class BuildPrReviewPacketsTests(unittest.TestCase):
 
     def test_small_full_rewrite_does_not_force_qa(self) -> None:
         output_dir, build_result = self.run_builder(base_context(broad=False), lint_payload())
+        orchestrator = json.loads((output_dir / "orchestrator.json").read_text(encoding="utf-8"))
         synthesis_packet = json.loads((output_dir / "synthesis_packet.json").read_text(encoding="utf-8"))
-        self.assertEqual(build_result["review_mode"], "local-only")
+        self.assertEqual(build_result["review_mode_baseline"], "local-only")
+        self.assertEqual(build_result["review_mode"], "targeted-delegation")
+        self.assertIn("delegation_savings_floor", build_result["review_mode_adjustments"])
+        self.assertEqual(orchestrator["review_mode_baseline"], "local-only")
+        self.assertIn("delegation_savings_floor", orchestrator["review_mode_adjustments"])
         self.assertFalse(build_result["qa_required"])
         self.assertFalse(synthesis_packet["qa_required"])
         self.assertIsNone(synthesis_packet["qa_reason"])

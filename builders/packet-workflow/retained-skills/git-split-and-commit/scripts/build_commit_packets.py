@@ -34,6 +34,7 @@ TARGETED_BATCH_LIMIT = 4
 BROAD_FILE_LIMIT = 20
 CHURN_OVERRIDE_LIMIT = 300
 GENERATED_FILE_OVERRIDE_RATIO = 0.5
+DELEGATION_SAVINGS_FLOOR = 250
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -283,7 +284,11 @@ def override_signals(files: list[dict[str, Any]], diff_totals: dict[str, int]) -
     return signals
 
 
-def determine_review_mode(file_count: int, batch_count: int, split_count: int, overrides: list[dict[str, str]]) -> tuple[str, int]:
+def determine_baseline_review_mode(
+    file_count: int,
+    batch_count: int,
+    split_count: int,
+) -> tuple[str, int]:
     if file_count <= LOCAL_FILE_LIMIT and batch_count <= LOCAL_BATCH_LIMIT and split_count == 0:
         review_mode = "local-only"
     elif batch_count >= 5 or file_count > BROAD_FILE_LIMIT:
@@ -292,20 +297,49 @@ def determine_review_mode(file_count: int, batch_count: int, split_count: int, o
         review_mode = "targeted-delegation"
     else:
         review_mode = "local-only"
-
-    override_reasons = {str(item.get("reason", "")) for item in overrides}
-    if overrides and review_mode == "local-only":
-        if batch_count > 1 or split_count > 0 or "diff_stat_threshold" in override_reasons:
-            review_mode = "targeted-delegation"
-    elif overrides and review_mode == "targeted-delegation":
-        if batch_count > TARGETED_BATCH_LIMIT or split_count > 1 or "diff_stat_threshold" in override_reasons:
-            review_mode = "broad-delegation"
-
     if review_mode == "local-only":
         return review_mode, 0
     if review_mode == "targeted-delegation":
         return review_mode, 2
     return review_mode, 4 if batch_count > TARGETED_BATCH_LIMIT else 3
+
+
+def apply_override_adjustment(
+    review_mode: str,
+    worker_count: int,
+    batch_count: int,
+    split_count: int,
+    overrides: list[dict[str, str]],
+) -> tuple[str, int, list[str]]:
+    override_reasons = {str(item.get("reason", "")) for item in overrides}
+    adjustments: list[str] = []
+    if overrides and review_mode == "local-only":
+        if batch_count > 1 or split_count > 0 or "diff_stat_threshold" in override_reasons:
+            review_mode = "targeted-delegation"
+            worker_count = 2
+            adjustments.append("override_signal")
+    elif overrides and review_mode == "targeted-delegation":
+        if batch_count > TARGETED_BATCH_LIMIT or split_count > 1 or "diff_stat_threshold" in override_reasons:
+            review_mode = "broad-delegation"
+            worker_count = 4 if batch_count > TARGETED_BATCH_LIMIT else 3
+            adjustments.append("override_signal")
+    return review_mode, worker_count, adjustments
+
+
+def maybe_apply_delegation_savings_floor(
+    review_mode: str,
+    worker_count: int,
+    packet_metrics: dict[str, Any],
+    adjustments: list[str],
+) -> tuple[str, int, list[str]]:
+    estimated_savings = int(packet_metrics.get("estimated_delegation_savings", 0) or 0)
+    if (
+        review_mode == "local-only"
+        and estimated_savings >= DELEGATION_SAVINGS_FLOOR
+        and "delegation_savings_floor" not in adjustments
+    ):
+        return "targeted-delegation", max(worker_count, 2), [*adjustments, "delegation_savings_floor"]
+    return review_mode, worker_count, adjustments
 
 
 def packet_name(prefix: str, index: int) -> str:
@@ -615,6 +649,8 @@ def aggregate_quality_escape_hints(*hint_lists: list[dict[str, Any]]) -> list[di
 def build_result_payload(
     *,
     review_mode: str,
+    review_mode_baseline: str,
+    review_mode_adjustments: list[str],
     recommended_workers: list[dict[str, Any]],
     packet_order: list[str],
     active_packets: list[str],
@@ -627,6 +663,8 @@ def build_result_payload(
 ) -> dict[str, Any]:
     return {
         "review_mode": review_mode,
+        "review_mode_baseline": review_mode_baseline,
+        "review_mode_adjustments": review_mode_adjustments,
         "recommended_worker_count": len(recommended_workers),
         "recommended_workers": recommended_workers,
         "packet_order": packet_order,
@@ -673,11 +711,17 @@ def main() -> int:
         if packet is not None:
             split_packets.append(packet)
 
-    review_mode, worker_count = determine_review_mode(
+    review_mode_baseline, worker_count = determine_baseline_review_mode(
         file_count=len(files),
         batch_count=len(batches),
         split_count=len(split_packets),
-        overrides=overrides,
+    )
+    review_mode, worker_count, review_mode_adjustments = apply_override_adjustment(
+        review_mode_baseline,
+        worker_count,
+        len(batches),
+        len(split_packets),
+        overrides,
     )
 
     worker_selection_guidance = {
@@ -1017,6 +1061,8 @@ def main() -> int:
         "repo_profile_path": worktree.get("repo_profile_path"),
         "repo_profile_summary": worktree.get("repo_profile_summary"),
         "review_mode": review_mode,
+        "review_mode_baseline": review_mode_baseline,
+        "review_mode_adjustments": review_mode_adjustments,
         "worker_budget": len(recommended_workers),
         "recommended_worker_count": len(recommended_workers),
         "shared_packet": "global_packet.json",
@@ -1083,8 +1129,128 @@ def main() -> int:
         },
         shared_packets=[],
     )
+    review_mode, worker_count, review_mode_adjustments = maybe_apply_delegation_savings_floor(
+        review_mode,
+        worker_count,
+        packet_metrics,
+        review_mode_adjustments,
+    )
+    if orchestrator["review_mode"] != review_mode:
+        recommended_workers = []
+        optional_workers = []
+        if review_mode == "targeted-delegation":
+            recommended_workers.append(
+                {
+                    "name": "rules",
+                    "agent_type": "docs_verifier",
+                    "packets": ["global_packet.json", "rules_packet.json"],
+                    "responsibility": "Extract hard commit-message rules, scope requirements, and repo defaults.",
+                    "reasoning_effort": "medium",
+                }
+            )
+            if candidate_batch_names:
+                recommended_workers.append(
+                    {
+                        "name": "commit-batches",
+                        "agent_type": "evidence_summarizer",
+                        "packets": ["global_packet.json", *candidate_batch_names[:2]],
+                        "responsibility": "Summarize the strongest logical commit buckets and recommended type/scope.",
+                        "reasoning_effort": "medium",
+                        "model": "gpt-5.4-mini",
+                    }
+                )
+            optional_workers.append(
+                {
+                    "name": "worktree",
+                    "agent_type": "repo_mapper",
+                    "packets": ["global_packet.json", "worktree_packet.json"],
+                    "responsibility": "Summarize touched areas, validation-candidate coverage, and override signals.",
+                    "reasoning_effort": "medium",
+                }
+            )
+            if split_packet_names:
+                optional_workers.append(
+                    {
+                        "name": "split-review",
+                        "agent_type": "large_diff_auditor",
+                        "packets": ["global_packet.json", split_packet_names[0]],
+                        "responsibility": "Decide whether the split candidate file is one intent or multiple intents.",
+                        "reasoning_effort": "medium",
+                        "model": "gpt-5.4-mini",
+                    }
+                )
+        elif review_mode == "broad-delegation":
+            recommended_workers.append(
+                {
+                    "name": "rules",
+                    "agent_type": "docs_verifier",
+                    "packets": ["global_packet.json", "rules_packet.json"],
+                    "responsibility": "Extract hard commit-message rules, scope requirements, and repo defaults.",
+                    "reasoning_effort": "medium",
+                }
+            )
+            for batch_name in candidate_batch_names[: max(worker_count - 1, 1)]:
+                recommended_workers.append(
+                    {
+                        "name": packet_basename(batch_name),
+                        "agent_type": "evidence_summarizer",
+                        "packets": ["global_packet.json", batch_name],
+                        "responsibility": "Summarize one candidate batch and recommend type/scope.",
+                        "reasoning_effort": "medium",
+                        "model": "gpt-5.4-mini",
+                    }
+                )
+            recommended_workers = recommended_workers[:worker_count]
+            optional_workers.append(
+                {
+                    "name": "worktree",
+                    "agent_type": "repo_mapper",
+                    "packets": ["global_packet.json", "worktree_packet.json"],
+                    "responsibility": "Summarize touched areas, validation-candidate coverage, and override signals.",
+                    "reasoning_effort": "medium",
+                }
+            )
+            if split_packet_names:
+                optional_workers.append(
+                    {
+                        "name": "split-review",
+                        "agent_type": "large_diff_auditor",
+                        "packets": ["global_packet.json", *split_packet_names[:2]],
+                        "responsibility": "Review the highest-risk split-file packets.",
+                        "reasoning_effort": "medium",
+                        "model": "gpt-5.4-mini",
+                    }
+                )
+            optional_workers.append(
+                {
+                    "name": "qa",
+                    "agent_type": "large_diff_auditor",
+                    "packets": ["global_packet.json", *candidate_batch_names[:3], *split_packet_names[:1]],
+                    "responsibility": "Compare the draft commit plan against the packet evidence before apply.",
+                    "reasoning_effort": "medium",
+                }
+            )
+        orchestrator["review_mode"] = review_mode
+        orchestrator["review_mode_baseline"] = review_mode_baseline
+        orchestrator["review_mode_adjustments"] = review_mode_adjustments
+        orchestrator["worker_budget"] = len(recommended_workers)
+        orchestrator["recommended_worker_count"] = len(recommended_workers)
+        orchestrator["recommended_workers"] = recommended_workers
+        orchestrator["optional_workers"] = optional_workers
+        packet_payloads["orchestrator.json"] = orchestrator
+        packet_metrics = compute_packet_metrics(
+            packet_payloads,
+            local_only_sources={
+                "rules.json": rules,
+                "worktree.json": worktree,
+                "raw_focus_surfaces.json": local_only_surfaces,
+            },
+            shared_packets=[],
+        )
     build_result = build_result_payload(
         review_mode=review_mode,
+        review_mode_baseline=review_mode_baseline,
+        review_mode_adjustments=review_mode_adjustments,
         recommended_workers=recommended_workers,
         packet_order=packet_order,
         active_packets=active_packets,
