@@ -85,6 +85,41 @@ class WeeklyUpdateFailurePathTests(unittest.TestCase):
         self.assertEqual(packets["incidents_packet.json"]["candidate_ids"], [])
         self.assertEqual(packets["risks_packet.json"]["candidate_ids"], [])
 
+    def test_override_signal_promotes_local_only_to_targeted_delegation(self) -> None:
+        quiet_context = dict(self.context)
+        quiet_context["releases"] = []
+        quiet_context["top_level_prs"] = []
+        quiet_context["nested_prs"] = []
+        quiet_context["pr_lineage"] = {}
+        quiet_context["classified_issues"] = []
+        quiet_context["review_findings"] = []
+        quiet_context["workflow_failures"] = []
+        quiet_context["candidate_inventory"] = []
+        quiet_context["counts"] = {
+            "releases": 0,
+            "top_level_prs": 0,
+            "nested_prs": 0,
+            "selected_issues": 0,
+            "review_findings": 0,
+            "workflow_failures": 0,
+            "actual_incident_items": 0,
+            "changed_files": 0,
+            "task_packet_count": len(wl.PACKET_NAMES),
+            "batch_count": 0,
+        }
+        quiet_context["override_signals"] = {
+            "high_churn": True,
+            "multi_surface_active": False,
+            "nested_lineage_complexity": False,
+        }
+        lint = wl.lint_context(quiet_context)
+        packets = wl.build_packets(quiet_context, lint)
+        self.assertTrue(lint["can_proceed"])
+        self.assertEqual(packets["orchestrator.json"]["review_mode_baseline"], "local-only")
+        self.assertEqual(packets["orchestrator.json"]["review_mode"], "targeted-delegation")
+        self.assertEqual(packets["orchestrator.json"]["review_mode_adjustments"], ["override_signal"])
+        self.assertGreater(len(packets["orchestrator.json"]["recommended_workers"]), 0)
+
     def test_collect_context_surfaces_truncation_warnings_in_source_gaps(self) -> None:
         repo_path = Path("C:/repo")
         with (

@@ -1784,8 +1784,10 @@ def apply_override_adjustment(
     overrides = {}
     overrides.update(context.get("override_signals") or {})
     overrides.update(lint_report.get("override_signals") or {})
-    if any(bool(value) for value in overrides.values()) and review_mode == "targeted-delegation":
-        return "broad-delegation", ["override_signal"]
+    if any(bool(value) for value in overrides.values()):
+        review_modes = ["local-only", "targeted-delegation", "broad-delegation"]
+        next_index = min(review_modes.index(review_mode) + 1, len(review_modes) - 1)
+        return review_modes[next_index], ["override_signal"]
     return review_mode, []
 
 
