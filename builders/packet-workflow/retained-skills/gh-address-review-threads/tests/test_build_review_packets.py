@@ -269,6 +269,67 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertTrue(thread_packet["adjudication_basis"]["common_path_sufficient"])
             self.assertEqual(thread_packet["adjudication_basis"]["explicit_reread_reasons"], [])
 
+    def test_main_keeps_minimum_worker_count_after_savings_floor_promotion(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            threads = [
+                review_thread(
+                    thread_id="t-1",
+                    path="src/app.py",
+                    line=2,
+                    reviewer_login="reviewer-a",
+                    reviewer_body="Please tighten the worker selection handling.",
+                )
+            ]
+            context = context_with_threads(tmp, threads)
+            context["conversation_comments"] = [
+                {
+                    "id": "comment-1",
+                    "body": "x" * 20000,
+                    "created_at": "2026-03-01T00:00:00Z",
+                    "updated_at": "2026-03-01T00:00:00Z",
+                    "url": "https://example.invalid/pr/11#issuecomment-1",
+                    "author_login": "reviewer-a",
+                }
+            ]
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            context_path = tmp / "context.json"
+            output_dir = tmp / "packets"
+            build_result_path = tmp / "build-result.json"
+            write_json(context_path, context)
+
+            argv = [
+                "build_review_packets.py",
+                "--context",
+                str(context_path),
+                "--repo-root",
+                context["repo_root"],
+                "--output-dir",
+                str(output_dir),
+                "--result-output",
+                str(build_result_path),
+            ]
+            with patch.object(sys, "argv", argv), patch.object(
+                packets,
+                "diff_snippet_for_path",
+                return_value=None,
+            ):
+                self.assertEqual(packets.main(), 0)
+
+            orchestrator = json.loads((output_dir / "orchestrator.json").read_text(encoding="utf-8"))
+            build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(orchestrator["review_mode_baseline"], "local-only")
+            self.assertEqual(orchestrator["review_mode"], "targeted-delegation")
+            self.assertEqual(
+                orchestrator["review_mode_adjustments"],
+                ["delegation_savings_floor"],
+            )
+            self.assertEqual(orchestrator["recommended_worker_count"], 2)
+            self.assertEqual(len(orchestrator["recommended_workers"]), 2)
+            self.assertEqual(build_result["recommended_worker_count"], 2)
+            self.assertEqual(len(build_result["recommended_workers"]), 2)
+
     def test_main_marks_same_run_outdated_transition_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)

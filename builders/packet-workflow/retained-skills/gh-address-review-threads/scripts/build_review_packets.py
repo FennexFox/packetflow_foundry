@@ -855,6 +855,18 @@ def maybe_apply_delegation_savings_floor(
     return review_mode, adjustments
 
 
+def recommended_worker_minimum(
+    review_mode: str,
+    review_mode_adjustments: list[str],
+) -> int:
+    if (
+        review_mode == "targeted-delegation"
+        and "delegation_savings_floor" in review_mode_adjustments
+    ):
+        return 2
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Build packet artifacts for token-efficient PR review-thread handling."
@@ -1260,11 +1272,9 @@ def main() -> int:
         global_packet_name=global_packet_name,
         analysis_packet_names=batch_files + singleton_packets,
         packet_worker_map=packet_worker_map,
-        minimum_count=(
-            2
-            if review_mode == "targeted-delegation"
-            and "delegation_savings_floor" in review_mode_adjustments
-            else 0
+        minimum_count=recommended_worker_minimum(
+            review_mode,
+            review_mode_adjustments,
         ),
     )
     optional_workers = derive_optional_workers(
@@ -1406,7 +1416,10 @@ def main() -> int:
         global_packet_name=global_packet_name,
         analysis_packet_names=batch_files + singleton_packets,
         packet_worker_map=packet_worker_map,
-        minimum_count=0,
+        minimum_count=recommended_worker_minimum(
+            review_mode,
+            review_mode_adjustments,
+        ),
     )
     optional_workers = derive_optional_workers(
         review_mode=review_mode,

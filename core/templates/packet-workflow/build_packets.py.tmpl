@@ -119,20 +119,25 @@ def active_worker_family_order() -> list[str]:
     return ["context_findings", "verifiers"]
 
 
+def dedupe_preserve(items: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        if item in seen:
+            continue
+        seen.add(item)
+        deduped.append(item)
+    return deduped
+
+
 def surfaced_optional_workers(recommended_workers: list[dict]) -> list[str]:
     ordered: list[str] = []
     for family_name in active_worker_family_order():
         ordered.extend(SPEC_METADATA["preferred_worker_families"].get(family_name, []))
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for agent_type in ordered:
-        if agent_type not in seen:
-            seen.add(agent_type)
-            deduped.append(agent_type)
     recommended_agent_types = {worker["agent_type"] for worker in recommended_workers}
     return [
         agent_type
-        for agent_type in deduped
+        for agent_type in dedupe_preserve(ordered)
         if agent_type not in recommended_agent_types
     ]
 
@@ -173,31 +178,33 @@ def recommended_workers(
         if not fallback_agent_types:
             fallback_agent_types = ["docs_verifier"]
         packet_cursor = 0
-        while len(workers) < budget:
+        stalled_packets = 0
+        while len(workers) < budget and stalled_packets < len(ordered_packets):
             packet_name = ordered_packets[packet_cursor % len(ordered_packets)]
-            candidate_agent_types = [
+            candidate_agent_types = dedupe_preserve([
                 *(SPEC_METADATA["packet_worker_map"].get(packet_name, [])),
                 *fallback_agent_types,
-            ]
-            agent_type = next(
-                (
-                    candidate
-                    for candidate in candidate_agent_types
-                    if (candidate, packet_name) not in seen_assignments
-                ),
-                fallback_agent_types[0],
-            )
-            workers.append(
-                {
-                    "agent_type": agent_type,
-                    "packet": f"{packet_name}.json",
-                    "instruction": WORKER_INSTRUCTION_MAP.get(
-                        agent_type,
-                        WORKER_INSTRUCTION_MAP.get("docs_verifier", ""),
-                    ),
-                }
-            )
-            seen_assignments.add((agent_type, packet_name))
+            ])
+            assigned = False
+            for agent_type in candidate_agent_types:
+                if (agent_type, packet_name) in seen_assignments:
+                    continue
+                workers.append(
+                    {
+                        "agent_type": agent_type,
+                        "packet": f"{packet_name}.json",
+                        "instruction": WORKER_INSTRUCTION_MAP.get(
+                            agent_type,
+                            WORKER_INSTRUCTION_MAP.get("docs_verifier", ""),
+                        ),
+                    }
+                )
+                seen_assignments.add((agent_type, packet_name))
+                assigned = True
+                stalled_packets = 0
+                break
+            if not assigned:
+                stalled_packets += 1
             packet_cursor += 1
     return workers
 
@@ -232,10 +239,7 @@ def orchestrator_payload(
         "review_mode": review_mode,
         "review_mode_baseline": review_mode_baseline,
         "review_mode_adjustments": review_mode_adjustments,
-        "recommended_worker_count": recommended_worker_count(
-            review_mode,
-            review_mode_adjustments,
-        ),
+        "recommended_worker_count": len(concrete_workers),
         "recommended_workers": concrete_workers,
         "optional_workers": surfaced_optional_workers(concrete_workers),
         "local_responsibilities": [
@@ -438,9 +442,8 @@ __LINT_LOAD_BLOCK__
         "review_mode": review_mode,
         "review_mode_baseline": review_mode_baseline,
         "review_mode_adjustments": review_mode_adjustments,
-        "recommended_worker_count": recommended_worker_count(
-            review_mode,
-            review_mode_adjustments,
+        "recommended_worker_count": len(
+            packet_payloads["orchestrator.json"]["recommended_workers"]
         ),
         "packet_files": ordered_packets,
     }

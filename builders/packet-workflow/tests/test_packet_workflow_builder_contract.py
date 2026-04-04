@@ -1262,6 +1262,86 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 ["delegation_savings_floor"],
             )
 
+    def test_generated_builder_stops_when_no_unique_worker_assignments_remain(self) -> None:
+        raw_spec = sample_spec()
+        raw_spec["skill_name"] = "packet-worker-dedupe"
+        raw_spec["task_packet_names"] = ["rules_packet"]
+        raw_spec["preferred_worker_families"] = {
+            "context_findings": ["docs_verifier"],
+            "candidate_producers": [],
+            "verifiers": ["docs_verifier"],
+        }
+        raw_spec["packet_worker_map"] = {
+            "rules_packet": ["docs_verifier"],
+        }
+        raw_spec["repo_profile"]["packet_defaults"]["review_docs"] = {
+            "rules_packet": ["README.md", "docs/rules.md"],
+        }
+        raw_spec["repo_profile"]["packet_defaults"]["source_path_globs"] = {
+            "rules_packet": ["docs/**/*.md"],
+        }
+        spec = builder.derive_spec(raw_spec)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp) / str(spec["skill_name"])
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            builder.generate_files(skill_dir, spec)
+
+            context_path = Path(tmp) / "context.json"
+            packets_dir = Path(tmp) / "packets"
+            build_result_path = Path(tmp) / "build-result.json"
+            context = {
+                "context_id": "ctx-dedupe",
+                "repo_root": str(repo_root),
+                "repo_profile_name": "sample-repo",
+                "repo_profile_path": "profiles/sample-repo/profile.json",
+                "repo_profile_summary": "Duplicate-assignment regression coverage.",
+                "repo_profile": spec["repo_profile"],
+                "counts": {
+                    "task_packet_count": 1,
+                    "changed_files": 21,
+                    "batch_count": 0,
+                },
+                "override_signals": {},
+                "notes": [],
+            }
+            context_path.write_text(
+                json.dumps(context, indent=2),
+                encoding="utf-8",
+            )
+
+            run_python(
+                skill_dir / "scripts" / "build_builder_tests_packets.py",
+                "--context",
+                str(context_path),
+                "--output-dir",
+                str(packets_dir),
+                "--result-output",
+                str(build_result_path),
+            )
+
+            orchestrator = json.loads(
+                (packets_dir / "orchestrator.json").read_text(encoding="utf-8")
+            )
+            build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
+            assignments = {
+                (item["agent_type"], item["packet"])
+                for item in orchestrator["recommended_workers"]
+            }
+
+            self.assertEqual(orchestrator["review_mode"], "broad-delegation")
+            self.assertEqual(len(orchestrator["recommended_workers"]), 1)
+            self.assertEqual(len(assignments), len(orchestrator["recommended_workers"]))
+            self.assertEqual(
+                orchestrator["recommended_worker_count"],
+                len(orchestrator["recommended_workers"]),
+            )
+            self.assertEqual(
+                build_result["recommended_worker_count"],
+                len(orchestrator["recommended_workers"]),
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
