@@ -8,15 +8,15 @@ import unittest
 from pathlib import Path
 from unittest import mock
 
-from reword_test_support import commit_file, load_json, make_repo, run_git
+from reword_test_support import commit_file, load_json, make_repo, run_git, write_json
 
 import reword_recent_commits  # type: ignore  # noqa: E402
 import reword_runtime_paths  # type: ignore  # noqa: E402
-from reword_plan_contract import branch_state  # noqa: E402
+from reword_plan_contract import DELEGATION_SAVINGS_FLOOR, branch_state  # noqa: E402
 
 
 class RewordRecentCommitsDriverTests(unittest.TestCase):
-    def seed_repo(self) -> tuple[object, Path]:
+    def seed_repo(self, *, with_large_project_profile: bool = False) -> tuple[object, Path]:
         temp_dir, repo = make_repo()
         self.addCleanup(temp_dir.cleanup)
         commit_file(
@@ -37,6 +37,35 @@ class RewordRecentCommitsDriverTests(unittest.TestCase):
         )
         commit_file(repo, "src/a.py", "one\n", "fix(core): seed")
         commit_file(repo, "src/b.py", "two\n", "fix(parser): follow-up")
+        if with_large_project_profile:
+            profile_path = repo / ".codex" / "project" / "profiles" / "reword-recent-commits" / "profile.json"
+            profile_path.parent.mkdir(parents=True, exist_ok=True)
+            write_json(
+                profile_path,
+                {
+                    "name": "reword-recent-commits",
+                    "summary": "Project-local profile fixture that deterministically inflates the local-only plan payload.",
+                    "notes": ["delegation-savings-fixture" * 2000],
+                    "packet_defaults": {
+                        "review_docs": {
+                            "commit": ["README.md", "CONTRIBUTING.md"],
+                            "rules": ["CONTRIBUTING.md", "README.md"],
+                        },
+                        "source_path_globs": {
+                            "commit": ["**/*"],
+                            "rules": [".github/**", "*.md"],
+                        },
+                    },
+                    "metadata": {
+                        "versioning": {
+                            "builder_family": "packet-workflow",
+                            "builder_semver": "0.1.0",
+                            "compatibility_epoch": 1,
+                            "repo_profile_schema_version": 1,
+                        }
+                    },
+                },
+            )
         return temp_dir, repo
 
     def run_driver(self, *args: str) -> tuple[int, dict]:
@@ -66,15 +95,26 @@ class RewordRecentCommitsDriverTests(unittest.TestCase):
         self.assertFalse(branch_state(repo)["working_tree_dirty"])
         self.assertEqual(run_git(repo, "status", "--short"), "")
 
-    def test_local_only_mode_still_prepares_packet_artifacts(self) -> None:
-        _temp_dir, repo = self.seed_repo()
+    def test_savings_floor_promotion_still_prepares_packet_artifacts(self) -> None:
+        _temp_dir, repo = self.seed_repo(with_large_project_profile=True)
 
         exit_code, summary = self.run_driver("--repo", str(repo), "--count", "1", "--prepare-only")
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(summary["status"], "prepared")
-        self.assertEqual(summary["review_mode"], "local-only")
         artifact_root = Path(summary["artifact_root"])
+        build_result = load_json(artifact_root / reword_recent_commits.BUILD_RESULT_FILE)
+        self.assertEqual(summary["review_mode"], "targeted-delegation")
+        self.assertEqual(build_result["review_mode_baseline"], "local-only")
+        self.assertEqual(
+            build_result["review_mode_adjustments"],
+            ["delegation_savings_floor"],
+        )
+        self.assertEqual(build_result["recommended_worker_count"], 2)
+        self.assertGreaterEqual(
+            build_result["packet_metrics"]["estimated_delegation_savings"],
+            DELEGATION_SAVINGS_FLOOR,
+        )
         self.assertTrue((artifact_root / "packets" / "orchestrator.json").is_file())
         self.assertTrue((artifact_root / "packets" / "global_packet.json").is_file())
         self.assertTrue((artifact_root / "packets" / "rules_packet.json").is_file())

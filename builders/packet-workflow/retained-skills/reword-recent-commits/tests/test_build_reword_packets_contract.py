@@ -14,6 +14,7 @@ from reword_test_support import commit_file, make_repo, write_json
 import build_reword_packets  # type: ignore  # noqa: E402
 from reword_plan_contract import (  # noqa: E402
     COMMON_PATH_CONTRACT,
+    DELEGATION_SAVINGS_FLOOR,
     RAW_REREAD_ALLOWED_REASONS,
     build_context_fingerprint,
     compute_packet_metrics,
@@ -234,8 +235,8 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
                     "short_hash": "1" * 12,
                     "parent_hashes": ["0" * 40],
                     "subject": "fix(app): first pass",
-                    "body": "alpha " * 400,
-                    "full_message": "fix(app): first pass\n\n" + ("alpha " * 400),
+                    "body": "",
+                    "full_message": "fix(app): first pass",
                     "author_name": "Codex",
                     "author_email": "codex@example.com",
                     "author_date": "2026-03-27T00:00:00Z",
@@ -249,8 +250,8 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
                     "short_hash": "2" * 12,
                     "parent_hashes": ["1" * 40],
                     "subject": "docs(app): second pass",
-                    "body": "beta " * 320,
-                    "full_message": "docs(app): second pass\n\n" + ("beta " * 320),
+                    "body": "",
+                    "full_message": "docs(app): second pass",
                     "author_name": "Codex",
                     "author_email": "codex@example.com",
                     "author_date": "2026-03-27T00:00:00Z",
@@ -289,6 +290,120 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
         self.assertEqual(packet_metrics["packet_count"], len(orchestrator_payload["packet_files"]))
         self.assertEqual(result["packet_metrics"], packet_metrics)
         self.assertEqual(result["review_mode"], "local-only")
+
+    def test_local_review_mode_promotes_when_savings_floor_is_met(self) -> None:
+        temp_dir, repo = make_repo()
+        self.addCleanup(temp_dir.cleanup)
+        head_commit = commit_file(repo, "src/app.py", "seed\n", "fix(app): seed")
+        branch = build_reword_packets.branch_state(repo)["branch"] or "main"
+
+        rules = {
+            "rules": {
+                "format": "<type>(<scope>): <subject>",
+                "allowed_types": ["fix", "docs"],
+                "scope_required": True,
+                "subject_length_limit": 72,
+                "body_rules": [],
+                "references_rules": [],
+                "scope_suggestions": ["app"],
+            },
+            "rule_derivation": {
+                "format_source": "commit_message_instructions",
+                "allowed_types_source": "commit_message_instructions",
+                "scope_required_source": "commit_message_instructions",
+                "subject_length_limit_source": "commit_message_instructions",
+                "repo_defaults_source": "commit_message_instructions",
+            },
+            "recent_scope_vocabulary": ["app"],
+            "recent_subject_samples": ["fix(app): seed"],
+        }
+        plan = {
+            "repo_root": str(repo),
+            "branch": branch,
+            "detached_head": False,
+            "count": 2,
+            "head_commit": head_commit,
+            "base_commit": head_commit,
+            "active_operation": None,
+            "notes": ["x" * 20000],
+            "commits": [
+                {
+                    "index": 1,
+                    "hash": "1" * 40,
+                    "short_hash": "1" * 12,
+                    "parent_hashes": ["0" * 40],
+                    "subject": "fix(app): first pass",
+                    "body": "",
+                    "full_message": "fix(app): first pass",
+                    "author_name": "Codex",
+                    "author_email": "codex@example.com",
+                    "author_date": "2026-03-27T00:00:00Z",
+                    "files": ["src/app.py"],
+                    "shortstat": "1 file changed, 2 insertions(+), 1 deletion(-)",
+                    "new_message": "",
+                },
+                {
+                    "index": 2,
+                    "hash": "2" * 40,
+                    "short_hash": "2" * 12,
+                    "parent_hashes": ["1" * 40],
+                    "subject": "docs(app): second pass",
+                    "body": "",
+                    "full_message": "docs(app): second pass",
+                    "author_name": "Codex",
+                    "author_email": "codex@example.com",
+                    "author_date": "2026-03-27T00:00:00Z",
+                    "files": ["src/app.py"],
+                    "shortstat": "1 file changed, 1 insertion(+)",
+                    "new_message": "",
+                },
+            ],
+        }
+
+        exit_code, output_dir, orchestrator, result = self.run_script(rules, plan)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(orchestrator["review_mode_baseline"], "local-only")
+        self.assertEqual(orchestrator["review_mode"], "targeted-delegation")
+        self.assertEqual(
+            orchestrator["review_mode_adjustments"],
+            ["delegation_savings_floor"],
+        )
+        self.assertEqual(orchestrator["recommended_worker_count"], 2)
+        self.assertEqual(len(orchestrator["recommended_workers"]), 2)
+
+        packet_metrics = json.loads((output_dir / "packet_metrics.json").read_text(encoding="utf-8"))
+        global_packet = json.loads((output_dir / "global_packet.json").read_text(encoding="utf-8"))
+        rules_packet = json.loads((output_dir / "rules_packet.json").read_text(encoding="utf-8"))
+        commit_payloads = {
+            name: json.loads((output_dir / name).read_text(encoding="utf-8"))
+            for name in orchestrator["task_packet_names"]
+            if name.startswith("commit-")
+        }
+        expected_metrics = compute_packet_metrics(
+            {
+                "global_packet.json": global_packet,
+                "rules_packet.json": rules_packet,
+                **commit_payloads,
+                "orchestrator.json": orchestrator,
+            },
+            local_only_sources={"rules": rules, "plan": plan},
+            shared_packets=COMMON_PATH_CONTRACT["shared_packets"],
+        )
+        self.assertEqual(packet_metrics, expected_metrics)
+        self.assertEqual(packet_metrics["packet_count"], len(orchestrator["packet_files"]))
+        self.assertGreaterEqual(
+            packet_metrics["estimated_delegation_savings"],
+            DELEGATION_SAVINGS_FLOOR,
+        )
+        self.assertEqual(result["packet_metrics"], packet_metrics)
+        self.assertEqual(result["review_mode_baseline"], "local-only")
+        self.assertEqual(result["review_mode"], "targeted-delegation")
+        self.assertEqual(
+            result["review_mode_adjustments"],
+            ["delegation_savings_floor"],
+        )
+        self.assertEqual(result["recommended_worker_count"], 2)
 
     def test_local_mode_surfaces_root_rewrite_blocker(self) -> None:
         temp_dir, repo = make_repo()

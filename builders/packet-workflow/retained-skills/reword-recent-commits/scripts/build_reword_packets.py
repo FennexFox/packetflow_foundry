@@ -13,6 +13,7 @@ from typing import Any
 from reword_plan_contract import (
     COMMON_PATH_CONTRACT,
     DECISION_READY_PACKETS,
+    DELEGATION_SAVINGS_FLOOR,
     PACKET_METRIC_FIELDS,
     RAW_REREAD_ALLOWED_REASONS,
     WORKER_OUTPUT_SHAPE,
@@ -48,6 +49,8 @@ GENERATED_FILE_PATTERNS = (
     re.compile(r"(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|poetry\.lock|cargo\.lock)$"),
     re.compile(r"\.min\.(js|css)$"),
 )
+
+
 def parse_shortstat(shortstat: str) -> dict[str, int]:
     files = re.search(r"(\d+)\s+files?\s+changed", shortstat)
     insertions = re.search(r"(\d+)\s+insertions?\(\+\)", shortstat)
@@ -276,6 +279,22 @@ def apply_override_adjustment(
         review_mode = "broad-delegation"
         worker_count = 3 if commit_count <= 6 else 4
         adjustments.append("override_signal")
+    return review_mode, worker_count, adjustments
+
+
+def maybe_apply_delegation_savings_floor(
+    review_mode: str,
+    worker_count: int,
+    packet_metrics: dict[str, Any],
+    adjustments: list[str],
+) -> tuple[str, int, list[str]]:
+    estimated_savings = int(packet_metrics.get("estimated_delegation_savings", 0) or 0)
+    if (
+        review_mode == "local-only"
+        and estimated_savings >= DELEGATION_SAVINGS_FLOOR
+        and "delegation_savings_floor" not in adjustments
+    ):
+        return "targeted-delegation", max(worker_count, 2), [*adjustments, "delegation_savings_floor"]
     return review_mode, worker_count, adjustments
 
 
@@ -730,6 +749,12 @@ def main() -> int:
         packet_payloads,
         local_only_sources={"rules": rules, "plan": plan},
         shared_packets=COMMON_PATH_CONTRACT["shared_packets"],
+    )
+    review_mode, worker_count, review_mode_adjustments = maybe_apply_delegation_savings_floor(
+        review_mode,
+        worker_count,
+        packet_metrics,
+        review_mode_adjustments,
     )
     if orchestrator["review_mode"] != review_mode:
         recommended_workers = []

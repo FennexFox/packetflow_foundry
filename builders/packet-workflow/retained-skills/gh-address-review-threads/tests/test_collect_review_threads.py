@@ -100,6 +100,8 @@ class CollectReviewThreadsTests(unittest.TestCase):
         self.assertEqual(reply_candidates["ack"]["mode"], "update")
         self.assertEqual(reply_candidates["ack"]["comment_id"], "ack-2")
         self.assertTrue(reply_candidates["ack"]["managed"])
+        if latest_self_reply is None:
+            self.fail("expected latest_self_reply to be present")
         self.assertEqual(latest_self_reply["id"], "ack-2")
         self.assertEqual(latest_reviewer_at, "2026-03-01T00:00:00Z")
         self.assertEqual(
