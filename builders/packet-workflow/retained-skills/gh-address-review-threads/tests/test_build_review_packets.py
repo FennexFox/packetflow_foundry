@@ -5,6 +5,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 
@@ -24,13 +25,13 @@ class BuildReviewPacketsTests(unittest.TestCase):
     def _run_savings_floor_promotion_case(
         self,
     ) -> tuple[
-        dict[str, object],
-        list[dict[str, object]],
-        dict[str, object],
-        dict[str, object],
-        dict[str, object],
-        dict[str, object],
-        dict[str, object],
+        dict[str, Any],
+        list[dict[str, Any]],
+        dict[str, Any],
+        dict[str, Any],
+        dict[str, Any],
+        dict[str, Any],
+        dict[str, Any],
     ]:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
