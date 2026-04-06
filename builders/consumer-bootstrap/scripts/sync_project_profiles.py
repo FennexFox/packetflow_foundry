@@ -21,7 +21,12 @@ from project_profile_support import (
 )
 
 
-PACKET_WORKFLOW_SCRIPT_DIR = Path(__file__).resolve().parents[2] / "packet-workflow" / "scripts"
+PACKET_WORKFLOW_SCRIPT_DIR = (
+    Path(__file__).resolve().parents[2]
+    / "packet-workflow"
+    / "retained-skills"
+    / "scripts"
+)
 if str(PACKET_WORKFLOW_SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(PACKET_WORKFLOW_SCRIPT_DIR))
 

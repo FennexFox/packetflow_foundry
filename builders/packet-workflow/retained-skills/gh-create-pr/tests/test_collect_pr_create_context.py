@@ -28,6 +28,7 @@ class CollectPrCreateContextTests(unittest.TestCase):
                 / "packetflow_foundry"
                 / "builders"
                 / "packet-workflow"
+                / "retained-skills"
                 / "scripts"
             )
 

@@ -13,7 +13,12 @@ from unittest import mock
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
-PACKET_WORKFLOW_SCRIPT_DIR = Path(__file__).resolve().parents[2] / "packet-workflow" / "scripts"
+PACKET_WORKFLOW_SCRIPT_DIR = (
+    Path(__file__).resolve().parents[2]
+    / "packet-workflow"
+    / "retained-skills"
+    / "scripts"
+)
 REWORD_SCRIPT_DIR = (
     Path(__file__).resolve().parents[3]
     / "builders"
@@ -543,7 +548,7 @@ class ConsumerBootstrapTests(unittest.TestCase):
                         "---",
                         "",
                         "Use `../../../builders/packet-workflow/retained-skills/vendor-skill/SKILL.md`.",
-                        "Run `python ../../../builders/packet-workflow/scripts/init_packet_skill.py`.",
+                        "Run `python ../../../builders/packet-workflow/retained-skills/scripts/init_packet_skill.py`.",
                         "",
                     ]
                 ),
@@ -560,7 +565,7 @@ class ConsumerBootstrapTests(unittest.TestCase):
                 copied_text,
             )
             self.assertIn(
-                "python ../../../.codex/vendor/packetflow_foundry/builders/packet-workflow/scripts/init_packet_skill.py",
+                "python ../../../.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/scripts/init_packet_skill.py",
                 copied_text,
             )
             self.assertNotIn(

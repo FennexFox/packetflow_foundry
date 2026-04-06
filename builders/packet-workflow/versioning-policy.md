@@ -65,6 +65,6 @@ Do not bump the epoch for:
 
 ## Semver-Only Stamp Helper
 
-- `scripts/stamp_skill_versions.py` may update `builder_semver` and `metadata.versioning.builder_semver`.
+- `retained-skills/scripts/stamp_skill_versions.py` may update `builder_semver` and `metadata.versioning.builder_semver`.
 - It must refuse to run when epoch or schema versions are stale, missing, invalid, or ahead of the builder.
 

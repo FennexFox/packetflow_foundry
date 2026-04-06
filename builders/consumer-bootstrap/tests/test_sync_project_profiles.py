@@ -12,7 +12,12 @@ from unittest import mock
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
-PACKET_WORKFLOW_SCRIPT_DIR = Path(__file__).resolve().parents[2] / "packet-workflow" / "scripts"
+PACKET_WORKFLOW_SCRIPT_DIR = (
+    Path(__file__).resolve().parents[2]
+    / "packet-workflow"
+    / "retained-skills"
+    / "scripts"
+)
 REWORD_SCRIPT_DIR = (
     Path(__file__).resolve().parents[3]
     / "builders"
