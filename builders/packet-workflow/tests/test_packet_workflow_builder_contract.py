@@ -14,6 +14,7 @@ from unittest import mock
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "retained-skills" / "scripts"
+LEGACY_SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
 FIXTURE_AGENTS_DIR = Path(__file__).resolve().parent / "fixtures" / "agents"
 if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
@@ -398,6 +399,50 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 )
             ),
         )
+
+    def test_legacy_init_packet_skill_entrypoint_forwards_to_retained_builder(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_root = Path(tmp)
+            spec_path = tmp_root / "builder-spec.json"
+            output_root = tmp_root / "output"
+            spec_path.write_text(
+                json.dumps(sample_spec(), indent=2, ensure_ascii=True) + "\n",
+                encoding="utf-8",
+            )
+
+            result = run_python(
+                LEGACY_SCRIPT_DIR / "init_packet_skill.py",
+                "--spec",
+                str(spec_path),
+                "--output-dir",
+                str(output_root),
+                "--managed-agents-dir",
+                str(FIXTURE_AGENTS_DIR),
+            )
+
+            self.assertIn(
+                "[OK] Generated retained packet-explorer-smoke kernel",
+                result.stdout,
+            )
+            self.assertTrue(
+                (
+                    output_root
+                    / "builders"
+                    / "packet-workflow"
+                    / "retained-skills"
+                    / "packet-explorer-smoke"
+                    / "SKILL.md"
+                ).is_file()
+            )
+            self.assertTrue(
+                (
+                    output_root
+                    / ".agents"
+                    / "skills"
+                    / "packet-explorer-smoke"
+                    / "SKILL.md"
+                ).is_file()
+            )
 
     def test_skill_subtree_stays_thin(self) -> None:
         skills_root = builder.foundry_root_dir() / ".agents" / "skills"
