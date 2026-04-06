@@ -759,6 +759,133 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertEqual(build_result["outdated_auto_resolve_candidates"], 1)
             self.assertEqual(build_result["outdated_recheck_ambiguous"], 0)
 
+    def test_same_run_outdated_transition_allows_template_auto_accept_with_request_anchor_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            previous_threads = [
+                review_thread(
+                    thread_id="t-1",
+                    path="core/templates/packet-workflow/skill_md.tmpl",
+                    line=2,
+                    reviewer_login="reviewer-a",
+                    reviewer_body=(
+                        "Please use `references/__DOMAIN_EVALUATION_CONTRACT_FILE__` "
+                        "for the domain evaluation fields entry."
+                    ),
+                )
+            ]
+            current_threads = [
+                review_thread(
+                    thread_id="t-1",
+                    path="core/templates/packet-workflow/skill_md.tmpl",
+                    line=2,
+                    reviewer_login="reviewer-a",
+                    reviewer_body=(
+                        "Please use `references/__DOMAIN_EVALUATION_CONTRACT_FILE__` "
+                        "for the domain evaluation fields entry."
+                    ),
+                    is_outdated=True,
+                )
+            ]
+            previous_context = context_with_threads(tmp, previous_threads)
+            current_context = context_with_threads(tmp, current_threads)
+            repo_root = Path(current_context["repo_root"])
+            template_path = repo_root / "core" / "templates" / "packet-workflow" / "skill_md.tmpl"
+            template_path.parent.mkdir(parents=True, exist_ok=True)
+            template_path.write_text(
+                "\n".join(
+                    [
+                        "## References",
+                        "- Domain evaluation fields: `references/__DOMAIN_EVALUATION_CONTRACT_FILE__`",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            for context in (previous_context, current_context):
+                context["changed_files"] = ["core/templates/packet-workflow/skill_md.tmpl"]
+                context["changed_file_groups"]["runtime"] = {"count": 0, "sample_files": []}
+                context["changed_file_groups"]["other"] = {
+                    "count": 1,
+                    "sample_files": ["core/templates/packet-workflow/skill_md.tmpl"],
+                }
+                context["context_fingerprint"] = build_context_fingerprint(context)
+
+            previous_context_path = tmp / "previous-context.json"
+            context_path = tmp / "context.json"
+            reconciliation_input_path = tmp / "reconciliation-input.json"
+            output_dir = tmp / "packets"
+            build_result_path = tmp / "build-result.json"
+            write_json(previous_context_path, previous_context)
+            write_json(context_path, current_context)
+            write_json(
+                reconciliation_input_path,
+                {
+                    "accepted_threads": [
+                        {
+                            "thread_id": "t-1",
+                            "validation_commands": [
+                                "python -m pytest builders/packet-workflow/tests/test_packet_workflow_builder_contract.py -q"
+                            ],
+                        }
+                    ]
+                },
+            )
+
+            argv = [
+                "build_review_packets.py",
+                "--context",
+                str(context_path),
+                "--previous-context",
+                str(previous_context_path),
+                "--reconciliation-input",
+                str(reconciliation_input_path),
+                "--repo-root",
+                current_context["repo_root"],
+                "--output-dir",
+                str(output_dir),
+                "--result-output",
+                str(build_result_path),
+            ]
+
+            def fake_diff_snippet(
+                repo_root: Path,
+                base_ref: str | None,
+                head_ref: str | None,
+                path: str,
+                line_number: int | None,
+                cache: dict[str, str | None],
+            ) -> str | None:
+                if path == "core/templates/packet-workflow/skill_md.tmpl":
+                    return (
+                        "@@ -1,2 +1,2 @@\n"
+                        " ## References\n"
+                        "- Domain evaluation fields: `references/__DOMAIN_SLUG__-evaluation-contract.md`\n"
+                        "+ Domain evaluation fields: `references/__DOMAIN_EVALUATION_CONTRACT_FILE__`\n"
+                    )
+                return None
+
+            with patch.object(sys, "argv", argv), patch.object(
+                packets,
+                "diff_snippet_for_path",
+                side_effect=fake_diff_snippet,
+            ):
+                self.assertEqual(packets.main(), 0)
+
+            transitioned_packet = json.loads((output_dir / "thread-01.json").read_text(encoding="utf-8"))
+            build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
+
+            self.assertEqual(transitioned_packet["outdated_recheck"]["resolution_verdict"], "auto-accept")
+            self.assertEqual(
+                transitioned_packet["outdated_recheck"]["verdict_reason"],
+                "accepted_same_run_with_current_head_evidence",
+            )
+            self.assertTrue(
+                transitioned_packet["outdated_recheck"]["current_head_evidence"]["request_anchor_visible"]
+            )
+            self.assertEqual(build_result["outdated_auto_resolve_candidates"], 1)
+            self.assertEqual(build_result["outdated_recheck_ambiguous"], 0)
+
 
 if __name__ == "__main__":
     unittest.main()

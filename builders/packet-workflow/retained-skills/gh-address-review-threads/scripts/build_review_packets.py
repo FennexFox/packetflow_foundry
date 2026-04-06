@@ -545,7 +545,7 @@ def build_outdated_recheck(
     elif not validation_commands:
         verdict = "ambiguous"
         verdict_reason = "missing_validation_provenance"
-    elif area not in {"docs", "runtime", "tests"}:
+    elif area not in {"docs", "runtime", "tests"} and not request_anchor_visible:
         verdict = "ambiguous"
         verdict_reason = "unsupported_area_for_auto_resolve"
     elif not bool(file_context.get("path_exists")):
