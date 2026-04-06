@@ -335,6 +335,40 @@ def manage_run(args: list[str], *, cwd: Path) -> dict[str, Any]:
     return run_json([str(script_path("manage_review_thread_run.py")), *args], cwd=cwd)
 
 
+def minimal_final_payload(*, apply_result: dict[str, Any]) -> dict[str, Any]:
+    dry_run = bool(apply_result.get("dry_run"))
+    applied = apply_result.get("apply_succeeded")
+    if dry_run:
+        status = "dry-run"
+        usable = True
+        human_edit_required = False
+        severity = "none"
+    elif applied is True:
+        status = "completed"
+        usable = True
+        human_edit_required = False
+        severity = "none"
+    elif apply_result.get("stop_reasons"):
+        status = "stopped"
+        usable = False
+        human_edit_required = True
+        severity = "high"
+    else:
+        status = "failed"
+        usable = False
+        human_edit_required = True
+        severity = "high"
+    return {
+        "quality": {
+            "result_status": status,
+            "first_pass_usable": usable,
+            "human_post_edit_required": human_edit_required,
+            "human_post_edit_severity": severity,
+            "final_output_changed_after_review": False,
+        }
+    }
+
+
 def build_safe_plan(
     context: dict[str, Any],
     *,
@@ -422,6 +456,7 @@ def run_smoke_workflow(
     complete_validation_path = Path(manifest["paths"]["complete"]["validated_plan"])
     complete_result_path = Path(manifest["paths"]["complete"]["result"])
     eval_log_path = Path(manifest["paths"]["evaluation_log"])
+    final_eval_path = Path(manifest["paths"]["evaluation"]["final"])
 
     pre_context = read_json(pre_context_path)
     counts = thread_counts_from_context(pre_context)
@@ -645,6 +680,21 @@ def run_smoke_workflow(
         cwd=repo_root,
     )
     merge_eval_phase(eval_log_path, "apply", complete_result_path, cwd=repo_root)
+    write_json(
+        final_eval_path,
+        minimal_final_payload(apply_result=read_json(complete_result_path)),
+    )
+    run_script(
+        [
+            str(script_path("write_evaluation_log.py")),
+            "finalize",
+            "--log",
+            str(eval_log_path),
+            "--final",
+            str(final_eval_path),
+        ],
+        cwd=repo_root,
+    )
 
     packet_metrics = read_json(post_packet_dir / "packet_metrics.json")
     complete_result = read_json(complete_result_path)
@@ -659,6 +709,7 @@ def run_smoke_workflow(
         run_id=manifest["run_id"],
         run_root=manifest["paths"]["run_root"],
         manifest_path=manifest["paths"]["manifest"],
+        evaluation_final_path=manifest["paths"]["evaluation"]["final"],
         review_mode=build_result.get("review_mode"),
         common_path_sufficient=build_result.get("common_path_sufficient"),
         estimated_packet_tokens=packet_metrics.get("estimated_packet_tokens"),

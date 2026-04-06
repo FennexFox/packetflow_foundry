@@ -221,7 +221,7 @@ Each `thread-batch-*.json` packet keeps:
   - may return `blocked` or `noop` with the fixed `status/reason/thread_counts/next_action` schema
 - synthetic reference smoke:
   - uses a temp fixture and no live GitHub state
-  - must exercise collect-equivalent context, build, validate, apply `--dry-run`, and evaluation merge end to end
+  - must exercise collect-equivalent context, build, validate, apply `--dry-run`, phase-result merges, and evaluation finalize end to end
 - both smoke modes keep the short summary schema at the top level
 
 ## Reply And Resolution Rules
