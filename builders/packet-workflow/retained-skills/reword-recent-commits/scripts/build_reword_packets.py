@@ -294,6 +294,8 @@ def maybe_apply_delegation_savings_floor(
     ):
         return "targeted-delegation", max(worker_count, 2), [*adjustments, "delegation_savings_floor"]
     return review_mode, worker_count, adjustments
+
+
 def chunk_commit_indexes(commit_indexes: list[int], chunks: int) -> list[list[int]]:
     if chunks <= 0:
         return []

@@ -66,15 +66,26 @@ class RewordRecentCommitsDriverTests(unittest.TestCase):
         self.assertFalse(branch_state(repo)["working_tree_dirty"])
         self.assertEqual(run_git(repo, "status", "--short"), "")
 
-    def test_local_only_mode_still_prepares_packet_artifacts(self) -> None:
+    def test_savings_floor_promotion_still_prepares_packet_artifacts(self) -> None:
         _temp_dir, repo = self.seed_repo()
 
         exit_code, summary = self.run_driver("--repo", str(repo), "--count", "1", "--prepare-only")
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(summary["status"], "prepared")
-        self.assertEqual(summary["review_mode"], "local-only")
         artifact_root = Path(summary["artifact_root"])
+        build_result = load_json(artifact_root / reword_recent_commits.BUILD_RESULT_FILE)
+        self.assertEqual(summary["review_mode"], "targeted-delegation")
+        self.assertEqual(build_result["review_mode_baseline"], "local-only")
+        self.assertEqual(
+            build_result["review_mode_adjustments"],
+            ["delegation_savings_floor"],
+        )
+        self.assertEqual(build_result["recommended_worker_count"], 2)
+        self.assertGreaterEqual(
+            build_result["packet_metrics"]["estimated_delegation_savings"],
+            250,
+        )
         self.assertTrue((artifact_root / "packets" / "orchestrator.json").is_file())
         self.assertTrue((artifact_root / "packets" / "global_packet.json").is_file())
         self.assertTrue((artifact_root / "packets" / "rules_packet.json").is_file())
