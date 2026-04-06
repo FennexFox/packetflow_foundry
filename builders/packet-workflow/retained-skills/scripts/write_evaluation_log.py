@@ -19,7 +19,7 @@ DEFAULT_BASELINE_METHOD = "none"
 
 
 def foundry_root_dir(script_path: Path) -> Path:
-    return script_path.resolve().parents[3]
+    return script_path.resolve().parents[4]
 
 
 def builder_skill_root(script_path: Path) -> Path:

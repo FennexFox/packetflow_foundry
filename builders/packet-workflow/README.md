@@ -21,7 +21,7 @@ Do not define contract semantics here first.
 - Then update this builder so generation output and tests match the new core semantics.
 
 Primary entrypoint:
-- `scripts/init_packet_skill.py`
+- `retained-skills/scripts/init_packet_skill.py`
   - generates an authoritative retained kernel under `retained-skills/<skill-name>/`
   - generates a thin discovery wrapper under `../../.agents/skills/<skill-name>/`
 

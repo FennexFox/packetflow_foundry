@@ -22,7 +22,7 @@ from packet_workflow_versioning import (
 
 
 def foundry_root_dir() -> Path:
-    return Path(__file__).resolve().parents[3]
+    return Path(__file__).resolve().parents[4]
 
 
 def core_templates_dir() -> Path:
@@ -883,7 +883,7 @@ def managed_agents_dir() -> Path:
 
 
 def managed_agents_fixture_dir() -> Path:
-    return Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "agents"
+    return Path(__file__).resolve().parents[2] / "tests" / "fixtures" / "agents"
 
 
 def normalize_directory_candidate(path_value: str | Path) -> Path:

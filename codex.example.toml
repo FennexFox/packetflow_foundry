@@ -6,7 +6,7 @@
 foundry_root = ".codex/vendor/packetflow_foundry"
 default_profile = "baseline"
 optional_overlays = []
-builder_entrypoint = ".codex/vendor/packetflow_foundry/builders/packet-workflow/scripts/init_packet_skill.py"
+builder_entrypoint = ".codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/scripts/init_packet_skill.py"
 managed_agents_policy = "foundry default set bridged into .codex/agents plus additive project overrides"
 
 [packetflow_foundry.compose]

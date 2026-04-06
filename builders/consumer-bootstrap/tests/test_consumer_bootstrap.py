@@ -543,7 +543,7 @@ class ConsumerBootstrapTests(unittest.TestCase):
                         "---",
                         "",
                         "Use `../../../builders/packet-workflow/retained-skills/vendor-skill/SKILL.md`.",
-                        "Run `python ../../../builders/packet-workflow/scripts/init_packet_skill.py`.",
+                        "Run `python ../../../builders/packet-workflow/retained-skills/scripts/init_packet_skill.py`.",
                         "",
                     ]
                 ),
@@ -560,7 +560,7 @@ class ConsumerBootstrapTests(unittest.TestCase):
                 copied_text,
             )
             self.assertIn(
-                "python ../../../.codex/vendor/packetflow_foundry/builders/packet-workflow/scripts/init_packet_skill.py",
+                "python ../../../.codex/vendor/packetflow_foundry/builders/packet-workflow/retained-skills/scripts/init_packet_skill.py",
                 copied_text,
             )
             self.assertNotIn(

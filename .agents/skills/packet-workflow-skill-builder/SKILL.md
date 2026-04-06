@@ -30,7 +30,7 @@ Use this skill only for repo packet workflows that follow `collect -> optional l
 - Choose `orchestrator_profile=standard` by default and use `packet-heavy-orchestrator` only when the workflow needs the packet-heavy common path from `../../../core/contracts/packet-workflow/common-path-contract.md`.
 
 3. Generate the scaffold deterministically.
-- Run `python ../../../builders/packet-workflow/scripts/init_packet_skill.py --spec <builder-spec.json> --output-dir <foundry-root>`.
+- Run `python ../../../builders/packet-workflow/retained-skills/scripts/init_packet_skill.py --spec <builder-spec.json> --output-dir <foundry-root>`.
 - The generator consumes templates from `../../../core/templates/packet-workflow/` and defaults from `../../../core/defaults/packet-workflow/`.
 - The generator writes the authoritative retained kernel to `../../../builders/packet-workflow/retained-skills/<skill-name>/`.
 - The generator writes the thin discovery wrapper to `../../../.agents/skills/<skill-name>/`.

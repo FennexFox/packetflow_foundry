@@ -21,12 +21,12 @@
       ]
     },
     {
-      "root": "builders/packet-workflow/scripts"
+      "root": "builders/packet-workflow/retained-skills/scripts"
     },
     {
       "root": "builders/packet-workflow/tests",
       "extraPaths": [
-        "builders/packet-workflow/scripts"
+        "builders/packet-workflow/retained-skills/scripts"
       ]
     },
     {

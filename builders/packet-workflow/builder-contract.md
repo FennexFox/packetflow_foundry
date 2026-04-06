@@ -1,6 +1,6 @@
 # Builder Contract
 
-Use this file when drafting `builder-spec.json` for `scripts/init_packet_skill.py`.
+Use this file when drafting `builder-spec.json` for `retained-skills/scripts/init_packet_skill.py`.
 
 Boundary note:
 - the thin-entrypoint intent for `.agents/skills/` predates the retained-kernel split
@@ -213,7 +213,7 @@ Generated runtime metadata:
 
 ## Output Layout
 
-`scripts/init_packet_skill.py --output-dir <repo-root>` generates two coordinated trees:
+`retained-skills/scripts/init_packet_skill.py --output-dir <repo-root>` generates two coordinated trees:
 - authoritative retained kernel:
   - `builders/packet-workflow/retained-skills/<skill-name>/`
 - thin discovery wrapper:
@@ -244,7 +244,7 @@ Bump rules:
 The authoritative allowlist lives in the builder generator, not in the global agents directory scan.
 
 - Source of truth:
-  - `KNOWN_WORKER_AGENT_TYPES` constant in `scripts/init_packet_skill.py`
+  - `KNOWN_WORKER_AGENT_TYPES` constant in `retained-skills/scripts/init_packet_skill.py`
 - Current managed set:
   - `repo_mapper`
   - `packet_explorer`

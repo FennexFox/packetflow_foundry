@@ -16,8 +16,15 @@ def resolve_builder_scripts_dir() -> Path:
     seen: set[Path] = set()
     for base in script_path.parents:
         for candidate in (
-            base / "builders" / "packet-workflow" / "scripts",
-            base / ".codex" / "vendor" / "packetflow_foundry" / "builders" / "packet-workflow" / "scripts",
+            base / "builders" / "packet-workflow" / "retained-skills" / "scripts",
+            base
+            / ".codex"
+            / "vendor"
+            / "packetflow_foundry"
+            / "builders"
+            / "packet-workflow"
+            / "retained-skills"
+            / "scripts",
         ):
             resolved = candidate.resolve()
             if resolved in seen:
