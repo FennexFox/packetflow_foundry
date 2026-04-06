@@ -601,6 +601,72 @@ def build_outdated_recheck(
     }
 
 
+def build_accepted_recheck(
+    *,
+    thread: dict[str, Any],
+    file_context: dict[str, Any],
+    area: str,
+    accepted_thread: dict[str, Any] | None,
+) -> dict[str, Any]:
+    validation_commands = list(accepted_thread.get("validation_commands") or []) if accepted_thread else []
+    current_head_visible = diff_hunk_covers_thread_location(
+        file_context.get("diff_snippet"),
+        previous_thread=thread,
+        current_thread=thread,
+    )
+    reviewer_body = str((thread.get("reviewer_comment") or {}).get("body") or "").strip()
+    request_anchor_visible, exact_anchors, matched_exact_anchors, matched_terms = request_anchor_evidence(
+        reviewer_body,
+        snippet=file_context.get("snippet"),
+        diff_snippet=file_context.get("diff_snippet"),
+    )
+
+    if accepted_thread is None:
+        verdict = "still-applies"
+        verdict_reason = "thread_was_not_accepted_before_push"
+    elif not validation_commands:
+        verdict = "ambiguous"
+        verdict_reason = "missing_validation_provenance"
+    elif area not in {"docs", "runtime", "tests"} and not request_anchor_visible:
+        verdict = "ambiguous"
+        verdict_reason = "unsupported_area_for_auto_resolve"
+    elif not bool(file_context.get("path_exists")):
+        verdict = "ambiguous"
+        verdict_reason = "path_missing_in_current_head"
+    elif not current_head_visible:
+        verdict = "still-applies"
+        verdict_reason = "missing_current_head_evidence"
+    else:
+        verdict = "auto-accept"
+        verdict_reason = "accepted_same_run_with_current_head_evidence"
+
+    return {
+        "same_run_acceptance": {
+            "accepted_in_previous_plan": accepted_thread is not None,
+        },
+        "validation_provenance": {
+            "commands": validation_commands,
+        },
+        "current_head_evidence": {
+            "path": str(thread.get("path") or ""),
+            "line": thread.get("line"),
+            "original_line": thread.get("original_line"),
+            "path_exists": bool(file_context.get("path_exists")),
+            "area": area,
+            "snippet": file_context.get("snippet"),
+            "diff_snippet": file_context.get("diff_snippet"),
+            "evidence_visible": current_head_visible,
+            "request_anchor_visible": request_anchor_visible,
+            "exact_request_anchors": exact_anchors,
+            "matched_exact_request_anchors": matched_exact_anchors,
+            "matched_request_terms": matched_terms,
+        },
+        "resolution_verdict": verdict,
+        "verdict_reason": verdict_reason,
+        "auto_resolution_candidate": verdict == "auto-accept",
+    }
+
+
 def code_change_policy(path: str) -> dict[str, Any]:
     area = classify_path(path)
     core_area = core_area_for_path(path)
@@ -1182,8 +1248,15 @@ def main() -> int:
             "reply_update_basis_policy": "Advisory only; record explicit allowed reread reasons or stops before leaving the packet-first path.",
         }
         previous_thread = previous_threads.get(str(thread["thread_id"]))
+        accepted_thread = reconciliation_input["accepted_threads"].get(str(thread["thread_id"]))
+        if accepted_thread is not None and not bool(thread.get("is_outdated")):
+            packet["accepted_recheck"] = build_accepted_recheck(
+                thread=thread,
+                file_context=file_context,
+                area=area,
+                accepted_thread=accepted_thread,
+            )
         if transitioned_to_outdated(previous_thread, thread):
-            accepted_thread = reconciliation_input["accepted_threads"].get(str(thread["thread_id"]))
             recheck = build_outdated_recheck(
                 thread=thread,
                 previous_thread=previous_thread,

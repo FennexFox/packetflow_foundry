@@ -408,20 +408,27 @@ def build_safe_plan(
     }
 
 
-def merge_eval_phase(log_path: Path, phase: str, result_path: Path, *, cwd: Path) -> None:
-    run_script(
-        [
-            str(script_path("write_evaluation_log.py")),
-            "phase",
-            "--log",
-            str(log_path),
-            "--phase",
-            phase,
-            "--result",
-            str(result_path),
-        ],
-        cwd=cwd,
-    )
+def merge_eval_phase(
+    log_path: Path,
+    phase: str,
+    result_path: Path,
+    *,
+    cwd: Path,
+    phase_label: str | None = None,
+) -> None:
+    args = [
+        str(script_path("write_evaluation_log.py")),
+        "phase",
+        "--log",
+        str(log_path),
+        "--phase",
+        phase,
+        "--result",
+        str(result_path),
+    ]
+    if phase_label:
+        args.extend(["--phase-label", phase_label])
+    run_script(args, cwd=cwd)
 
 
 def run_smoke_workflow(
@@ -499,7 +506,7 @@ def run_smoke_workflow(
         ],
         cwd=repo_root,
     )
-    merge_eval_phase(eval_log_path, "build", pre_build_result_path, cwd=repo_root)
+    merge_eval_phase(eval_log_path, "build", pre_build_result_path, cwd=repo_root, phase_label="pre")
 
     write_json(
         ack_plan_path,
@@ -610,7 +617,7 @@ def run_smoke_workflow(
         cwd=repo_root,
     )
     build_result = read_json(post_build_result_path)
-    merge_eval_phase(eval_log_path, "build", post_build_result_path, cwd=repo_root)
+    merge_eval_phase(eval_log_path, "build", post_build_result_path, cwd=repo_root, phase_label="post")
 
     run_script(
         [

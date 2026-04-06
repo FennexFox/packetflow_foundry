@@ -78,6 +78,77 @@ class WriteEvaluationLogReviewThreadsTests(unittest.TestCase):
             self.assertTrue(log["skill_specific"]["data"]["common_path_sufficient"])
             self.assertEqual(log["measurement"]["token_source"], "estimated")
 
+    def test_build_phase_tracks_pre_and_post_metrics_without_overwrite(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            pre_metrics_path = tmp / "pre-packet_metrics.json"
+            post_metrics_path = tmp / "post-packet_metrics.json"
+            pre_metrics_path.write_text(
+                "{\n"
+                '  "packet_count": 3,\n'
+                '  "estimated_local_only_tokens": 600,\n'
+                '  "estimated_packet_tokens": 260,\n'
+                '  "estimated_delegation_savings": 340\n'
+                "}\n",
+                encoding="utf-8",
+            )
+            post_metrics_path.write_text(
+                "{\n"
+                '  "packet_count": 4,\n'
+                '  "estimated_local_only_tokens": 700,\n'
+                '  "estimated_packet_tokens": 300,\n'
+                '  "estimated_delegation_savings": 400\n'
+                "}\n",
+                encoding="utf-8",
+            )
+            log = {
+                "skill": {"name": "gh-address-review-threads"},
+                "quality": {},
+                "safety": {},
+                "outputs": {},
+                "orchestration": {},
+                "baseline": {},
+                "measurement": {"token_source": "unavailable", "latency_source": "unavailable"},
+                "latency": {
+                    "collector_seconds": None,
+                    "linter_seconds": None,
+                    "packet_builder_seconds": None,
+                    "packet_builder_seconds_pre": None,
+                    "packet_builder_seconds_post": None,
+                    "model_seconds": None,
+                    "validator_seconds": None,
+                    "apply_seconds": None,
+                    "total_seconds": None,
+                },
+                "skill_specific": {"data": {}},
+            }
+            pre_result = {
+                "review_mode": "targeted-delegation",
+                "thread_batch_count": 0,
+                "singleton_thread_packet_count": 2,
+                "thread_counts": {"unresolved": 2, "unresolved_outdated": 0},
+                "packet_metrics_file": str(pre_metrics_path),
+            }
+            post_result = {
+                "review_mode": "broad-delegation",
+                "thread_batch_count": 1,
+                "singleton_thread_packet_count": 2,
+                "thread_counts": {"unresolved": 2, "unresolved_outdated": 0},
+                "packet_metrics_file": str(post_metrics_path),
+            }
+
+            eval_log.apply_phase_update(log, "build", pre_result, duration=0.4, phase_label="pre")
+            eval_log.apply_phase_update(log, "build", post_result, duration=0.6, phase_label="post")
+
+            self.assertEqual(log["latency"]["packet_builder_seconds_pre"], 0.4)
+            self.assertEqual(log["latency"]["packet_builder_seconds_post"], 0.6)
+            self.assertEqual(log["latency"]["packet_builder_seconds"], 1.0)
+            self.assertEqual(log["skill_specific"]["data"]["build_phase_count"], 2)
+            self.assertEqual(log["skill_specific"]["data"]["build_phases"]["pre"]["packet_count"], 3)
+            self.assertEqual(log["skill_specific"]["data"]["build_phases"]["post"]["packet_count"], 4)
+            self.assertEqual(log["skill_specific"]["data"]["estimated_delegation_savings"], 400)
+            self.assertEqual(log["measurement"]["latency_source"], "measured")
+
     def test_apply_phase_merges_review_thread_counters(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             log = {

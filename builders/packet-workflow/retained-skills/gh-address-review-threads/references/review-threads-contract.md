@@ -182,6 +182,13 @@ Each `thread-*.json` packet keeps:
 - `ownership_summary`
 - `reply_update_basis`
 - `quality_escape_hints`
+- `accepted_recheck` for same-run accepted, still-current threads:
+  - `same_run_acceptance`
+  - `validation_provenance`
+  - `current_head_evidence`
+  - `resolution_verdict`
+  - `verdict_reason`
+  - `auto_resolution_candidate`
 - `transitioned_to_outdated` when the thread was unresolved and non-outdated before this run's push, then unresolved and outdated after the push
 - `outdated_recheck` for same-run transitioned outdated threads:
   - `previous_snapshot`
@@ -212,6 +219,7 @@ Each `thread-batch-*.json` packet keeps:
 - eval-side artifacts:
   - build result JSON for `review_mode_baseline`, `review_mode_adjustments`, worker derivation, override signals, `active_paths`, `active_areas`, `analysis_targets`, `thread_batches`, `delegation_non_use_cases`, `common_path_sufficient`, and same-run outdated-transition counters
   - `packet_metrics.json` for size and token-proxy metrics only
+  - evaluation-log build merges should use distinct labels such as `pre` and `post` when a run emits more than one build result
 - runtime `orchestrator.json` keeps the final `review_mode`, routing authority, packet files, and safety context only
 - do not duplicate token-efficiency counters or build-result-only observability fields into runtime packets
 

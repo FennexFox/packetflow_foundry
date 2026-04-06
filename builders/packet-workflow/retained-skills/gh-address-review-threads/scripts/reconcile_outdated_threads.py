@@ -120,7 +120,9 @@ def decision_for_thread(
 
     validation_commands = list((accepted_thread or {}).get("validation_commands") or [])
     if accepted_thread is not None and not bool(thread.get("is_outdated")):
-        if not validation_commands:
+        recheck = packet.get("accepted_recheck") or {}
+        verdict = str(recheck.get("resolution_verdict") or "").strip()
+        if not validation_commands or verdict != "auto-accept":
             return {
                 "thread_id": thread_id,
                 "decision": "defer",

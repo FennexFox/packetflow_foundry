@@ -27,13 +27,13 @@ Use this skill to handle unresolved GitHub PR review threads on the current bran
 2. Collect the pre-push snapshot with `<python-bin> -B <skill-dir>/scripts/collect_review_threads.py --repo <repo-root> --output <pre-context-json>`.
 3. Create the run manifest with `<python-bin> -B <skill-dir>/scripts/manage_review_thread_run.py start --repo-root <repo-root> --context <pre-context-json>`.
 4. Build pre-push packets with `<python-bin> -B <skill-dir>/scripts/build_review_packets.py --context <manifest.pre.context> --repo-root <repo-root> --output-dir <manifest.pre.packet_dir> --result-output <manifest.pre.build_result>`.
-5. Initialize the evaluation log, then merge the build result.
+5. Initialize the evaluation log, then merge the pre-push build result with `write_evaluation_log.py phase --phase build --phase-label pre`.
 6. Read the active phase `orchestrator.json` first, then `global_packet.json`, then the relevant `thread-batch` or `thread` packet.
 7. Draft the raw `ack` plan locally, validate it, and record it with `record-plan --phase ack`.
 8. Apply the normalized `ack` plan, write `<manifest.ack.result>`, and record the live apply result with `record-apply --phase ack --result <manifest.ack.result>`.
 9. After real validation runs for accepted work, record the commands with `record-validation`.
 10. After the accepted work is pushed, run `post-push`, rebuild post-push packets with `--previous-context` and `--reconciliation-input`, seed the complete plan with `reconcile_outdated_threads.py --reconciliation-input <manifest.post.reconciliation_input>`, validate it, record it with `record-plan --phase complete`, then apply and record `complete`.
-11. Merge validate and apply results as each phase completes. After the last apply result, write `<manifest.evaluation.final>` with the local final observations and run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py finalize --log <eval-log-json> --final <manifest.evaluation.final>`.
+11. Merge phase results as each phase completes; when `build` runs twice, use `--phase-label pre` and `--phase-label post` so evaluation metrics do not overwrite each other. After the last apply result, write `<manifest.evaluation.final>` with the local final observations and run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py finalize --log <eval-log-json> --final <manifest.evaluation.final>`.
 
 ## Continue Only If
 
