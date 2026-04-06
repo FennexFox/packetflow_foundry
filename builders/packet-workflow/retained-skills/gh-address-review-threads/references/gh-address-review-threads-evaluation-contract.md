@@ -90,6 +90,7 @@ Track the per-run decision counts separately from the raw thread total.
 - Prefer counts, booleans, enums, and short reason lists over free-form summaries.
 - Keep the contract aligned with the local reply markers, per-thread decision model, and push-before-complete rule.
 - Build-phase review mode, worker derivation, packet/thread counts, and `common_path_sufficient` come from the build result JSON.
+- Build-result-only observability fields such as `review_mode_baseline`, `review_mode_adjustments`, `override_signals`, `active_paths`, `active_areas`, `analysis_targets`, `thread_batches`, and `delegation_non_use_cases` stay eval-side and must not widen runtime routing.
 - Same-run outdated-transition candidate and ambiguous-recheck counts may come from the build result JSON.
 - Final same-run outdated auto-resolve counts come from the apply result `reconciliation_summary`.
 - Size and token-proxy metrics come only from `packet_metrics.json`.

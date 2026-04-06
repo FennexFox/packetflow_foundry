@@ -501,6 +501,14 @@ def run_smoke_workflow(
         ],
         cwd=repo_root,
     )
+    run_support.copy_apply_result_into_manifest(
+        manifest,
+        phase="ack",
+        source_path=ack_result_path,
+        allow_dry_run=True,
+    )
+    run_support.write_manifest(manifest_path, manifest)
+    run_support.write_latest_pointer(repo_root, manifest)
     merge_eval_phase(eval_log_path, "apply", ack_result_path, cwd=repo_root)
 
     run_script(
@@ -529,6 +537,13 @@ def run_smoke_workflow(
         ],
         cwd=repo_root,
     )
+    run_support.copy_validated_plan_into_manifest(
+        manifest,
+        phase="complete",
+        source_path=complete_validation_path,
+    )
+    run_support.write_manifest(manifest_path, manifest)
+    run_support.write_latest_pointer(repo_root, manifest)
     merge_eval_phase(eval_log_path, "validate", complete_validation_path, cwd=repo_root)
     run_script(
         [
@@ -545,6 +560,14 @@ def run_smoke_workflow(
         ],
         cwd=repo_root,
     )
+    run_support.copy_apply_result_into_manifest(
+        manifest,
+        phase="complete",
+        source_path=complete_result_path,
+        allow_dry_run=True,
+    )
+    run_support.write_manifest(manifest_path, manifest)
+    run_support.write_latest_pointer(repo_root, manifest)
     merge_eval_phase(eval_log_path, "apply", complete_result_path, cwd=repo_root)
 
     packet_metrics = read_json(packet_dir / "packet_metrics.json")

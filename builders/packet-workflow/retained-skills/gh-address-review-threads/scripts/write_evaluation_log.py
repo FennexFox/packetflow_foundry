@@ -751,6 +751,7 @@ def compute_scores(log: dict[str, Any]) -> None:
 def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], duration: float | None) -> None:
     update_latency(log, phase, duration)
     if phase == "build":
+        input_size = log.setdefault("input_size", {})
         orchestration = log.setdefault("orchestration", {})
         baseline = log.setdefault("baseline", {})
         measurement = log.setdefault("measurement", {})
@@ -801,9 +802,13 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
         batch_count = safe_int(result.get("thread_batch_count"))
         if batch_count is not None:
             skill_data["thread_batch_count"] = batch_count
+            input_size["candidate_batches"] = batch_count
         singleton_count = safe_int(result.get("singleton_thread_packet_count"))
         if singleton_count is not None:
             skill_data["singleton_thread_packet_count"] = singleton_count
+        active_areas = result.get("active_areas")
+        if isinstance(active_areas, list):
+            input_size["active_areas"] = len([item for item in active_areas if str(item).strip()])
         outdated_transition_candidates = safe_int(result.get("outdated_transition_candidates"))
         if outdated_transition_candidates is not None:
             skill_data["outdated_transition_candidates"] = outdated_transition_candidates

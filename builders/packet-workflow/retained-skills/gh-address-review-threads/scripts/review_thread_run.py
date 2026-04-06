@@ -172,6 +172,7 @@ def initialize_run_manifest(
             "accepted_threads": [],
             "validation_commands": [],
             "latest_context_fingerprint": context.get("context_fingerprint"),
+            "phase_apply_results": {},
             "last_completed_phase": "start",
         },
     }
@@ -305,6 +306,48 @@ def copy_validated_plan_into_manifest(
         )
         manifest["state"]["accepted_threads"] = [thread_id for thread_id in accepted if thread_id]
     manifest["state"]["last_completed_phase"] = f"{phase}-validated"
+    return payload
+
+
+def copy_apply_result_into_manifest(
+    manifest: dict[str, Any],
+    *,
+    phase: str,
+    source_path: Path,
+    allow_dry_run: bool = False,
+) -> dict[str, Any]:
+    phase_paths = manifest["paths"].get(phase)
+    if not isinstance(phase_paths, dict) or "result" not in phase_paths:
+        raise RuntimeError(f"Manifest does not define a `{phase}` apply-result path.")
+    payload = copy_json_document(source_path, Path(phase_paths["result"]))
+    result_phase = str(payload.get("phase") or "").strip()
+    if result_phase and result_phase != phase:
+        raise RuntimeError(
+            f"apply result phase `{result_phase}` does not match manifest phase `{phase}`"
+        )
+    if payload.get("apply_succeeded") is not True:
+        raise RuntimeError(f"{phase} apply result must report apply_succeeded=true")
+    if payload.get("fingerprint_match") is not True:
+        raise RuntimeError(f"{phase} apply result must report fingerprint_match=true")
+    dry_run = bool(payload.get("dry_run"))
+    if dry_run and not allow_dry_run:
+        raise RuntimeError(
+            f"{phase} apply result must be non-dry-run to advance the live run state"
+        )
+    mutation_count = len(payload.get("mutations") or []) if isinstance(payload.get("mutations"), list) else 0
+    phase_results = manifest["state"].setdefault("phase_apply_results", {})
+    phase_results[phase] = {
+        "dry_run": dry_run,
+        "apply_succeeded": True,
+        "fingerprint_match": True,
+        "mutation_type": payload.get("mutation_type"),
+        "mutation_count": mutation_count,
+        "result_path": phase_paths["result"],
+    }
+    fingerprint = str(payload.get("context_fingerprint") or "").strip()
+    if fingerprint:
+        manifest["state"]["latest_context_fingerprint"] = fingerprint
+    manifest["state"]["last_completed_phase"] = f"{phase}-applied"
     return payload
 
 

@@ -22,7 +22,7 @@ from thread_action_contract import build_context_fingerprint  # type: ignore  # 
 
 
 class BuildReviewPacketsTests(unittest.TestCase):
-    def _run_savings_floor_promotion_case(
+    def _run_estimated_savings_observation_case(
         self,
     ) -> tuple[
         dict[str, Any],
@@ -161,13 +161,37 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertEqual(global_packet["context_fingerprint"], context["context_fingerprint"])
             self.assertEqual(global_packet["orchestrator_profile"], "standard")
             self.assertEqual(orchestrator["thread_counts"], {"unresolved": 4, "unresolved_non_outdated": 3, "unresolved_outdated": 1})
-            self.assertEqual(orchestrator["thread_batches"], {"batch-01": ["t-1", "t-2"]})
             self.assertEqual(orchestrator["packet_worker_map"], {"thread-batch-01": ["packet_explorer"], "thread-03": ["packet_explorer"]})
             self.assertEqual(global_packet["packet_worker_map"], orchestrator["packet_worker_map"])
-            self.assertEqual(orchestrator["recommended_worker_count"], 2)
+            self.assertNotIn("recommended_worker_count", orchestrator)
+            self.assertNotIn("recommended_workers", orchestrator)
+            self.assertNotIn("active_paths", orchestrator)
+            self.assertNotIn("active_areas", orchestrator)
+            self.assertNotIn("analysis_targets", orchestrator)
+            self.assertNotIn("thread_batches", orchestrator)
             self.assertEqual(
-                [worker["packets"] for worker in orchestrator["recommended_workers"]],
+                [worker["packets"] for worker in build_result["recommended_workers"]],
                 [["global_packet.json", "thread-batch-01.json"], ["global_packet.json", "thread-03.json"]],
+            )
+            self.assertEqual(build_result["recommended_worker_count"], 2)
+            self.assertEqual(build_result["thread_batch_count"], 1)
+            self.assertEqual(build_result["analysis_targets"], {"batch_count": 1, "singleton_count": 1})
+            self.assertEqual(build_result["thread_batches"], {"batch-01": ["t-1", "t-2"]})
+            self.assertEqual(build_result["active_paths"], ["src/app.py", "src/helper.py"])
+            self.assertEqual(build_result["active_areas"], ["runtime"])
+            self.assertEqual(
+                build_result["delegation_non_use_cases"],
+                {
+                    "runtime_routing_authority": "packet_worker_map",
+                    "record_only": [
+                        "review_mode_local_only",
+                        "code_change_guardrail_blockers",
+                        "broad_or_cross_cutting_fix_kept_local",
+                        "validation_path_unclear",
+                        "optional_qa_not_requested",
+                    ],
+                    "fatal": [],
+                },
             )
             self.assertEqual(batch_packet["batch"]["thread_ids"], ["t-1", "t-2"])
             self.assertEqual(batch_packet["batch"]["cluster_reason"], "same_path_reviewer_and_line_window")
@@ -292,8 +316,9 @@ class BuildReviewPacketsTests(unittest.TestCase):
             build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
 
             self.assertEqual(orchestrator["review_mode"], "targeted-delegation")
-            self.assertTrue(orchestrator["review_mode_overrides"])
+            self.assertNotIn("review_mode_overrides", orchestrator)
             self.assertFalse(build_result["common_path_sufficient"])
+            self.assertTrue(build_result["override_signals"])
             failure_reasons = build_result["common_path_failures"][0]["explicit_reread_reasons"]
             self.assertIn("missing_required_evidence", failure_reasons)
             self.assertIn("ownership_ambiguity", failure_reasons)
@@ -338,26 +363,24 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertTrue(thread_packet["adjudication_basis"]["common_path_sufficient"])
             self.assertEqual(thread_packet["adjudication_basis"]["explicit_reread_reasons"], [])
 
-    def test_main_keeps_minimum_worker_count_after_savings_floor_promotion(self) -> None:
+    def test_main_keeps_local_only_when_only_estimated_token_savings_are_high(self) -> None:
         context, _threads, _global_packet, _thread_packet, orchestrator, _packet_metrics, build_result = (
-            self._run_savings_floor_promotion_case()
+            self._run_estimated_savings_observation_case()
         )
 
-        self.assertEqual(orchestrator["review_mode_baseline"], "local-only")
-        self.assertEqual(orchestrator["review_mode"], "targeted-delegation")
-        self.assertEqual(
-            orchestrator["review_mode_adjustments"],
-            ["delegation_savings_floor"],
-        )
-        self.assertEqual(orchestrator["recommended_worker_count"], 2)
-        self.assertEqual(len(orchestrator["recommended_workers"]), 2)
-        self.assertEqual(build_result["recommended_worker_count"], 2)
-        self.assertEqual(len(build_result["recommended_workers"]), 2)
+        self.assertEqual(orchestrator["review_mode"], "local-only")
+        self.assertNotIn("review_mode_adjustments", orchestrator)
+        self.assertNotIn("recommended_worker_count", orchestrator)
+        self.assertEqual(build_result["review_mode"], "local-only")
+        self.assertEqual(build_result["review_mode_baseline"], "local-only")
+        self.assertEqual(build_result["review_mode_adjustments"], [])
+        self.assertEqual(build_result["recommended_worker_count"], 0)
+        self.assertEqual(build_result["recommended_workers"], [])
         self.assertEqual(context["conversation_comments"][0]["author_login"], "reviewer-a")
 
-    def test_main_recomputes_packet_metrics_after_savings_floor_promotion(self) -> None:
+    def test_main_keeps_packet_metrics_observational_when_estimated_savings_are_high(self) -> None:
         context, threads, global_packet, thread_packet, orchestrator, packet_metrics, build_result = (
-            self._run_savings_floor_promotion_case()
+            self._run_estimated_savings_observation_case()
         )
 
         expected_packet_metrics = compute_packet_metrics(
@@ -377,6 +400,8 @@ class BuildReviewPacketsTests(unittest.TestCase):
         )
         self.assertEqual(packet_metrics["packet_count"], len(orchestrator["packet_files"]))
         self.assertEqual(packet_metrics, expected_packet_metrics)
+        self.assertGreater(packet_metrics["estimated_delegation_savings"], 0)
+        self.assertEqual(build_result["review_mode"], "local-only")
         self.assertEqual(build_result["packet_metrics_file"], str(Path(context["repo_root"]).parent / "packets" / "packet_metrics.json"))
 
     def test_main_marks_same_run_outdated_transition_candidates(self) -> None:

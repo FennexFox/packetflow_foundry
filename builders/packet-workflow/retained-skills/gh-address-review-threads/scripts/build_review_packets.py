@@ -16,7 +16,7 @@ from review_thread_packet_contract import (
     BROAD_TARGET_LIMIT,
     CHURN_OVERRIDE_LIMIT,
     COMMON_PATH_CONTRACT,
-    DELEGATION_SAVINGS_FLOOR,
+    DELEGATION_NON_USE_CASES,
     DECISION_READY_PACKETS,
     LOCAL_THREAD_LIMIT,
     MEANINGFUL_GENERATED_FILE_MIN_COUNT,
@@ -837,30 +837,10 @@ def apply_override_adjustment(
     return review_mode, adjustments
 
 
-def maybe_apply_delegation_savings_floor(
-    review_mode: str,
-    packet_metrics: dict[str, Any],
-    adjustments: list[str],
-) -> tuple[str, list[str]]:
-    estimated_savings = int(packet_metrics.get("estimated_delegation_savings", 0) or 0)
-    if (
-        review_mode == "local-only"
-        and estimated_savings >= DELEGATION_SAVINGS_FLOOR
-        and "delegation_savings_floor" not in adjustments
-    ):
-        return "targeted-delegation", [*adjustments, "delegation_savings_floor"]
-    return review_mode, adjustments
-
-
 def recommended_worker_minimum(
     review_mode: str,
     review_mode_adjustments: list[str],
 ) -> int:
-    if (
-        review_mode == "targeted-delegation"
-        and "delegation_savings_floor" in review_mode_adjustments
-    ):
-        return 2
     return 0
 
 
@@ -995,7 +975,6 @@ def main() -> int:
             "Do not claim config, workflow, or public-interface changes are low risk without checking the files.",
         ],
         "context_fingerprint": context_fingerprint(context),
-        "review_mode_overrides": override_signals,
         "managed_reply_markers": {
             "ack": "<!-- codex:review-thread v1 phase=ack thread=<thread-id> -->",
             "complete": "<!-- codex:review-thread v1 phase=complete thread=<thread-id> -->",
@@ -1327,6 +1306,14 @@ def main() -> int:
         "unresolved_non_outdated": len(unresolved_non_outdated),
         "unresolved_outdated": len(unresolved_outdated),
     }
+    analysis_targets = {
+        "batch_count": len(batch_files),
+        "singleton_count": len(singleton_packets),
+    }
+    thread_batches = {
+        batch_id: [thread_id for thread_id, assigned_batch in thread_to_batch.items() if assigned_batch == batch_id]
+        for batch_id in sorted(set(thread_to_batch.values()))
+    }
     orchestrator = {
         "pr": {
             "number": pr.get("number"),
@@ -1340,8 +1327,6 @@ def main() -> int:
         "repo_profile_path": context.get("repo_profile_path"),
         "repo_profile_summary": context.get("repo_profile_summary"),
         "review_mode": review_mode,
-        "review_mode_baseline": review_mode_baseline,
-        "review_mode_adjustments": review_mode_adjustments,
         "shared_packet": global_packet_name,
         "context_fingerprint": context_fingerprint(context),
         "decision_ready_packets": DECISION_READY_PACKETS,
@@ -1350,24 +1335,9 @@ def main() -> int:
         "common_path_contract": COMMON_PATH_CONTRACT,
         "preferred_worker_families": PREFERRED_WORKER_FAMILIES,
         "packet_worker_map": packet_worker_map,
-        "recommended_worker_count": len(recommended_workers),
-        "optional_worker_count": len(optional_workers),
-        "recommended_workers": recommended_workers,
-        "optional_workers": optional_workers,
         "thread_counts": thread_counts,
-        "active_paths": active_paths,
-        "active_areas": active_areas,
-        "analysis_targets": {
-            "batch_count": len(batch_files),
-            "singleton_count": len(singleton_packets),
-        },
-        "review_mode_overrides": override_signals,
         "marker_conflict_summary": marker_conflict_summary(unresolved_threads),
         "same_run_reconciliation": global_packet["same_run_reconciliation"],
-        "thread_batches": {
-            batch_id: [thread_id for thread_id, assigned_batch in thread_to_batch.items() if assigned_batch == batch_id]
-            for batch_id in sorted(set(thread_to_batch.values()))
-        },
         "local_responsibilities": [
             "Decide accept, reject, defer, or defer-outdated locally for each unresolved thread.",
             "Draft final acknowledgement and completion replies locally.",
@@ -1403,46 +1373,6 @@ def main() -> int:
             "override_signals": override_signals,
         },
     )
-    review_mode, review_mode_adjustments = maybe_apply_delegation_savings_floor(
-        review_mode,
-        packet_metrics,
-        review_mode_adjustments,
-    )
-    recommended_workers = derive_recommended_workers(
-        review_mode=review_mode,
-        global_packet_name=global_packet_name,
-        analysis_packet_names=batch_files + singleton_packets,
-        packet_worker_map=packet_worker_map,
-        minimum_count=recommended_worker_minimum(
-            review_mode,
-            review_mode_adjustments,
-        ),
-    )
-    optional_workers = derive_optional_workers(
-        review_mode=review_mode,
-        global_packet_name=global_packet_name,
-        optional_qa_packets=(batch_files + singleton_packets)[:6],
-    )
-    orchestrator["review_mode"] = review_mode
-    orchestrator["review_mode_baseline"] = review_mode_baseline
-    orchestrator["review_mode_adjustments"] = review_mode_adjustments
-    orchestrator["recommended_worker_count"] = len(recommended_workers)
-    orchestrator["optional_worker_count"] = len(optional_workers)
-    orchestrator["recommended_workers"] = recommended_workers
-    orchestrator["optional_workers"] = optional_workers
-    runtime_payloads["orchestrator.json"] = orchestrator
-    write_json(output_dir / "orchestrator.json", orchestrator)
-    packet_metrics = compute_packet_metrics(
-        runtime_payloads,
-        common_path_packet_names=common_path_packet_names,
-        local_only_sources={
-            "context": context,
-            "threads": unresolved_threads,
-            "pr": pr,
-            "changed_files": changed_files,
-            "override_signals": override_signals,
-        },
-    )
     packet_metrics_path = output_dir / "packet_metrics.json"
     write_json(packet_metrics_path, packet_metrics)
 
@@ -1455,7 +1385,11 @@ def main() -> int:
         thread_batch_count=len(batch_files),
         singleton_thread_packet_count=len(thread_files),
         active_paths=active_paths,
+        active_areas=active_areas,
+        analysis_targets=analysis_targets,
+        thread_batches=thread_batches,
         override_signals=override_signals,
+        delegation_non_use_cases=DELEGATION_NON_USE_CASES,
         common_path_sufficient=common_path_sufficient,
         common_path_failures=common_path_failures,
         thread_counts=thread_counts,

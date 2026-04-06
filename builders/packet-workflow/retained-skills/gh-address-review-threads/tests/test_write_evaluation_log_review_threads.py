@@ -52,6 +52,7 @@ class WriteEvaluationLogReviewThreadsTests(unittest.TestCase):
                 "common_path_sufficient": True,
                 "thread_batch_count": 1,
                 "singleton_thread_packet_count": 2,
+                "active_areas": ["docs", "runtime"],
                 "outdated_transition_candidates": 1,
                 "outdated_recheck_ambiguous": 1,
                 "thread_counts": {"unresolved": 3, "unresolved_outdated": 1},
@@ -65,6 +66,8 @@ class WriteEvaluationLogReviewThreadsTests(unittest.TestCase):
             self.assertEqual(log["orchestration"]["worker_roles"], ["packet_explorer", "packet_explorer"])
             self.assertEqual(log["orchestration"]["override_signals"], ["core_files_across_groups"])
             self.assertFalse(log["orchestration"]["raw_reread_required"])
+            self.assertEqual(log["input_size"]["candidate_batches"], 1)
+            self.assertEqual(log["input_size"]["active_areas"], 2)
             self.assertEqual(log["baseline"]["estimated_local_only_tokens"], 600)
             self.assertEqual(log["baseline"]["estimated_token_savings"], 350)
             self.assertEqual(log["skill_specific"]["data"]["packet_count"], 4)

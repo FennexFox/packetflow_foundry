@@ -76,9 +76,27 @@ Use evidence in this order:
 Rules:
 - `packet_worker_map` is the routing authority for delegated thread analysis
 - `preferred_worker_families` is registry metadata only
-- `recommended_workers` and `optional_workers` are derived convenience fields only
+- `recommended_workers` and `optional_workers` are build-result convenience fields only
 - final per-thread decisions, reply wording, pushes, and resolution stay local
-- runtime logic must never infer routing from `preferred_worker_families` or `optional_workers`
+- runtime logic must never infer routing from `preferred_worker_families`, `recommended_workers`, or `optional_workers`
+
+## Delegation Non-Use Classification
+
+Current pilot classification:
+
+- record-only:
+  - `review_mode_local_only`
+  - `code_change_guardrail_blockers`
+  - `broad_or_cross_cutting_fix_kept_local`
+  - `validation_path_unclear`
+  - `optional_qa_not_requested`
+- fatal:
+  - none in this pilot
+
+Notes:
+- delegation non-use does not fail the workflow by itself
+- keep the implementation local and record the reason instead of forcing delegation
+- lifecycle, fingerprint, marker-conflict, and missing-target failures remain separate fatal workflow gates
 
 ## Common-Path Contract
 
@@ -111,6 +129,25 @@ Notes:
 - `adoption-blocking` does not block `add`.
 - `adoption-blocking` allows `update` only when an explicit comment id targets the current exact managed reply.
 - `hard-stop` allows only `skip` for the affected phase.
+
+## Run Manifest Lifecycle
+
+Manifest checkpoints:
+
+- `start`
+- `ack-validated`
+- `ack-applied`
+- `post-prepared`
+- `complete-validated`
+- `complete-applied`
+
+State-gate rules:
+
+- `record-validation` requires `ack-applied`
+- `post-push` requires `ack-applied`
+- `record-plan --phase complete` requires `post-prepared`
+- `record-apply` requires the matching `*-validated` state
+- `record-apply` advances only on `apply_succeeded=true`, `fingerprint_match=true`, and a non-dry-run result for live runs
 
 ## Global Packet Semantics
 
@@ -172,9 +209,10 @@ Each `thread-batch-*.json` packet keeps:
   - `thread-batch-*.json`
   - `thread-*.json`
 - eval-side artifacts:
-  - build result JSON for review mode, worker derivation, packet/thread counts, override signals, `common_path_sufficient`, and same-run outdated-transition counters
+  - build result JSON for `review_mode_baseline`, `review_mode_adjustments`, worker derivation, override signals, `active_paths`, `active_areas`, `analysis_targets`, `thread_batches`, `delegation_non_use_cases`, `common_path_sufficient`, and same-run outdated-transition counters
   - `packet_metrics.json` for size and token-proxy metrics only
-- do not duplicate token-efficiency counters into runtime packets
+- runtime `orchestrator.json` keeps the final `review_mode`, routing authority, packet files, and safety context only
+- do not duplicate token-efficiency counters or build-result-only observability fields into runtime packets
 
 ## Smoke Modes
 

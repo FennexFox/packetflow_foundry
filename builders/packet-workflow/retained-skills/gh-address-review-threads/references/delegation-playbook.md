@@ -31,7 +31,6 @@ Read this file only when `orchestrator.json` sets `review_mode` to `targeted-del
 - context fingerprint
 - local reply contract
 - code-change delegation guardrails
-- review mode overrides
 - worker selection guidance
 - worker return contract
 - worker output shape
@@ -57,6 +56,7 @@ Do not draft the final acknowledgement or completion reply in the worker output.
 
 - draft raw `thread_actions` locally
 - run `validate_thread_action_plan.py` before any apply step
+- run `manage_review_thread_run.py record-apply` after each live apply step that should advance the manifest
 - keep apply on the normalized validator output only
 - if `context_fingerprint` changed, rebuild packets and revalidate instead of forcing apply
 
@@ -70,6 +70,7 @@ Use a worker for code edits only when all of these are true:
 - validation path is clear
 
 If any guardrail fails, keep the implementation local and use mini workers only for analysis.
+Treat those non-use cases as record-only for this pilot, not as fatal workflow errors.
 
 ## QA Pass
 
