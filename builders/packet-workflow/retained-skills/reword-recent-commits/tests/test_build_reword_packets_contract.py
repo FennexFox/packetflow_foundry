@@ -14,6 +14,7 @@ from reword_test_support import commit_file, make_repo, write_json
 import build_reword_packets  # type: ignore  # noqa: E402
 from reword_plan_contract import (  # noqa: E402
     COMMON_PATH_CONTRACT,
+    DELEGATION_SAVINGS_FLOOR,
     RAW_REREAD_ALLOWED_REASONS,
     build_context_fingerprint,
     compute_packet_metrics,
@@ -391,7 +392,10 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
         )
         self.assertEqual(packet_metrics, expected_metrics)
         self.assertEqual(packet_metrics["packet_count"], len(orchestrator["packet_files"]))
-        self.assertGreaterEqual(packet_metrics["estimated_delegation_savings"], 250)
+        self.assertGreaterEqual(
+            packet_metrics["estimated_delegation_savings"],
+            DELEGATION_SAVINGS_FLOOR,
+        )
         self.assertEqual(result["packet_metrics"], packet_metrics)
         self.assertEqual(result["review_mode_baseline"], "local-only")
         self.assertEqual(result["review_mode"], "targeted-delegation")

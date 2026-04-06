@@ -80,6 +80,7 @@ PACKET_METRIC_FIELDS = [
     "estimated_packet_tokens",
     "estimated_delegation_savings",
 ]
+DELEGATION_SAVINGS_FLOOR = 250
 XHIGH_REREAD_POLICY = (
     "Packet-first local adjudication is required on the common path; raw rereads are only allowed for explicit exception reasons."
 )
@@ -125,12 +126,13 @@ def _normalize_string_list(value: Any, *, sort_values: bool = False) -> list[str
 
 def _normalize_rules_section(value: Any) -> dict[str, Any]:
     payload = value if isinstance(value, dict) else {}
+    subject_length_limit_text = _stringify(payload.get("subject_length_limit"))
     normalized = {
         "format": _stringify(payload.get("format")) or None,
         "allowed_types": _normalize_string_list(payload.get("allowed_types")),
         "scope_required": None if payload.get("scope_required") is None else bool(payload.get("scope_required")),
         "scope_suggestions": _normalize_string_list(payload.get("scope_suggestions")),
-        "subject_length_limit": None if payload.get("subject_length_limit") in {None, ""} else int(payload.get("subject_length_limit")),
+        "subject_length_limit": int(subject_length_limit_text) if subject_length_limit_text else None,
         "subject_rules": _normalize_string_list(payload.get("subject_rules")),
         "body_rules": _normalize_string_list(payload.get("body_rules")),
         "references_rules": _normalize_string_list(payload.get("references_rules")),
@@ -379,7 +381,7 @@ def build_issue(
     commit_hash: str | None = None,
     index: int | None = None,
 ) -> dict[str, Any]:
-    issue = {
+    issue: dict[str, Any] = {
         "level": level,
         "code": code,
         "message": validation_message(code, commit_hash=commit_hash, index=index),

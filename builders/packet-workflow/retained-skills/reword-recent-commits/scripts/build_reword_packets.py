@@ -13,6 +13,7 @@ from typing import Any
 from reword_plan_contract import (
     COMMON_PATH_CONTRACT,
     DECISION_READY_PACKETS,
+    DELEGATION_SAVINGS_FLOOR,
     PACKET_METRIC_FIELDS,
     RAW_REREAD_ALLOWED_REASONS,
     WORKER_OUTPUT_SHAPE,
@@ -48,7 +49,8 @@ GENERATED_FILE_PATTERNS = (
     re.compile(r"(^|/)(package-lock\.json|pnpm-lock\.yaml|yarn\.lock|poetry\.lock|cargo\.lock)$"),
     re.compile(r"\.min\.(js|css)$"),
 )
-DELEGATION_SAVINGS_FLOOR = 250
+
+
 def parse_shortstat(shortstat: str) -> dict[str, int]:
     files = re.search(r"(\d+)\s+files?\s+changed", shortstat)
     insertions = re.search(r"(\d+)\s+insertions?\(\+\)", shortstat)
