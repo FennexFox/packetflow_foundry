@@ -14,7 +14,12 @@ The repeated family in this environment follows:
 5. optional validate or apply
 6. local evaluation-log updates for efficiency, quality, and safety tracking
 
-Keep the generated skill lean. Put the workflow in `SKILL.md`, detailed contracts in `references/`, and deterministic logic in `scripts/`.
+Keep the generated skill lean. Put the minimum operator-facing workflow in
+`SKILL.md`, detailed contracts in `references/`, and deterministic logic in
+`scripts/`.
+
+Use `retained-skill-doc-contract.md` when defining what belongs in retained
+`SKILL.md` versus contracts or scripts.
 
 ## Common Reference-Grade Baseline
 

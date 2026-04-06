@@ -48,6 +48,7 @@ Profiles may select or tighten behavior around these defaults, but they must not
 - `common-path-contract.md`
 - `worker-family-contract.md`
 - `profile-boundary-contract.md`
+- `retained-skill-doc-contract.md`
 - `evaluation-log-contract.md`
 - `pattern-catalog.md`
 

@@ -7,16 +7,16 @@ description: __DESCRIPTION__
 
 Use this skill to __PRIMARY_GOAL__.
 
-This is a packet-driven repo workflow skill:
-- keep orchestration, final synthesis, and mutation local
-- use deterministic scripts to collect context before reading raw artifacts broadly
-- use `gpt-5.4-mini` workers only for narrow packet analysis
-- stop on low confidence, stale snapshots, or ambiguous ownership instead of guessing
-- keep generic packet rules in `references/__CORE_CONTRACT_FILE__` and repo-specific layout assumptions in `__REPO_PROFILE_FILE__`
-- keep repo profiles data-only: paths, globs, doc lists, booleans, and notes only; executable logic stays in scripts and contracts
-- prefer a project-local override at `.codex/project/profiles/__SKILL_NAME__/profile.json` when the repo carries skill-specific bindings or review docs
-__PROFILE_RUNTIME_NOTE__
-__REPO_PROFILE_NOTE__
+This retained kernel keeps the operator-facing contract here and the deeper
+runtime detail in `references/` plus `scripts/`.
+
+## Use When
+
+- Primary goal: __PRIMARY_GOAL__
+- Common trigger phrases:
+__TRIGGER_PHRASES_BULLETS__
+- Keep final adjudication and any mutation local.
+- Prefer a project-local override at `.codex/project/profiles/__SKILL_NAME__/profile.json` when the repo carries skill-specific bindings or review docs.
 
 ## Execution Roots
 
@@ -32,79 +32,65 @@ __REPO_PROFILE_NOTE__
 - Set `<eval-log-json>` to `<repo-root>/.codex/tmp/evaluation_logs/__SKILL_NAME__/<run-id>.json` by default and keep `.codex/tmp/` gitignored.
 - Keep any repo-local temporary, helper, scratch, or ad hoc operator-input file under `<repo-root>/.codex/tmp/` rather than the repo root or another tracked directory.
 
-## Workflow
+## Entry
 
-1. Collect structured context.
+1. Review the shared and domain contracts first.
 - Review `references/__CORE_CONTRACT_FILE__` before changing shared packet semantics.
+- Review `references/__DOMAIN_CONTRACT_FILE__` before drafting domain outputs.
 - Review the active repo profile before trusting repo-specific path bindings, review-doc lists, or deterministic lint toggles.
+
+2. Collect structured context.
 - Run `<python-bin> -B <skill-dir>/scripts/collect___DOMAIN_SLUG___context.py --repo-root <repo-root> --output <context-json>`.
 __LINT_STEP__
+
+3. Build packets.
 - Run `<python-bin> -B <skill-dir>/scripts/build___DOMAIN_SLUG___packets.py --context <context-json>__BUILD_LINT_ARG__ --output-dir <packet-dir>`.
-- __BUILD_RESULT_NOTE__
+__BUILD_RESULT_NOTE__
+
+4. Start local synthesis from the packet boundary.
 - Read `<packet-dir>/orchestrator.json` first.
 - Keep `<packet-dir>/global_packet.json` in view before reading any focused packet.
-__COMMON_PATH_NOTE__
-
-2. Follow the review mode.
-- `local-only`: keep the work local unless the final `review_mode` was promoted at build time by `review_mode_adjustments=["delegation_savings_floor"]`.
-- `targeted-delegation`: use 1-2 `gpt-5.4-mini` workers on narrow packets.
-- `broad-delegation`: use 3-4 `gpt-5.4-mini` workers and add QA only when findings conflict.
-- Escalate to the next larger mode when churn is high, core runtime/config/process files span groups, generated files are not the majority, or the build recorded `delegation_savings_floor`.
-
-3. Keep packet analysis narrow.
-- Treat `references/__CORE_CONTRACT_FILE__` as the generic workflow contract and the active repo profile as the repo-specific overlay.
-- Read `references/__DOMAIN_CONTRACT_FILE__` before drafting domain outputs.
-- Read `references/delegation-playbook.md` only when the final `review_mode` is not `local-only`.
-- Worker return contract for this skill: `__WORKER_RETURN_CONTRACT__`.
-- Worker output shape for this skill: `__WORKER_OUTPUT_SHAPE__`.
-- Decision-ready packets enabled: `__DECISION_READY_PACKETS__`.
-- XHigh reread policy: __XHIGH_REREAD_POLICY__
-__WORKER_OUTPUT_GUIDANCE__
-- Preferred worker families for this skill:
-__WORKER_FAMILY_MARKDOWN__
-- Use `worker_selection_guidance` as explanatory family guidance only. When configured, `packet_worker_map` owns concrete packet routing.
-- Focus packet set for this skill:
+- Read `references/delegation-playbook.md` only when the final packet review mode is not `local-only`.
+- Use `packet_worker_map` from the built packets as the routing authority when delegation is configured.
+- Focus packet set:
 __TASK_PACKET_BULLETS__
+__COMMON_PATH_NOTE__
 __PROFILE_RUNTIME_ARTIFACTS__
 __BATCH_PACKET_NOTE__
 
-4. Respect authority and stop conditions.
-- Authority order for this skill:
-__AUTHORITY_ORDER_BULLETS__
-__OPTIONAL_LOCAL_HELPER_NOTE__
-- Packet-first adjudication guidance:
-__DECISION_READY_SKILL_GUIDANCE__
-- Stop and report instead of mutating when:
-__STOP_CONDITIONS_BULLETS__
-
 __WORKFLOW_TAIL__
 
-## Evaluation
+## Continue Only If
 
-- Use `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <context-json> --orchestrator <packet-dir>/orchestrator.json --output <eval-log-json>` after packet generation.
-__PROFILE_EVALUATION_ARTIFACTS__
-- Use `phase` updates for deterministic lint, validate, and apply results when those outputs exist.
-- Use `finalize` after the run to merge token usage, actual worker mix, final usability, outputs, and notes.
-- Keep the evaluation log under the repo-local `.codex/tmp/evaluation_logs/` tree.
-- Keep any repo-local temporary, helper, scratch, or ad hoc input file under the fixed gitignored `.codex/tmp/` tree; packet artifacts stay under `.codex/tmp/packet-workflow/`.
-- Read `references/evaluation-log-contract.md` for the shared envelope and `references/__DOMAIN_SLUG__-evaluation-contract.md` for workflow-specific fields.
+- The active repo profile is sufficient for this repo and still belongs in `__REPO_PROFILE_FILE__`.
+- Repo profiles remain data-only: paths, globs, doc lists, booleans, and notes only.
+- Packet-first adjudication stays in force; do not widen to broad raw rereads unless the built workflow contract explicitly requires it.
+- Apply only from validator-normalized output when this skill reaches a mutation phase.
+__OPTIONAL_LOCAL_HELPER_NOTE__
+__PROFILE_RUNTIME_NOTE__
+__REPO_PROFILE_NOTE__
 
-## Scripts
+## Stop When
 
-- `scripts/collect___DOMAIN_SLUG___context.py`
-  - Collect the structured inputs and repo artifacts for this workflow, including the active repo profile.
-__LINT_SCRIPT_SECTION__
-- `scripts/build___DOMAIN_SLUG___packets.py`
-  - Build `orchestrator.json`, `global_packet.json`, and focused packets for local synthesis and optional mini-worker analysis.
-- `scripts/write_evaluation_log.py`
-  - Emit and update the shared evaluation log for efficiency, quality, and safety tracking.
-__VALIDATE_SCRIPT_SECTION__
-__APPLY_SCRIPT_SECTION__
+- Stop and report instead of guessing or mutating when:
+__STOP_CONDITIONS_BULLETS__
+- Treat the authority order below as the escalation order when evidence conflicts:
+__AUTHORITY_ORDER_BULLETS__
 
-## Output
+## Final Response
 
 - Tell the user which packets drove the decision.
 - Tell the user whether the run stayed local or used mini workers.
 - Tell the user which repo profile was active when repo-specific bindings mattered.
 - Tell the user whether final plan confidence was recomputed locally or a reread exception blocked that conclusion.
 __MUTATION_OUTPUT_NOTE__
+
+## References
+
+- Shared packet-workflow boundary: `references/__CORE_CONTRACT_FILE__`
+- Domain workflow contract: `references/__DOMAIN_CONTRACT_FILE__`
+- Shared retained-doc boundary: `../../../../core/contracts/packet-workflow/retained-skill-doc-contract.md`
+- Shared evaluation envelope: `references/evaluation-log-contract.md`
+- Domain evaluation fields: `references/__DOMAIN_SLUG__-evaluation-contract.md`
+- Orchestrator-profile-specific eval artifacts:
+__PROFILE_EVALUATION_ARTIFACTS__

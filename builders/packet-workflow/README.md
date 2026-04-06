@@ -26,14 +26,19 @@ Primary entrypoint:
   - generates a thin discovery wrapper under `../../.agents/skills/<skill-name>/`
 
 Generated operator docs:
-- retained `SKILL.md` files are the operator-facing execution contract for bundled helper scripts
+- retained `SKILL.md` files are the minimum operator-facing execution contract
+  for bundled helper scripts
 - generated script invocations must use `<python-bin> -B <skill-dir>/scripts/...`
 - generated docs must not prescribe launcher-specific shims such as bare `python` or `py`
+- detailed packet, worker, evaluation, and apply-envelope semantics belong in
+  `references/` or scripts, not the default retained `SKILL.md` surface
 
 Companion references:
 - `builder-contract.md`
 - `builder-evaluation-contract.md`
+- `../../core/contracts/packet-workflow/retained-skill-doc-contract.md`
 - `../../core/contracts/packet-workflow/pattern-catalog.md`
+- `retained-skills/retained-skill-taxonomy.md`
 
 Supported retained pattern:
 - weekly-update-like retained skills stay in this builder family
