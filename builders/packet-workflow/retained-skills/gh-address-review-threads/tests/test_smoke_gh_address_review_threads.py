@@ -47,6 +47,38 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
         self.assertIn("run_root", payload)
         self.assertIn("evaluation_final_path", payload)
 
+    def test_synthetic_run_smoke_workflow_completes_accepted_current_threads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            temp_dir = Path(tmp_dir_name)
+            (
+                repo_root,
+                previous_context_path,
+                context_path,
+                accepted_thread_ids,
+                validation_commands,
+            ) = smoke.build_synthetic_context(temp_dir)
+
+            payload = smoke.run_smoke_workflow(
+                repo_root=repo_root,
+                context_path=context_path,
+                temp_dir=temp_dir,
+                previous_context_path=previous_context_path,
+                accepted_thread_ids=accepted_thread_ids,
+                validation_commands=validation_commands,
+            )
+
+            manifest = json.loads(Path(payload["manifest_path"]).read_text(encoding="utf-8"))
+            complete_plan = json.loads(
+                Path(manifest["paths"]["complete"]["validated_plan"]).read_text(encoding="utf-8")
+            )
+            normalized_actions = {
+                action["thread_id"]: action for action in complete_plan["normalized_thread_actions"]
+            }
+            self.assertEqual(normalized_actions["t-1"]["decision"], "accept")
+            self.assertTrue(normalized_actions["t-1"]["resolve_after_complete"])
+            self.assertEqual(normalized_actions["t-2"]["decision"], "accept")
+            self.assertTrue(normalized_actions["t-2"]["resolve_after_complete"])
+
     def test_main_reports_blocked_schema_when_gh_cli_is_missing(self) -> None:
         with patch.object(sys, "argv", ["smoke_gh_address_review_threads.py"]):
             with patch.object(smoke, "ensure_gh_auth", side_effect=smoke.GhCliMissing("gh missing")):

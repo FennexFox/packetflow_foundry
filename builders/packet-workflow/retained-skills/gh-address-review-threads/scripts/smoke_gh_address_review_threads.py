@@ -286,7 +286,7 @@ def build_synthetic_context(temp_dir: Path) -> tuple[Path, Path, Path, list[str]
         repo_root,
         previous_context_path,
         context_path,
-        ["t-1"],
+        ["t-1", "t-2"],
         ["python -m pytest tests/test_docs.py"],
     )
 
@@ -619,6 +619,8 @@ def run_smoke_workflow(
             str(post_context_path),
             "--packet-dir",
             str(post_packet_dir),
+            "--reconciliation-input",
+            str(reconciliation_input_path),
             "--output",
             str(complete_plan_path),
         ],

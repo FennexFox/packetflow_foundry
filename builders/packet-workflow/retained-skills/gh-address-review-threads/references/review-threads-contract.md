@@ -145,6 +145,7 @@ State-gate rules:
 
 - `record-validation` requires `ack-applied`
 - `post-push` requires `ack-applied`
+- `post-push` emits `reconciliation-input.json` with accepted thread ids and validation commands for complete-phase seeding
 - `record-plan --phase complete` requires `post-prepared`
 - `record-apply` requires the matching `*-validated` state
 - `record-apply` advances only on `apply_succeeded=true`, `fingerprint_match=true`, and a non-dry-run result for live runs
