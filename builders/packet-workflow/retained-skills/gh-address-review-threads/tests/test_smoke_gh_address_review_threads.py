@@ -86,8 +86,12 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
             )
             context["context_fingerprint"] = build_context_fingerprint(context)
 
+            real_run_script = smoke.run_script
+
             def fake_run_script(args: list[str], *, cwd: Path) -> str:
                 arg_list = [str(item) for item in args]
+                if arg_list[0].endswith("manage_review_thread_run.py"):
+                    return real_run_script(args, cwd=cwd)
                 if arg_list[0].endswith("collect_review_threads.py"):
                     write_json(Path(arg_list[arg_list.index("--output") + 1]), context)
                     return ""
@@ -208,6 +212,8 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
             self.assertEqual(payload["outdated_recheck_ambiguous"], 0)
             self.assertIn("run_id", payload)
             self.assertIn("manifest_path", payload)
+            manifest = json.loads(Path(payload["manifest_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(manifest["state"]["last_completed_phase"], "complete-applied")
 
     def test_main_reports_noop_schema_when_no_unresolved_threads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir_name:
@@ -217,8 +223,12 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
             context = context_with_threads(tmp_dir, [])
             context["context_fingerprint"] = build_context_fingerprint(context)
 
+            real_run_script = smoke.run_script
+
             def fake_run_script(args: list[str], *, cwd: Path) -> str:
                 arg_list = [str(item) for item in args]
+                if arg_list[0].endswith("manage_review_thread_run.py"):
+                    return real_run_script(args, cwd=cwd)
                 if arg_list[0].endswith("collect_review_threads.py"):
                     write_json(Path(arg_list[arg_list.index("--output") + 1]), context)
                 return ""

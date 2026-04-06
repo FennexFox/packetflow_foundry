@@ -29,6 +29,10 @@ def core_templates_dir() -> Path:
     return foundry_root_dir() / "core" / "templates" / "packet-workflow"
 
 
+def core_contracts_dir() -> Path:
+    return foundry_root_dir() / "core" / "contracts" / "packet-workflow"
+
+
 def core_defaults_dir() -> Path:
     return foundry_root_dir() / "core" / "defaults" / "packet-workflow"
 
@@ -2532,6 +2536,7 @@ def generate_retained_files(skill_dir: Path, spec: dict) -> list[Path]:
         "SKILL.md": "skill_md.tmpl",
         "agents/openai.yaml": "openai_yaml.tmpl",
         "references/core-contract.md": "core_contract.tmpl",
+        "references/retained-skill-doc-contract.md": None,
         "references/delegation-playbook.md": "delegation_playbook.tmpl",
         f"references/{spec['domain_slug'].replace('_', '-')}-contract.md": "domain_contract.tmpl",
         "references/evaluation-log-contract.md": "evaluation_log_contract.tmpl",
@@ -2550,7 +2555,11 @@ def generate_retained_files(skill_dir: Path, spec: dict) -> list[Path]:
 
     for relative_path, template_name in outputs.items():
         destination = skill_dir / relative_path
-        write_text(destination, render(template_name, context))
+        if template_name is None:
+            shared_contract = core_contracts_dir() / "retained-skill-doc-contract.md"
+            write_text(destination, shared_contract.read_text(encoding="utf-8"))
+        else:
+            write_text(destination, render(template_name, context))
         generated.append(destination)
 
     return generated

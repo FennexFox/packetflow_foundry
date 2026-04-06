@@ -855,6 +855,9 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             core_contract = (skill_dir / "references" / "core-contract.md").read_text(
                 encoding="utf-8"
             )
+            retained_doc_contract = (
+                skill_dir / "references" / "retained-skill-doc-contract.md"
+            ).read_text(encoding="utf-8")
             agents_yaml = (skill_dir / "agents" / "openai.yaml").read_text(encoding="utf-8")
             profile_json = json.loads(
                 (skill_dir / "profiles" / "sample-repo" / "profile.json").read_text(
@@ -868,6 +871,11 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             self.assertIn("profiles/sample-repo/profile.json", skill_md)
             self.assertIn(".codex/project/profiles/packet-explorer-smoke/profile.json", skill_md)
             self.assertIn("references/core-contract.md", skill_md)
+            self.assertIn("references/retained-skill-doc-contract.md", skill_md)
+            self.assertNotIn(
+                "../../../../core/contracts/packet-workflow/retained-skill-doc-contract.md",
+                skill_md,
+            )
             self.assertIn("data-only", skill_md)
             self.assertIn(
                 ".codex/tmp/packet-workflow/packet-explorer-smoke/<run-id>/",
@@ -886,6 +894,7 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             self.assertIn("profiles/sample-repo/profile.json", core_contract)
             self.assertIn(".codex/project/profiles/packet-explorer-smoke/profile.json", core_contract)
             self.assertIn("data-only", core_contract)
+            self.assertIn("## Minimum Operator-Facing Contract", retained_doc_contract)
             self.assertIn("## Shared Repo-Local Temporary File Policy", core_contract)
             self.assertIn(
                 "transient file must live inside the repo, place it under `.codex/tmp/`",

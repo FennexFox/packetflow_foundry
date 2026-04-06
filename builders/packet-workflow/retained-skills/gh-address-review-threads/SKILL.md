@@ -32,7 +32,7 @@ Use this skill to handle unresolved GitHub PR review threads on the current bran
 7. Draft the raw `ack` plan locally, validate it, and record it with `record-plan --phase ack`.
 8. Apply the normalized `ack` plan, write `<manifest.ack.result>`, and record the live apply result with `record-apply --phase ack --result <manifest.ack.result>`.
 9. After real validation runs for accepted work, record the commands with `record-validation`.
-10. After the accepted work is pushed, run `post-push`, rebuild post-push packets with `--previous-context` and `--reconciliation-input`, seed the complete plan with `reconcile_outdated_threads.py`, validate it, then apply and record `complete`.
+10. After the accepted work is pushed, run `post-push`, rebuild post-push packets with `--previous-context` and `--reconciliation-input`, seed the complete plan with `reconcile_outdated_threads.py`, validate it, record it with `record-plan --phase complete`, then apply and record `complete`.
 11. Merge validate, apply, and final evaluation results as each phase completes.
 
 ## Continue Only If

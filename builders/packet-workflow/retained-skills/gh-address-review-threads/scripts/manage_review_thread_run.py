@@ -40,6 +40,11 @@ def parse_args() -> argparse.Namespace:
     record_apply.add_argument("--manifest", type=Path, required=True)
     record_apply.add_argument("--phase", choices=["ack", "complete"], required=True)
     record_apply.add_argument("--result", type=Path, required=True)
+    record_apply.add_argument(
+        "--allow-dry-run",
+        action="store_true",
+        help="Allow dry-run apply results for smoke or synthetic verification without live mutations.",
+    )
 
     record_validation = subparsers.add_parser(
         "record-validation",
@@ -124,6 +129,7 @@ def main() -> int:
             manifest,
             phase=str(args.phase),
             source_path=args.result.resolve(),
+            allow_dry_run=bool(args.allow_dry_run),
         )
         run_support.write_manifest(manifest_path, manifest)
         run_support.write_latest_pointer(Path(manifest["repo_root"]), manifest)
