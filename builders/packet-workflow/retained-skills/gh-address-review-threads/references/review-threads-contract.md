@@ -114,7 +114,7 @@ Notes:
   - ownership ambiguity stays below the escape threshold
   - no explicit reread or escape reason is required
   - a validator-ready recommendation path is closed from packet contents alone
-- `review_mode_overrides` may widen worker recommendation or review mode, but they must not upgrade missing evidence, ownership ambiguity, or reread need into `common_path_sufficient=true`
+- build-result `override_signals` may widen the recommended review mode, but they must not upgrade missing evidence, ownership ambiguity, or reread need into `common_path_sufficient=true`
 - `quality_escape_hints` is advisory only; explicit reread or escape decisions must still use the allowed reason enum or an explicit stop
 
 ## Marker Conflict Stop Rules

@@ -23,14 +23,14 @@ Every newly generated retained `SKILL.md` should tell an operator:
 - what stops the workflow
 - what the final response must include
 
-Recommended section shape:
+Generated section shape:
 - `## Use When`
 - `## Execution Roots`
 - `## Entry`
 - `## Continue Only If`
 - `## Stop When`
 - `## Final Response`
-- optional `## References`
+- `## References`
 
 Section names may vary for hand-authored retained skills, but new builder output
 should converge on this shape.

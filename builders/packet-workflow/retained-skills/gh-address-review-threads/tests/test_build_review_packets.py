@@ -156,6 +156,15 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertEqual(orchestrator["review_mode"], "targeted-delegation")
             self.assertEqual(orchestrator["orchestrator_profile"], "standard")
             self.assertIn("common_path_contract", orchestrator)
+            self.assertIn("common_path_contract", global_packet)
+            self.assertIn(
+                "override_signals",
+                global_packet["common_path_contract"]["override_policy"],
+            )
+            self.assertNotIn(
+                "review_mode_overrides",
+                global_packet["common_path_contract"]["override_policy"],
+            )
             self.assertNotIn("estimated_packet_tokens", orchestrator)
             self.assertEqual(orchestrator["context_fingerprint"], context["context_fingerprint"])
             self.assertEqual(global_packet["context_fingerprint"], context["context_fingerprint"])

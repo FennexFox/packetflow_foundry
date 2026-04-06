@@ -64,7 +64,7 @@ COMMON_PATH_CONTRACT = {
     "allowed_reread_reasons": ALLOWED_REREAD_REASONS,
     "sufficiency_requirements": COMMON_PATH_SUFFICIENCY_REQUIREMENTS,
     "quality_escape_hints_policy": "advisory-only",
-    "override_policy": "review_mode_overrides may widen worker recommendation but must not upgrade missing evidence or ownership ambiguity into common_path_sufficient=true",
+    "override_policy": "build-result override_signals may widen the recommended review mode, but they must not upgrade missing evidence or ownership ambiguity into common_path_sufficient=true",
 }
 
 PACKET_METRIC_FIELDS = [

@@ -723,6 +723,7 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             repo_root = Path(tmp) / "repo"
             repo_root.mkdir()
             builder.generate_files(skill_dir, spec)
+            skill_md = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
 
             scripts_dir = skill_dir / "scripts"
             for script in scripts_dir.glob("*.py"):
@@ -759,6 +760,10 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
 
             self.assertEqual(context["repo_profile_name"], "default")
             self.assertEqual(context["builder_compatibility"]["status"], "current")
+            self.assertIn(
+                "references/weekly-update-like-evaluation-contract.md",
+                skill_md,
+            )
             self.assertEqual(orchestrator["repo_profile_name"], "default")
             self.assertTrue(orchestrator["decision_ready_packets"])
             self.assertEqual(
@@ -872,6 +877,7 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             self.assertIn(".codex/project/profiles/packet-explorer-smoke/profile.json", skill_md)
             self.assertIn("references/core-contract.md", skill_md)
             self.assertIn("references/retained-skill-doc-contract.md", skill_md)
+            self.assertIn("references/builder-tests-evaluation-contract.md", skill_md)
             self.assertNotIn(
                 "../../../../core/contracts/packet-workflow/retained-skill-doc-contract.md",
                 skill_md,

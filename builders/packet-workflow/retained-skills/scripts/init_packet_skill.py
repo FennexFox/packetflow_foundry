@@ -2369,6 +2369,9 @@ def build_render_context(spec: dict) -> dict[str, str]:
     lint_step, lint_script_section, build_lint_arg = lint_cli_section(spec)
     skill_title = title_case(spec["skill_name"])
     contract_file = spec["domain_slug"].replace("_", "-") + "-contract.md"
+    evaluation_contract_file = (
+        spec["domain_slug"].replace("_", "-") + "-evaluation-contract.md"
+    )
     spec_metadata = {
         "skill_name": spec["skill_name"],
         "domain_slug": spec["domain_slug"],
@@ -2459,6 +2462,7 @@ def build_render_context(spec: dict) -> dict[str, str]:
         "APPLY_SCRIPT_SECTION": apply_script_section(spec),
         "BUILD_LINT_ARG": build_lint_arg,
         "DOMAIN_CONTRACT_FILE": contract_file,
+        "DOMAIN_EVALUATION_CONTRACT_FILE": evaluation_contract_file,
         "DOMAIN_CONTRACT_PLAN_NOTE": contract_plan_note(spec),
         "VALIDATE_PLAN_CONTRACT": validate_plan_contract(spec),
         "APPLY_PLAN_CONTRACT": apply_plan_contract(spec),
