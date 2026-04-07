@@ -678,11 +678,6 @@ def main() -> int:
         "repo_profile_path": plan.get("repo_profile_path"),
         "repo_profile_summary": plan.get("repo_profile_summary"),
         "review_mode": review_mode,
-        "review_mode_baseline": review_mode_baseline,
-        "review_mode_adjustments": review_mode_adjustments,
-        "worker_budget": len(recommended_workers),
-        "recommended_worker_count": len(recommended_workers),
-        "optional_worker_count": len(optional_workers),
         "shared_packet": "global_packet.json",
         "shared_packet_name": "global_packet.json",
         "decision_ready_packets": DECISION_READY_PACKETS,
@@ -722,7 +717,6 @@ def main() -> int:
             "generated_file_ratio": round(generated_file_ratio, 3),
             "core_areas_touched": core_areas_touched,
         },
-        "review_overrides": override_signals,
         "local_responsibilities": [
             "Read rules_packet.json locally before drafting replacement messages.",
             "Draft the final replacement commit messages locally.",
@@ -732,8 +726,6 @@ def main() -> int:
             "Run apply_reword_plan.py only after confirmation.",
         ],
         "packet_files": ["global_packet.json", "rules_packet.json", *commit_packet_names, "orchestrator.json"],
-        "recommended_workers": recommended_workers,
-        "optional_workers": optional_workers,
     }
     (output_dir / "orchestrator.json").write_text(
         json.dumps(orchestrator, indent=2, ensure_ascii=True) + "\n",
@@ -813,13 +805,6 @@ def main() -> int:
                 }
             )
         orchestrator["review_mode"] = review_mode
-        orchestrator["review_mode_baseline"] = review_mode_baseline
-        orchestrator["review_mode_adjustments"] = review_mode_adjustments
-        orchestrator["worker_budget"] = len(recommended_workers)
-        orchestrator["recommended_worker_count"] = len(recommended_workers)
-        orchestrator["optional_worker_count"] = len(optional_workers)
-        orchestrator["recommended_workers"] = recommended_workers
-        orchestrator["optional_workers"] = optional_workers
         (output_dir / "orchestrator.json").write_text(
             json.dumps(orchestrator, indent=2, ensure_ascii=True) + "\n",
             encoding="utf-8",

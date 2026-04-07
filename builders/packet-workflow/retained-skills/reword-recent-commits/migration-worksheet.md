@@ -56,3 +56,13 @@
 - `unversioned -> packet-workflow 0.1.0`
   - change reason: introduced explicit builder-version compatibility metadata and upgrade rules for packet-workflow retained skills.
   - manual migration scope: added `builder_versioning` to `builder-spec.json`, added `metadata.versioning` to `profiles/default/profile.json`, and wired collector-side `builder_compatibility` reporting.
+
+## Pilot Hardening Outcome
+- Prose-only invariants moved into script or test enforcement:
+  - the single driver remains the only normal entrypoint for prepare, validate, dry-run apply, live apply, and evaluation-log finalization
+  - replay/apply keeps reusing the same concrete Python interpreter path across helper phases by launching child helpers from the running driver interpreter
+- Runtime to eval-only moves:
+  - moved from `orchestrator.json` into build-result/eval-side artifacts: `review_mode_baseline`, `review_mode_adjustments`, worker recommendations, optional workers, and override-signal summaries
+  - kept in runtime: final `review_mode`, packet-routing metadata, rewrite blockers, common-path gating, and rules/context fingerprints
+- Retained `SKILL.md` reduction:
+  - reduced to the minimum operator-facing contract with explicit entry, continue, stop, and final-response sections

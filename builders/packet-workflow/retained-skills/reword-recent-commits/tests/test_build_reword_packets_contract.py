@@ -266,8 +266,10 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(orchestrator["review_mode"], "local-only")
-        self.assertEqual(orchestrator["review_mode_adjustments"], [])
-        self.assertEqual(orchestrator["recommended_worker_count"], 0)
+        self.assertNotIn("review_mode_baseline", orchestrator)
+        self.assertNotIn("review_mode_adjustments", orchestrator)
+        self.assertNotIn("recommended_workers", orchestrator)
+        self.assertNotIn("optional_workers", orchestrator)
         packet_metrics = json.loads((output_dir / "packet_metrics.json").read_text(encoding="utf-8"))
         orchestrator_payload = json.loads((output_dir / "orchestrator.json").read_text(encoding="utf-8"))
         rules_packet = json.loads((output_dir / "rules_packet.json").read_text(encoding="utf-8"))
@@ -290,6 +292,9 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
         self.assertEqual(packet_metrics["packet_count"], len(orchestrator_payload["packet_files"]))
         self.assertEqual(result["packet_metrics"], packet_metrics)
         self.assertEqual(result["review_mode"], "local-only")
+        self.assertEqual(result["review_mode_baseline"], "local-only")
+        self.assertEqual(result["review_mode_adjustments"], [])
+        self.assertEqual(result["recommended_worker_count"], 0)
 
     def test_local_review_mode_promotes_when_savings_floor_is_met(self) -> None:
         temp_dir, repo = make_repo()
@@ -363,14 +368,11 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
         exit_code, output_dir, orchestrator, result = self.run_script(rules, plan)
 
         self.assertEqual(exit_code, 0)
-        self.assertEqual(orchestrator["review_mode_baseline"], "local-only")
         self.assertEqual(orchestrator["review_mode"], "targeted-delegation")
-        self.assertEqual(
-            orchestrator["review_mode_adjustments"],
-            ["delegation_savings_floor"],
-        )
-        self.assertEqual(orchestrator["recommended_worker_count"], 2)
-        self.assertEqual(len(orchestrator["recommended_workers"]), 2)
+        self.assertNotIn("review_mode_baseline", orchestrator)
+        self.assertNotIn("review_mode_adjustments", orchestrator)
+        self.assertNotIn("recommended_workers", orchestrator)
+        self.assertNotIn("optional_workers", orchestrator)
 
         packet_metrics = json.loads((output_dir / "packet_metrics.json").read_text(encoding="utf-8"))
         global_packet = json.loads((output_dir / "global_packet.json").read_text(encoding="utf-8"))
@@ -461,7 +463,7 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(orchestrator["review_mode"], "local-only")
-        self.assertEqual(orchestrator["recommended_worker_count"], 0)
+        self.assertEqual(result["recommended_worker_count"], 0)
         self.assertTrue(orchestrator["rewrite_blockers"]["root_rewrite_unsupported"])
         self.assertTrue(result["common_path_sufficient"])
 
