@@ -188,6 +188,37 @@ class CollectWorktreeContextTests(unittest.TestCase):
                 ],
             )
 
+    def test_targeted_validation_candidates_include_workflow_fallback_argv(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo = Path(tmp_dir)
+            write_text(repo / ".github" / "scripts" / "tests" / "test_workflows.py", "import unittest\n")
+
+            candidates = worktree_context.targeted_validation_candidates(
+                repo,
+                [
+                    ".github/workflows/ci.yml",
+                ],
+            )
+
+            argv = worktree_context.unittest_discover_argv(
+                ".github/scripts/tests",
+                "test_*.py",
+            )
+            self.assertEqual(
+                candidates,
+                [
+                    {
+                        "command": worktree_context.unittest_discover_command(
+                            ".github/scripts/tests",
+                            "test_*.py",
+                        ),
+                        "argv": argv,
+                        "reason": "Changed GitHub workflow files that orchestrate automation tests.",
+                        "paths": [".github/workflows/ci.yml"],
+                    }
+                ],
+            )
+
     def test_targeted_validation_candidates_dedupe_duplicate_mapped_test_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             repo = Path(tmp_dir)

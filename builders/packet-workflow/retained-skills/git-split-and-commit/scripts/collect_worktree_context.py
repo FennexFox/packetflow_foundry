@@ -691,10 +691,12 @@ def targeted_validation_candidates(repo_root: Path, changed_paths: list[str]) ->
     if not candidates and any(path.startswith(".github/workflows/") for path in normalized_paths):
         tests_dir = normalize_path(".github/scripts/tests") if (repo_root / ".github/scripts/tests").is_dir() else None
         if tests_dir:
-            command = unittest_discover_command(tests_dir, "test_*.py")
+            argv = unittest_discover_argv(tests_dir, "test_*.py")
+            command = command_string(argv)
             candidates.append(
                 {
                     "command": command,
+                    "argv": argv,
                     "reason": "Changed GitHub workflow files that orchestrate automation tests.",
                     "paths": [path for path in normalized_paths if path.startswith(".github/workflows/")],
                 }
