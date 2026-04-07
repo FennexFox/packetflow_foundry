@@ -385,15 +385,28 @@ def dedupe_preserve(items: list[str]) -> list[str]:
     return deduped
 
 
+def canonical_match_terms(token: str) -> list[str]:
+    terms: list[str] = []
+    for part in re.split(r"[./-]+", token):
+        candidate = part.strip(".-/")
+        if len(candidate) < 3 or candidate in REQUEST_ANCHOR_STOPWORDS:
+            continue
+        normalized_candidate = canonical_match_term(candidate)
+        if normalized_candidate:
+            terms.append(normalized_candidate)
+    return dedupe_preserve(terms)
+
+
 def match_terms(text: str | None, *, canonical: bool = False) -> list[str]:
     normalized = normalize_text_for_matching(text)
     terms: list[str] = []
     for raw_token in re.findall(r"[a-z0-9_./-]+", normalized):
         token = raw_token.strip(".-/")
+        if canonical:
+            terms.extend(canonical_match_terms(token))
+            continue
         if len(token) >= 3 and token not in REQUEST_ANCHOR_STOPWORDS:
-            normalized_token = canonical_match_term(token) if canonical else token
-            if normalized_token:
-                terms.append(normalized_token)
+            terms.append(token)
     return dedupe_preserve(terms)
 
 

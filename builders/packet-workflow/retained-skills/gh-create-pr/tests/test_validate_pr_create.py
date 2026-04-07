@@ -204,6 +204,46 @@ class ValidatePrCreateTests(unittest.TestCase):
         self.assertFalse(payload["valid"])
         self.assertIn("unsupported_claim", payload["stop_reasons"])
 
+    def test_validator_rejects_passive_voice_consumer_migration_claim(self) -> None:
+        context = collected_context(Path.cwd())
+        body = valid_body().replace(
+            "- Keep create fail-closed on stale snapshots.",
+            "- Consumers are required to migrate.",
+        )
+        with mock.patch.object(
+            validator.tools,
+            "run_command",
+            side_effect=AssertionError("gh command should not run once unsupported claims are detected"),
+        ):
+            payload = validator.validate_pr_create(
+                context,
+                "feat(pr-create): create guarded PRs",
+                body,
+            )
+
+        self.assertFalse(payload["valid"])
+        self.assertIn("unsupported_claim", payload["stop_reasons"])
+
+    def test_validator_rejects_by_audience_consumer_migration_claim(self) -> None:
+        context = collected_context(Path.cwd())
+        body = valid_body().replace(
+            "- Keep create fail-closed on stale snapshots.",
+            "- Requires migration by consumers.",
+        )
+        with mock.patch.object(
+            validator.tools,
+            "run_command",
+            side_effect=AssertionError("gh command should not run once unsupported claims are detected"),
+        ):
+            payload = validator.validate_pr_create(
+                context,
+                "feat(pr-create): create guarded PRs",
+                body,
+            )
+
+        self.assertFalse(payload["valid"])
+        self.assertIn("unsupported_claim", payload["stop_reasons"])
+
     def test_validator_rejects_existing_open_pr_on_live_duplicate_check(self) -> None:
         context = collected_context(Path.cwd())
         with (

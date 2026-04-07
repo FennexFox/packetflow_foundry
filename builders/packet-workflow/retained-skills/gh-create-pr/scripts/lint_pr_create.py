@@ -36,11 +36,12 @@ MIGRATION_AUDIENCE_PATTERN = (
 MIGRATION_CLAIM_PATTERN = re.compile(
     r"\b(?:requires?|needs?|needed|includes?|included|adds?|added|documents?|documented|provides?|provided)\s+"
     r"(?:an?\s+)?migration (?:guide|guidance|note|notes|step|steps|plan|plans|path|paths|work|works)\b"
-    rf"|(?:\brequires?|\bneeds?|\bneeded)\s+(?:an?\s+)?migration(?:\s+for\s+{MIGRATION_AUDIENCE_PATTERN})?(?=$|[.!,;:])"
+    rf"|(?:\brequires?|\bneeds?|\bneeded)\s+(?:an?\s+)?migration(?:\s+(?:for|by)\s+{MIGRATION_AUDIENCE_PATTERN})?(?=$|[.!,;:])"
     r"|\bmigration (?:guide|guidance|note|notes|step|steps|plan|plans|path|paths|required|requires?|needed|impact|impacts)\b"
     rf"|\bmigration for\s+{MIGRATION_AUDIENCE_PATTERN}\b"
     rf"|\bmigrat(?:e|es|ed|ing)\s+{MIGRATION_AUDIENCE_PATTERN}\b"
-    rf"|\b{MIGRATION_AUDIENCE_PATTERN}\s+(?:need|needs|needed|must|should)\s+(?:to\s+)?migrat(?:e|es|ed|ing)\b",
+    rf"|\b{MIGRATION_AUDIENCE_PATTERN}\s+(?:need|needs|needed|must|should)\s+(?:to\s+)?migrat(?:e|es|ed|ing)\b"
+    rf"|\b{MIGRATION_AUDIENCE_PATTERN}\s+(?:is|are|was|were|be|been|being)\s+(?:required|needed)\s+(?:to\s+)?migrat(?:e|es|ed|ing)\b",
     re.IGNORECASE,
 )
 COMPATIBILITY_CLAIM_PATTERN = re.compile(
