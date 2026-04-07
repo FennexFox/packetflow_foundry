@@ -169,6 +169,29 @@ class LintPrCreateTests(unittest.TestCase):
 
         self.assertEqual(findings["detected"]["unsupported_claims"], [])
 
+    def test_candidate_findings_allow_internal_operator_migration_note_wording(self) -> None:
+        findings = lint.collect_candidate_findings(
+            collected_context(),
+            "fix(pr-create): harden guarded flow",
+            "\n".join(
+                [
+                    "## Why",
+                    "Document the guarded create flow for maintainers.",
+                    "## What changed",
+                    "- Tightened verifier comparisons.",
+                    "## How",
+                    "- Requires migration note for internal operators.",
+                    "## Risk / Rollback",
+                    "- Revert the create flow changes.",
+                    "## Testing",
+                    "- Not run.",
+                    "Refs: #42",
+                ]
+            ),
+        )
+
+        self.assertEqual(findings["detected"]["unsupported_claims"], [])
+
     def test_candidate_findings_block_consumer_migration_claim(self) -> None:
         findings = lint.collect_candidate_findings(
             collected_context(),

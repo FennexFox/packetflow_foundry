@@ -31,13 +31,13 @@ NO_BEHAVIOR_CHANGE_PATTERN = re.compile(r"\bno behavior change\b", re.IGNORECASE
 ROLLOUT_PATTERN = re.compile(r"\brollout\b", re.IGNORECASE)
 RESTART_PATTERN = re.compile(r"\b(restart|reload)\b", re.IGNORECASE)
 MIGRATION_AUDIENCE_PATTERN = (
-    r"(?:existing\s+)?(?:consumer|consumers|vendor|vendors|project|projects|repo|repos|installation|installations|deployment|deployments|users?)"
+    r"(?:(?:existing|vendored)\s+)?(?:consumer|consumers|vendor|vendors|project|projects|repo|repos|installation|installations|deployment|deployments|users?)"
 )
 MIGRATION_CLAIM_PATTERN = re.compile(
     r"\b(?:requires?|needs?|needed|includes?|included|adds?|added|documents?|documented|provides?|provided)\s+"
-    r"(?:an?\s+)?migration (?:guide|guidance|note|notes|step|steps|plan|plans|path|paths|work|works)\b"
-    rf"|(?:\brequires?|\bneeds?|\bneeded)\s+(?:an?\s+)?migration(?:\s+(?:for|by)\s+{MIGRATION_AUDIENCE_PATTERN})?(?=$|[.!,;:])"
-    r"|\bmigration (?:guide|guidance|note|notes|step|steps|plan|plans|path|paths|required|requires?|needed|impact|impacts)\b"
+    rf"(?:an?\s+)?migration (?:guide|guidance|note|notes|step|steps|plan|plans|path|paths|work|works)\s+(?:for|by)\s+{MIGRATION_AUDIENCE_PATTERN}\b"
+    rf"|(?:\brequires?|\bneeds?|\bneeded)\s+(?:an?\s+)?migration\s+(?:for|by)\s+{MIGRATION_AUDIENCE_PATTERN}(?=$|[.!,;:])"
+    rf"|\bmigration (?:guide|guidance|note|notes|step|steps|plan|plans|path|paths)\s+(?:for|by)\s+{MIGRATION_AUDIENCE_PATTERN}\b"
     rf"|\bmigration for\s+{MIGRATION_AUDIENCE_PATTERN}\b"
     rf"|\bmigration\s+(?:is|was|were|be|been|being)\s+(?:required|needed)\s+for\s+{MIGRATION_AUDIENCE_PATTERN}\b"
     rf"|\bmigrat(?:e|es|ed|ing)\s+{MIGRATION_AUDIENCE_PATTERN}\b"
