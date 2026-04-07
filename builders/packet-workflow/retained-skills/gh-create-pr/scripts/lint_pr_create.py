@@ -39,7 +39,9 @@ MIGRATION_CLAIM_PATTERN = re.compile(
     rf"|(?:\brequires?|\bneeds?|\bneeded)\s+(?:an?\s+)?migration(?:\s+(?:for|by)\s+{MIGRATION_AUDIENCE_PATTERN})?(?=$|[.!,;:])"
     r"|\bmigration (?:guide|guidance|note|notes|step|steps|plan|plans|path|paths|required|requires?|needed|impact|impacts)\b"
     rf"|\bmigration for\s+{MIGRATION_AUDIENCE_PATTERN}\b"
+    rf"|\bmigration\s+(?:is|was|were|be|been|being)\s+(?:required|needed)\s+for\s+{MIGRATION_AUDIENCE_PATTERN}\b"
     rf"|\bmigrat(?:e|es|ed|ing)\s+{MIGRATION_AUDIENCE_PATTERN}\b"
+    rf"|\b{MIGRATION_AUDIENCE_PATTERN}\s+migration\s+(?:is|was|were|be|been|being)\s+(?:required|needed)\b"
     rf"|\b{MIGRATION_AUDIENCE_PATTERN}\s+(?:need|needs|needed|must|should)\s+(?:to\s+)?migrat(?:e|es|ed|ing)\b"
     rf"|\b{MIGRATION_AUDIENCE_PATTERN}\s+(?:is|are|was|were|be|been|being)\s+(?:required|needed)\s+(?:to\s+)?migrat(?:e|es|ed|ing)\b",
     re.IGNORECASE,
