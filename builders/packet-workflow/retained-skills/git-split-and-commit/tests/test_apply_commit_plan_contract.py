@@ -327,6 +327,22 @@ class ApplyCommitPlanContractTests(unittest.TestCase):
         self.assertIn("shell builtin", str(caught.exception))
         mocked_run.assert_not_called()
 
+    def test_run_targeted_checks_reports_exec_launch_error_as_targeted_check_failure(self) -> None:
+        command = "python -m unittest"
+        argv = ["python", "-m", "unittest"]
+
+        with (
+            patch.object(apply_commit, "command_feasibility_issues", return_value=[]),
+            patch.object(apply_commit.subprocess, "run", side_effect=PermissionError("access denied")) as mocked_run,
+        ):
+            with self.assertRaises(apply_commit.ApplyHardStop) as caught:
+                apply_commit.run_targeted_checks(Path("C:/repo"), [command], {command: argv})
+
+        self.assertEqual(caught.exception.category, "targeted_check_failed")
+        self.assertIn("failed to launch", str(caught.exception))
+        self.assertIn("access denied", str(caught.exception))
+        mocked_run.assert_called_once()
+
     def test_current_hunk_match_raises_ambiguous_split_rematch(self) -> None:
         original_hunk = {"hunk_id": "H1", "removed_digest": "same-old", "added_digest": "same-new"}
         current_hunks = [

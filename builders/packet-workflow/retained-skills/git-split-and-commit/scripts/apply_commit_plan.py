@@ -250,17 +250,25 @@ def run_targeted_checks(repo_root: Path, commands: list[str], command_argvs: dic
                 dry_run=False,
                 commands=commands,
             )
-        result = subprocess.run(
-            argv,
-            cwd=repo_root,
-            shell=False,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            stdin=subprocess.DEVNULL,
-            capture_output=True,
-            check=False,
-        )
+        try:
+            result = subprocess.run(
+                argv,
+                cwd=repo_root,
+                shell=False,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            raise make_hard_stop(
+                "targeted_check_failed",
+                f"targeted check failed to launch: {command}: {exc}",
+                dry_run=False,
+                commands=commands,
+            ) from exc
         if result.returncode != 0:
             detail = result.stderr.strip() or result.stdout.strip() or "targeted check failed"
             raise make_hard_stop(
