@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+import shlex
 import sys
 import unittest
 from subprocess import CompletedProcess
@@ -202,6 +204,48 @@ class ApplyCommitPlanContractTests(unittest.TestCase):
         )
         self.assertFalse(mocked_run.call_args.kwargs["shell"])
         self.assertEqual(mocked_run.call_args.kwargs["stdin"], apply_commit.subprocess.DEVNULL)
+
+    def test_run_targeted_checks_accepts_equivalent_command_form(self) -> None:
+        if os.name == "nt":
+            argv = [
+                "C:\\Python 3.14\\python.exe",
+                "-m",
+                "unittest",
+                "discover",
+                "-s",
+                "tests",
+                "-p",
+                "test_*.py",
+            ]
+            collected_command = apply_commit.subprocess.list2cmdline(argv)
+            equivalent_command = "\"C:\\Python 3.14\\python.exe\" -m unittest discover -s tests -p \"test_*.py\""
+        else:
+            argv = [
+                "python",
+                "-m",
+                "unittest",
+                "discover",
+                "-s",
+                "tests",
+                "-p",
+                "test_*.py",
+            ]
+            collected_command = shlex.join(argv)
+            equivalent_command = "python -m unittest discover -s tests -p test_*.py"
+
+        with (
+            patch.object(apply_commit, "command_feasibility_issues", return_value=[]),
+            patch.object(
+                apply_commit.subprocess,
+                "run",
+                return_value=CompletedProcess(["python"], 0, stdout="", stderr=""),
+            ) as mocked_run,
+        ):
+            apply_commit.run_targeted_checks(Path("C:/repo"), [equivalent_command], {collected_command: argv})
+
+        mocked_run.assert_called_once()
+        self.assertEqual(mocked_run.call_args.args[0], argv)
+        self.assertFalse(mocked_run.call_args.kwargs["shell"])
 
     def test_current_hunk_match_raises_ambiguous_split_rematch(self) -> None:
         original_hunk = {"hunk_id": "H1", "removed_digest": "same-old", "added_digest": "same-new"}
