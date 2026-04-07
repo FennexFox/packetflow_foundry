@@ -70,10 +70,9 @@ class CollectWorktreeContextTests(unittest.TestCase):
                 candidates,
                 [
                     {
-                        "command": (
-                            'python -m unittest discover -s '
-                            'builders/packet-workflow/retained-skills/gh-address-review-threads/tests '
-                            '-p "test_build_review_packets.py"'
+                        "command": worktree_context.unittest_discover_command(
+                            "builders/packet-workflow/retained-skills/gh-address-review-threads/tests",
+                            "test_build_review_packets.py",
                         ),
                         "reason": (
                             "Changed test file "
@@ -127,7 +126,10 @@ class CollectWorktreeContextTests(unittest.TestCase):
                 candidates,
                 [
                     {
-                        "command": 'python -m unittest discover -s .github/scripts/tests -p "test_*.py"',
+                        "command": worktree_context.unittest_discover_command(
+                            ".github/scripts/tests",
+                            "test_*.py",
+                        ),
                         "reason": "Changed Python code without a complete one-to-one test mapping in the sibling tests directory.",
                         "paths": [
                             ".github/scripts/subdir/task.py",
@@ -154,12 +156,18 @@ class CollectWorktreeContextTests(unittest.TestCase):
                 candidates,
                 [
                     {
-                        "command": 'python -m unittest discover -s tests -p "test_unrelated.py"',
+                        "command": worktree_context.unittest_discover_command(
+                            "tests",
+                            "test_unrelated.py",
+                        ),
                         "reason": "Changed test file tests/test_unrelated.py.",
                         "paths": ["tests/test_unrelated.py"],
                     },
                     {
-                        "command": 'python -m unittest discover -s .github/scripts/tests -p "test_*.py"',
+                        "command": worktree_context.unittest_discover_command(
+                            ".github/scripts/tests",
+                            "test_*.py",
+                        ),
                         "reason": "Changed Python code without a complete one-to-one test mapping in the sibling tests directory.",
                         "paths": [".github/scripts/subdir/task.py"],
                     },
@@ -192,10 +200,9 @@ class CollectWorktreeContextTests(unittest.TestCase):
                 candidates,
                 [
                     {
-                        "command": (
-                            'python -m unittest discover -s '
-                            'builders/packet-workflow/retained-skills/gh-address-review-threads/tests '
-                            '-p "test_shared_builder.py"'
+                        "command": worktree_context.unittest_discover_command(
+                            "builders/packet-workflow/retained-skills/gh-address-review-threads/tests",
+                            "test_shared_builder.py",
                         ),
                         "reason": (
                             "Changed script "

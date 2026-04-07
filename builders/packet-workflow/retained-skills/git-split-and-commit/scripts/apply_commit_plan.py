@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shlex
 import subprocess
 import tempfile
 from pathlib import Path
@@ -212,13 +214,21 @@ def ensure_targeted_checks_feasible(repo_root: Path, commands: list[str], *, dry
 def run_targeted_checks(repo_root: Path, commands: list[str]) -> None:
     ensure_targeted_checks_feasible(repo_root, commands, dry_run=False)
     for command in commands:
+        argv = shlex.split(command, posix=os.name != "nt")
+        argv = [
+            item[1:-1]
+            if len(item) >= 2 and item[0] == item[-1] and item[0] in {"'", '"'}
+            else item
+            for item in argv
+        ]
         result = subprocess.run(
-            command,
+            argv,
             cwd=repo_root,
-            shell=True,
+            shell=False,
             text=True,
             encoding="utf-8",
             errors="replace",
+            stdin=subprocess.DEVNULL,
             capture_output=True,
             check=False,
         )

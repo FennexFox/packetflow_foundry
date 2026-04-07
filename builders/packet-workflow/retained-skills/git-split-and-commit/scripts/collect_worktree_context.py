@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -581,8 +582,25 @@ def sibling_tests_dir(repo_root: Path, path: str) -> str | None:
     return normalize_path(str(candidate)) if absolute_candidate.is_dir() else None
 
 
+def command_string(argv: list[str]) -> str:
+    if os.name == "nt":
+        return subprocess.list2cmdline(argv)
+    return " ".join(shlex.quote(part) for part in argv)
+
+
 def unittest_discover_command(test_dir: str, pattern: str) -> str:
-    return f'python -m unittest discover -s {test_dir} -p "{pattern}"'
+    return command_string(
+        [
+            sys.executable,
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            test_dir,
+            "-p",
+            pattern,
+        ]
+    )
 
 
 def targeted_validation_candidates(repo_root: Path, changed_paths: list[str]) -> list[dict[str, Any]]:

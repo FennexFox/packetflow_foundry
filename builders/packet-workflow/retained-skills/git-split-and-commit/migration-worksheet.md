@@ -56,3 +56,14 @@
 - `unversioned -> packet-workflow 0.1.0`
   - change reason: introduced explicit builder-version compatibility metadata and upgrade rules for packet-workflow retained skills.
   - manual migration scope: added `builder_versioning` to `builder-spec.json`, added `metadata.versioning` to `profiles/default/profile.json`, and wired collector-side `builder_compatibility` reporting.
+
+## Pilot Hardening Outcome
+- Prose-only invariants moved into script or test enforcement:
+  - nested retained-skill `scripts/**` paths now map to sibling `tests/test_*.py` coverage instead of only matching immediate `scripts/` parents
+  - apply-stage targeted checks now reuse argv-shaped command execution without `shell=True`, with explicit no-input stdio handling for Windows stability
+  - targeted unittest commands now reuse the same concrete Python interpreter path that launched the workflow helper
+- Runtime to eval-only moves:
+  - moved from `orchestrator.json` into build-result/eval-side artifacts: `review_mode_baseline`, `review_mode_adjustments`, worker recommendations, and override-signal summaries
+  - kept in runtime: final `review_mode`, `packet_worker_map`, common-path/reread gates, and split/worktree blocker context
+- Retained `SKILL.md` reduction:
+  - reduced to the minimum operator-facing contract with execution roots, entry flow, continue gates, stop gates, final response requirements, and references

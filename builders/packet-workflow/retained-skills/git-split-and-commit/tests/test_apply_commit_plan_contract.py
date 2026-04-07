@@ -163,6 +163,36 @@ class ApplyCommitPlanContractTests(unittest.TestCase):
 
         self.assertEqual(caught.exception.category, "targeted_check_unavailable")
 
+    def test_run_targeted_checks_uses_argv_without_shell(self) -> None:
+        command = '"C:/Python 3.14/python.exe" -m unittest discover -s tests -p "test_app.py"'
+
+        with (
+            patch.object(apply_commit, "command_feasibility_issues", return_value=[]),
+            patch.object(
+                apply_commit.subprocess,
+                "run",
+                return_value=CompletedProcess(["python"], 0, stdout="", stderr=""),
+            ) as mocked_run,
+        ):
+            apply_commit.run_targeted_checks(Path("C:/repo"), [command])
+
+        mocked_run.assert_called_once()
+        self.assertEqual(
+            mocked_run.call_args.args[0],
+            [
+                "C:/Python 3.14/python.exe",
+                "-m",
+                "unittest",
+                "discover",
+                "-s",
+                "tests",
+                "-p",
+                "test_app.py",
+            ],
+        )
+        self.assertFalse(mocked_run.call_args.kwargs["shell"])
+        self.assertEqual(mocked_run.call_args.kwargs["stdin"], apply_commit.subprocess.DEVNULL)
+
     def test_current_hunk_match_raises_ambiguous_split_rematch(self) -> None:
         original_hunk = {"hunk_id": "H1", "removed_digest": "same-old", "added_digest": "same-new"}
         current_hunks = [

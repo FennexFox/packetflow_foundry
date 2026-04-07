@@ -5,133 +5,66 @@ description: Review the active repository's current working tree, split local ch
 
 # Git Split And Commit
 
-Use this skill as the packet-driven orchestration layer for turning one working tree into logical commits.
+Use this skill to turn one working tree into logical commits with a guarded `collect -> build -> validate -> apply` flow.
 
-This workflow follows the packet-workflow standard:
-- collect context deterministically before reading raw diffs broadly
-- build decision-ready packets and keep the final plan local
-- treat worker output as proposal-grade only
-- use `gpt-5.4-mini` only for narrow packet analysis when review mode says to delegate
-- keep git mutation local and stop on low confidence or stale worktree state
+## Use When
 
-Boundary:
-- Keep reusable packet-workflow semantics in `references/core-contract.md`.
-- Keep default repo bindings and review-doc ownership in `profiles/default/profile.json`.
-- Keep vendored repo overrides data-only in `.codex/project/profiles/`.
-
-Read `references/architecture-rationale.md` before changing packet metadata, delegation shape, or the default whole-file bias.
+- the user wants the current local changes split into one or more clean commits
+- packet evidence should guide the grouping, but final commit planning and git mutation must stay local
+- hunk rematch, targeted checks, and rollback behavior need deterministic script enforcement
 
 ## Execution Roots
 
-- Resolve `<skill-dir>` as the directory containing this `SKILL.md`.
-- Resolve `<python-bin>` as a concrete interpreter path before running any helper script.
-- On Windows, prefer a non-`WindowsApps` interpreter from `Get-Command python -All | Where-Object { $_.Source -notlike '*Microsoft\WindowsApps*' } | Select-Object -ExpandProperty Source -First 1`.
-- If that probe returns nothing, scan `%LOCALAPPDATA%\Python\pythoncore-*\python.exe` and `%LOCALAPPDATA%\Programs\Python\Python*\python.exe`, then reuse the first concrete path you find.
-- If you already resolved a concrete interpreter path outside the sandbox, reuse that exact path inside the sandbox instead of calling `py` or bare `python`.
-- Run helper scripts as `<python-bin> -B <skill-dir>/scripts/...`.
-- Stop and report the blocker if you cannot resolve a concrete interpreter path.
-- Resolve `<runtime-root>` to `<repo-root>/.codex/tmp/packet-workflow/git-split-and-commit/<run-id>/` and keep `.codex/tmp/` gitignored.
-- Set `<packet-dir>` to `<runtime-root>/packets`.
-- Set `<eval-log-json>` to `<repo-root>/.codex/tmp/evaluation_logs/git-split-and-commit/<run-id>.json` by default and keep `.codex/tmp/` gitignored.
+- `<skill-dir>`: directory containing this `SKILL.md`
+- `<python-bin>`: concrete interpreter path; on Windows prefer a non-`WindowsApps` Python and reuse the same resolved interpreter for every helper script
+- `<runtime-root>`: `<repo-root>/.codex/tmp/packet-workflow/git-split-and-commit/<run-id>/`
+- `<packet-dir>`: `<runtime-root>/packets`
+- `<eval-log-json>`: `<repo-root>/.codex/tmp/evaluation_logs/git-split-and-commit/<run-id>.json`
 
-## Workflow
+## Entry
 
-1. Collect rules and worktree context before planning commits.
-- Write helper artifacts under the repo-local `.codex/tmp/` scratch tree unless a specific command requires another writable location.
+1. Collect rules and worktree context, then build packets.
 - Run `<python-bin> -B <skill-dir>/scripts/collect_commit_rules.py --repo <repo-root> --output <rules-json>`.
 - Run `<python-bin> -B <skill-dir>/scripts/collect_worktree_context.py --repo <repo-root> --output <worktree-json>`.
 - Run `<python-bin> -B <skill-dir>/scripts/build_commit_packets.py --rules <rules-json> --worktree <worktree-json> --output-dir <packet-dir> --result-output <build-result-json>`.
+2. Initialize evaluation logging and read the runtime packets in order.
 - Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <worktree-json> --orchestrator <packet-dir>/orchestrator.json --output <eval-log-json>`.
-- Merge the build result with `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --phase build --result <build-result-json> --log <eval-log-json>`.
-- Read `<packet-dir>/orchestrator.json` first.
-- Keep `<packet-dir>/global_packet.json` in view before reading any focused packet.
-- Read `rules_packet.json` and `worktree_packet.json` locally before drafting `commit-plan.json`.
-- Treat `rules_packet.json + worktree_packet.json + one focused packet at a time` as the common path. Raw diff rereads are exception-only after packet generation.
+- Run `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py phase --phase build --result <build-result-json> --log <eval-log-json>`.
+- Read `orchestrator.json` first, then `global_packet.json`, then `rules_packet.json` and `worktree_packet.json`, then at most one focused packet at a time on the common path.
+3. Draft and validate the local commit plan.
+- Draft `commit-plan.json` against `references/commit-plan-contract.md`.
+- Run `<python-bin> -B <skill-dir>/scripts/validate_commit_plan.py --worktree <worktree-json> --plan <commit-plan-json> --output <validation-json>`.
+- Run `<python-bin> -B <skill-dir>/scripts/apply_commit_plan.py --worktree <worktree-json> --validation <validation-json> [--dry-run] --result-output <apply-result-json>` only after local review of the validator output.
+4. If `orchestrator.json` sets a delegated review mode, follow `packet_worker_map` per focused packet and keep `apply_commit_plan.py` local.
+5. Record validation/apply phase results and finalize the evaluation log before ending the run.
 
-2. Follow the review mode from `orchestrator.json`.
-- `local-only`: keep commit planning local unless the final `review_mode` was promoted by `review_mode_adjustments=["delegation_savings_floor"]`.
-- `targeted-delegation`: use the routed mini workers for `rules_packet.json`, `worktree_packet.json`, `candidate-batch-XX.json`, or `split-file-XX.json`.
-- `broad-delegation`: use the routed mini workers and add QA only when batches, split candidates, or findings conflict.
-- Treat `packet_worker_map` as the routing authority and `preferred_worker_families` as explanatory metadata.
-- Treat `task_packet_names` as basename-only packet metadata and `packet_order` as the file-oriented packet list.
-- If `spawn_agent` is unavailable or fails, stay local on the same packet workflow even when the final `review_mode` preferred delegation.
+## Continue Only If
 
-3. Respect the decision-ready packet contract.
-- `decision_ready_packets=true`
-- `worker_return_contract=classification-oriented`
-- `worker_output_shape=hierarchical`
-- Workers return hierarchical `candidates[]` plus `footer`; their output is proposal-grade only.
-- `candidate-batch-XX.json` packets describe logical commit buckets.
-- `split-file-XX.json` packets describe files that may need a split decision.
-- `candidate-batch-XX.json` and `split-file-XX.json` should be sufficient for common-path local adjudication; raw rereads stay exception-only after packet generation.
+- final planning, staging, targeted checks, and `git commit` stay local
+- `packet_worker_map` is the routing authority and worker output remains proposal-grade only
+- apply consumes validator-normalized output only; it must not reinterpret stale hunk ownership
+- review baselines, adjustments, worker recommendations, and similar observability fields stay build-result or eval-side unless a later runtime phase consumes them
+- raw diff rereads happen only for an explicit allowed reason
 
-4. Keep the critical path local.
-- Draft `commit-plan.json` locally using `references/commit-plan-contract.md`.
-- Re-check the rules and worktree packets locally before finalizing the plan.
-- Prefer whole-file commits unless a split-file packet clearly justifies a split.
-- Stop and ask when hunk confidence is low, the worktree fingerprint changed, a split packet stays ambiguous, or targeted checks cannot run locally.
-- If packet evidence is insufficient, record an explicit reread reason instead of silently falling back to the raw diff.
-- Validate `commit-plan.json` before running `apply_commit_plan.py`.
-- Treat `validate_commit_plan.py` as the only source of `normalized_plan` for apply and `--dry-run`.
-- Run `apply_commit_plan.py --validation <validation-json>` only after the validator emits a current, apply-safe normalized plan.
+## Stop When
 
-## Delegation Rules
+- the worktree fingerprint or `HEAD` changed after collection
+- another git operation is active
+- a split stays ambiguous or rematch safety is too weak
+- targeted checks are unavailable or fail
+- confidence is too low to finalize a safe local plan
 
-- Pass `global_packet.json` plus one focused packet per worker.
-- Keep workers narrow and read-only.
-- Prefer these roles:
-  - `docs_verifier` for `rules_packet.json`
-  - `repo_mapper` for `worktree_packet.json`
-  - `evidence_summarizer` for `candidate-batch-XX.json`
-  - `large_diff_auditor` for `split-file-XX.json` and any QA pass
-- Require hierarchical proposal output from each worker:
-  - `candidates[]`
-  - `footer`
-  - `fact_summary`
-  - `proposal_classification`
-- `classification_rationale`
-- `supporting_references`
-- `ambiguity`
-- `confidence`
-- `reread_control`
-- Current domain aliases assume file/path-oriented evidence first, so `supporting_paths` should stay path-shaped, evidence-only, and outside path ownership unless the contract is deliberately expanded.
-- Read `references/delegation-playbook.md` when `review_mode` is not `local-only`.
+## Final Response
 
-## Scripts
+- say how many commit buckets the plan used and whether commits were applied or the run stopped
+- name the blocker precisely, including the hard-stop category when available
+- mention the targeted checks that actually ran
 
-- `scripts/collect_commit_rules.py`
-  - Collect canonical commit-message rules, repo defaults, and recent scope vocabulary.
-- `scripts/collect_worktree_context.py`
-  - Collect the current working-tree surface, fingerprint, hunk candidates, and validation commands.
-- `scripts/build_commit_packets.py`
-  - Build `global_packet.json`, `rules_packet.json`, `worktree_packet.json`, the candidate batches, the split-file packets, `packet_metrics.json`, and orchestrator metadata plus an optional build-result artifact.
-- `scripts/validate_commit_plan.py`
-  - Validate coverage, active git operations, hunk uniqueness, split safety, targeted-check feasibility, unknown-field handling, and worktree fingerprint consistency, then emit the normalized plan and stop categories that apply consumes.
-- `scripts/apply_commit_plan.py`
-  - Consume validator output only, re-stage each planned commit, run targeted checks, create commits, emit structured hard-stop payloads, and roll created commits back to the original HEAD with worktree edits preserved when a later apply step fails.
-- `scripts/write_evaluation_log.py`
-  - Record the shared evaluation log for efficiency, quality, and safety tracking, including build-phase packet metrics and common-path sufficiency.
+## References
 
-- `scripts/smoke_git_split_and_commit.py`
-  - Run the temp-repo smoke path for collect -> build -> validate -> apply `--dry-run` -> evaluation logging.
-
-## Evaluation
-
-- Use `<python-bin> -B <skill-dir>/scripts/write_evaluation_log.py init --context <worktree-json> --orchestrator <packet-dir>/orchestrator.json --output <eval-log-json>` after packet generation.
-- Merge deterministic phase results with `phase` after validation or apply.
-- Finalize the evaluation log after the run with worker usage, packet usage, confidence, validation status, and any stop reasons.
-- Keep the evaluation log under the repo-local `.codex/tmp/evaluation_logs/` tree.
-- Read `references/evaluation-log-contract.md` for the shared envelope and `references/git-split-and-commit-evaluation-contract.md` for commit-planning-specific fields.
-
-## Maintenance Notes
-
-- Prefer `<python-bin> -B ...` when running bundled scripts so local verification does not leave fresh bytecode artifacts in the distributable skill folder.
-- Keep distributable bundles free of `__pycache__/` directories and `.pyc` files.
-- Re-read `references/architecture-rationale.md` before changing the orchestrator profile, worker families, or whole-file/split defaults.
-
-## Output
-
-- Tell the user how many commit buckets the current plan uses and why.
-- Tell the user whether the skill applied commits or stopped at validation.
-- If the skill stopped, name the blocker precisely with the hard-stop category when available.
-- Local hard-stop categories include `active_git_operation`, `ambiguous_split_rematch`, `partial_split_unsupported`, `targeted_check_unavailable`, `targeted_check_failed`, `commit_creation_failed`, and `rollback_failed`.
+- `references/commit-plan-contract.md`
+- `references/delegation-playbook.md`
+- `references/core-contract.md`
+- `references/git-split-and-commit-evaluation-contract.md`
+- `references/architecture-rationale.md`
+- `<python-bin> -B <skill-dir>/scripts/smoke_git_split_and_commit.py`
