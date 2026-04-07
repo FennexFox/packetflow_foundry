@@ -630,6 +630,8 @@ def targeted_validation_candidates(repo_root: Path, changed_paths: list[str]) ->
             if not test_path:
                 continue
             command = unittest_discover_command(normalize_path(str(Path(test_path).parent)), Path(test_path).name)
+            if command in seen_commands:
+                continue
             candidates.append(
                 {
                     "command": command,

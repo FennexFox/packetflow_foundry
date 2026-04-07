@@ -136,6 +136,51 @@ class CollectWorktreeContextTests(unittest.TestCase):
                 ],
             )
 
+    def test_targeted_validation_candidates_dedupe_duplicate_mapped_test_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo = Path(tmp_dir)
+            test_path = (
+                repo
+                / "builders"
+                / "packet-workflow"
+                / "retained-skills"
+                / "gh-address-review-threads"
+                / "tests"
+                / "test_shared_builder.py"
+            )
+            write_text(test_path, "import unittest\n")
+
+            candidates = worktree_context.targeted_validation_candidates(
+                repo,
+                [
+                    "builders/packet-workflow/retained-skills/gh-address-review-threads/scripts/subdir-a/shared_builder.py",
+                    "builders/packet-workflow/retained-skills/gh-address-review-threads/scripts/subdir-b/shared_builder.py",
+                ],
+            )
+
+            self.assertEqual(
+                candidates,
+                [
+                    {
+                        "command": (
+                            'python -m unittest discover -s '
+                            'builders/packet-workflow/retained-skills/gh-address-review-threads/tests '
+                            '-p "test_shared_builder.py"'
+                        ),
+                        "reason": (
+                            "Changed script "
+                            "builders/packet-workflow/retained-skills/gh-address-review-threads/scripts/subdir-a/shared_builder.py "
+                            "with matching test "
+                            "builders/packet-workflow/retained-skills/gh-address-review-threads/tests/test_shared_builder.py."
+                        ),
+                        "paths": [
+                            "builders/packet-workflow/retained-skills/gh-address-review-threads/scripts/subdir-a/shared_builder.py",
+                            "builders/packet-workflow/retained-skills/gh-address-review-threads/tests/test_shared_builder.py",
+                        ],
+                    }
+                ],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
