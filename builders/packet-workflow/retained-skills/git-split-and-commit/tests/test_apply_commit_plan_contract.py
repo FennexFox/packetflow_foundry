@@ -287,6 +287,20 @@ class ApplyCommitPlanContractTests(unittest.TestCase):
         self.assertEqual(mocked_run.call_args.args[0], argv)
         self.assertFalse(mocked_run.call_args.kwargs["shell"])
 
+    def test_run_targeted_checks_rejects_shell_control_syntax(self) -> None:
+        command = "python -m unittest && echo done"
+
+        with (
+            patch.object(validator, "resolve_command_executable", return_value="python"),
+            patch.object(apply_commit.subprocess, "run") as mocked_run,
+        ):
+            with self.assertRaises(apply_commit.ApplyHardStop) as caught:
+                apply_commit.run_targeted_checks(Path("C:/repo"), [command], {})
+
+        self.assertEqual(caught.exception.category, "targeted_check_unavailable")
+        self.assertIn("shell-control syntax", str(caught.exception))
+        mocked_run.assert_not_called()
+
     def test_current_hunk_match_raises_ambiguous_split_rematch(self) -> None:
         original_hunk = {"hunk_id": "H1", "removed_digest": "same-old", "added_digest": "same-new"}
         current_hunks = [

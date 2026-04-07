@@ -225,6 +225,14 @@ class ValidateCommitPlanContractTests(unittest.TestCase):
         self.assertEqual(issues, [])
         self.assertEqual(seen_tokens, ["/home/o'connor/.venv/bin/python"])
 
+    def test_command_feasibility_rejects_shell_control_syntax(self) -> None:
+        with patch.object(validator, "resolve_command_executable", return_value="python"):
+            issues = validator.command_feasibility_issues(Path("/repo"), ["python -m unittest && echo done"])
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("shell-control syntax", issues[0]["detail"])
+        self.assertIn("&&", issues[0]["detail"])
+
     def test_validator_allows_supporting_paths_to_overlap_owned_paths(self) -> None:
         worktree = sample_worktree()
         plan = sample_plan()

@@ -32,3 +32,41 @@ def parse_command_argv(command: str) -> list[str] | None:
         return shlex.split(text, posix=True)
     except ValueError:
         return None
+
+
+def shell_control_tokens(command: str) -> list[str]:
+    text = str(command)
+    tokens: list[str] = []
+    in_single = False
+    in_double = False
+    index = 0
+    length = len(text)
+
+    while index < length:
+        char = text[index]
+
+        if char == "\\":
+            index += 2
+            continue
+        if char == "'" and not in_double:
+            in_single = not in_single
+            index += 1
+            continue
+        if char == '"' and not in_single:
+            in_double = not in_double
+            index += 1
+            continue
+        if in_single or in_double:
+            index += 1
+            continue
+
+        pair = text[index : index + 2]
+        if pair in {"&&", "||", "<<", ">>"}:
+            tokens.append(pair)
+            index += 2
+            continue
+        if char in {"|", "&", ";", "<", ">"}:
+            tokens.append(char)
+        index += 1
+
+    return tokens
