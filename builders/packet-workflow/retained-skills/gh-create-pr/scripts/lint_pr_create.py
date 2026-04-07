@@ -33,7 +33,10 @@ RESTART_PATTERN = re.compile(r"\b(restart|reload)\b", re.IGNORECASE)
 MIGRATION_CLAIM_PATTERN = re.compile(
     r"\b(?:requires?|needs?|needed|includes?|included|adds?|added|documents?|documented|provides?|provided)\s+"
     r"(?:an?\s+)?migration (?:guide|guidance|note|notes|step|steps|plan|plans|path|paths|work|works)\b"
+    r"|(?:\brequires?|\bneeds?|\bneeded)\s+(?:an?\s+)?migration(?:\s+for\s+"
+    r"(?:existing|consumer|consumers|vendor|vendors|project|projects|repo|repos|installation|installations|deployment|deployments|users?))?(?=$|[.!,;:])"
     r"|\bmigration (?:guide|guidance|note|notes|step|steps|plan|plans|path|paths|required|requires?|needed|impact|impacts)\b"
+    r"|\bmigration for\s+(?:existing|consumer|consumers|vendor|vendors|project|projects|repo|repos|installation|installations|deployment|deployments|users?)\b"
     r"|\bmigrat(?:e|es|ed|ing)\s+(?:existing|consumer|consumers|vendor|vendors|project|projects|repo|repos|installation|installations|deployment|deployments|users?)\b",
     re.IGNORECASE,
 )

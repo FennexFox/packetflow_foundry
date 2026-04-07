@@ -308,7 +308,6 @@ def build_global_packet(
     context: dict[str, Any],
     *,
     review_mode: str,
-    override_signals: list[dict[str, str]],
     focused_packet_hint: str | None,
 ) -> dict[str, Any]:
     pr = context.get("pr") or {}
@@ -623,7 +622,6 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         "global_packet.json": build_global_packet(
             context,
             review_mode=review_mode,
-            override_signals=override_signals,
             focused_packet_hint=focused_packet_hint,
         ),
         "rules_packet.json": build_rules_packet(context),
@@ -655,7 +653,6 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         packet_payloads["global_packet.json"] = build_global_packet(
             context,
             review_mode=review_mode,
-            override_signals=override_signals,
             focused_packet_hint=focused_packet_hint,
         )
         packet_payloads["synthesis_packet.json"] = build_synthesis_packet(

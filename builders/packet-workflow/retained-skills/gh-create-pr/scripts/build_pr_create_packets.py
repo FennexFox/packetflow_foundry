@@ -124,7 +124,6 @@ def build_global_packet(
     *,
     review_mode: str,
     focused_packet_hint: str | None,
-    lint_report: dict[str, Any],
 ) -> dict[str, Any]:
     return {
         "purpose": "Shared runtime context for local orchestration and narrow delegated packet analysis.",
@@ -351,7 +350,6 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
             context,
             review_mode=review_mode,
             focused_packet_hint=focused_hint,
-            lint_report=lint_report,
         ),
         "rules_packet.json": build_rules_packet(context, drafting_basis),
         "testing_packet.json": build_testing_packet(context, drafting_basis),
@@ -396,7 +394,6 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
             context,
             review_mode=review_mode,
             focused_packet_hint=focused_hint,
-            lint_report=lint_report,
         )
         packet_payloads["synthesis_packet.json"] = build_synthesis_packet(
             context,
