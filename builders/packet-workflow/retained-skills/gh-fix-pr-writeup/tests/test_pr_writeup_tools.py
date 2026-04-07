@@ -80,6 +80,28 @@ class PrWriteupToolsTests(unittest.TestCase):
         self.assertNotIn("main-only.txt", diff_stat)
         self.assertIn("1 file changed", diff_stat)
 
+    def test_load_local_diff_stat_prefers_local_refs_before_stale_origin_refs(self) -> None:
+        outputs = {
+            "main...feature/writeup": " feature.txt | 1 +\n 1 file changed, 1 insertion(+)\n",
+            "origin/main...feature/writeup": " stale.txt | 1 +\n 1 file changed, 1 insertion(+)\n",
+            "main...origin/feature/writeup": " mixed.txt | 1 +\n 1 file changed, 1 insertion(+)\n",
+            "origin/main...origin/feature/writeup": " remote.txt | 1 +\n 1 file changed, 1 insertion(+)\n",
+        }
+
+        def fake_run_command(args: list[str], cwd: Path) -> str:
+            self.assertEqual(args[:3], ["git", "diff", "--stat"])
+            return outputs[args[3]]
+
+        with mock.patch.object(tools, "run_command", side_effect=fake_run_command) as run_command:
+            diff_stat = tools.load_local_diff_stat(Path("C:/repo"), "main", "feature/writeup")
+
+        self.assertEqual(diff_stat, outputs["main...feature/writeup"].strip())
+        self.assertEqual(run_command.call_count, 1)
+        self.assertEqual(
+            run_command.call_args_list[0].args[0],
+            ["git", "diff", "--stat", "main...feature/writeup"],
+        )
+
     def test_infer_repo_slug_accepts_dotted_repo_names(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

@@ -498,9 +498,14 @@ def delta_request_anchor_evidence(
         for raw_anchor, canonical_anchor in identifier_pairs
         if canonical_anchor in evidence_terms
     ]
+    line_term_sets = [
+        set(match_terms(raw_line[1:], canonical=True))
+        for raw_line in str(diff_snippet).splitlines()
+        if raw_line[:1] in {"+", "-"} and not raw_line.startswith(("+++", "---"))
+    ]
     # Keep diagnostics token-granular for existing consumers, but only treat an
     # identifier anchor as resolution evidence when every token from one quoted
-    # anchor is present in the post-push delta.
+    # anchor is present within the same changed diff line.
     strong_identifier_match = False
     for view in anchor_views:
         view_identifier_pairs = [
@@ -511,7 +516,9 @@ def delta_request_anchor_evidence(
         if not view_identifier_pairs:
             continue
         required_identifier_terms = dedupe_preserve([str(canonical_anchor) for _, canonical_anchor in view_identifier_pairs])
-        if required_identifier_terms and all(term in evidence_terms for term in required_identifier_terms):
+        if required_identifier_terms and any(
+            all(term in line_terms for term in required_identifier_terms) for line_terms in line_term_sets
+        ):
             strong_identifier_match = True
             break
     return (
