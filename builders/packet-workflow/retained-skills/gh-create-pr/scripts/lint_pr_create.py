@@ -47,7 +47,8 @@ MIGRATION_CLAIM_PATTERN = re.compile(
     re.IGNORECASE,
 )
 COMPATIBILITY_CLAIM_PATTERN = re.compile(
-    r"\b(?:backward[- ]compat(?:ibility)?|backwardly compatible|compatible with|breaking change(?:s)?)\b",
+    rf"(?:\b(?:backward[- ]compat(?:ibility)?|backwardly compatible|compatible with|breaking change(?:s)?)\b[^\n]{{0,120}}\b{MIGRATION_AUDIENCE_PATTERN}\b"
+    rf"|\b{MIGRATION_AUDIENCE_PATTERN}\b[^\n]{{0,120}}\b(?:backward[- ]compat(?:ibility)?|backwardly compatible|compatible with|breaking change(?:s)?)\b)",
     re.IGNORECASE,
 )
 POSITIVE_TEST_PATTERN = re.compile(r"\b(tested|verified|validated|manual(?:ly)?|ran)\b", re.IGNORECASE)
