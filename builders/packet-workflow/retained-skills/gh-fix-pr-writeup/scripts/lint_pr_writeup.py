@@ -28,6 +28,10 @@ PLACEHOLDER_PATTERNS = [
     ),
 ]
 ISSUE_REF_PATTERN = re.compile(r"#(?P<number>\d+)")
+REFS_LINE_PATTERN = re.compile(
+    r"^\s*(?:[-*+]\s+)?refs:\s*(?P<refs>.+)$",
+    re.IGNORECASE | re.MULTILINE,
+)
 CANDIDATE_CLAIM_PATTERNS = (
     (
         re.compile(r"\b(restart|reload)\b", re.IGNORECASE),
@@ -78,8 +82,12 @@ def section_text(context: dict, heading: str) -> str:
 
 
 def referenced_issue_numbers(body: str) -> set[str]:
-    refs_line = next((line for line in body.splitlines() if line.lower().startswith("refs:")), "")
-    return {match.group("number") for match in ISSUE_REF_PATTERN.finditer(refs_line)}
+    numbers: set[str] = set()
+    for match in REFS_LINE_PATTERN.finditer(body):
+        refs_text = str(match.group("refs") or "")
+        for issue_match in ISSUE_REF_PATTERN.finditer(refs_text):
+            numbers.add(issue_match.group("number"))
+    return numbers
 
 
 def support_corpus(context: dict) -> str:

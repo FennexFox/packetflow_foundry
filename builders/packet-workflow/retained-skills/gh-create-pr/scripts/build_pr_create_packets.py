@@ -147,9 +147,8 @@ def build_global_packet(
         ],
         "packet_worker_map": contract.PACKET_WORKER_MAP,
         "preferred_worker_families": contract.PREFERRED_WORKER_FAMILIES,
-        "worker_selection_guidance": contract.WORKER_SELECTION_GUIDANCE,
+        "routing_contract": contract.ROUTING_CONTRACT,
         "focused_packet_hint": focused_packet_hint,
-        "review_overrides": lint_report.get("findings", {}).get("override_signals", {}),
         "duplicate_hint": context.get("duplicate_check_hint"),
         "local_gate_reminders": [
             "Keep final title/body synthesis local.",
@@ -429,6 +428,10 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         "review_mode_adjustments": review_mode_adjustments,
         "recommended_worker_count": len(recommended_workers),
         "optional_worker_count": len(optional_workers),
+        "override_signals": lint_report.get("findings", {}).get("override_signals", {}),
+        "recommended_workers": recommended_workers,
+        "optional_workers": optional_workers,
+        "delegation_non_use_cases": contract.DELEGATION_NON_USE_CASES,
         "packet_files": packet_files,
         "orchestrator_profile": contract.ORCHESTRATOR_PROFILE,
         "shared_local_packet": contract.SHARED_LOCAL_PACKET,
@@ -444,10 +447,6 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         "repo_profile_path": context.get("repo_profile_path"),
         "repo_profile_summary": context.get("repo_profile_summary"),
         "review_mode": review_mode,
-        "review_mode_baseline": review_mode_baseline,
-        "review_mode_adjustments": review_mode_adjustments,
-        "recommended_worker_count": len(recommended_workers),
-        "optional_worker_count": len(optional_workers),
         "shared_packet": "global_packet.json",
         "shared_local_packet": contract.SHARED_LOCAL_PACKET,
         "decision_ready_packets": contract.DECISION_READY_PACKETS,
@@ -455,7 +454,7 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         "worker_output_shape": contract.WORKER_OUTPUT_SHAPE,
         "preferred_worker_families": contract.PREFERRED_WORKER_FAMILIES,
         "packet_worker_map": contract.PACKET_WORKER_MAP,
-        "worker_selection_guidance": contract.WORKER_SELECTION_GUIDANCE,
+        "routing_contract": contract.ROUTING_CONTRACT,
         "common_path_contract": {
             "required_packets": contract.COMMON_PATH_REQUIRED_PACKETS,
             "max_additional_focused_packets": contract.COMMON_PATH_MAX_FOCUSED_PACKETS,
@@ -468,8 +467,6 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
             "Run apply_pr_create.py only from validator-normalized output.",
         ],
         "packet_files": packet_files,
-        "recommended_workers": recommended_workers,
-        "optional_workers": optional_workers,
     }
     packet_payloads["orchestrator.json"] = orchestrator
     packet_payloads["packet_metrics.json"] = packet_metrics

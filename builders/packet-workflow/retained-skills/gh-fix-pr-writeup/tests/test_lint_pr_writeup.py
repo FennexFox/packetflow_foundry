@@ -112,6 +112,30 @@ def clean_context() -> dict:
 
 
 class LintPrWriteupTests(unittest.TestCase):
+    def test_issue_ref_status_accepts_bullet_prefixed_refs_line(self) -> None:
+        context = clean_context()
+        context["pr"]["body"] = "\n".join(
+            [
+                "## Why",
+                "- Refs: #12",
+                "## What changed",
+                "- Tightened the audit report contract reference.",
+                "## How",
+                "- Re-read the rules packet before any local edit.",
+                "## Risk / Rollback",
+                "- Revert the PR text update if it overstates the diff.",
+                "## Testing",
+                "- Ran `python -m unittest discover tests`.",
+            ]
+        )
+        context["pr"]["closingIssuesReferences"] = [{"number": 12}]
+
+        status = lint.issue_ref_status(context)
+
+        self.assertEqual(status["body_refs"], ["12"])
+        self.assertEqual(status["matched_refs"], ["12"])
+        self.assertEqual(status["status"], "aligned")
+
     def test_collect_findings_flags_title_and_template_errors(self) -> None:
         context = broken_context()
         findings = lint.collect_findings(context)

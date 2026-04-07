@@ -16,6 +16,70 @@ import pr_writeup_tools as tools  # noqa: E402
 
 
 class PrWriteupToolsTests(unittest.TestCase):
+    def test_load_local_diff_stat_uses_pr_scoped_merge_base(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_root), check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "config", "user.name", "PacketFlow Tests"],
+                cwd=str(repo_root),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "packetflow-tests@example.invalid"],
+                cwd=str(repo_root),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            (repo_root / "base.txt").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "base.txt"], cwd=str(repo_root), check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "commit", "-m", "base"],
+                cwd=str(repo_root),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            subprocess.run(
+                ["git", "checkout", "-b", "feature/writeup"],
+                cwd=str(repo_root),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            (repo_root / "feature.txt").write_text("feature\n", encoding="utf-8")
+            subprocess.run(["git", "add", "feature.txt"], cwd=str(repo_root), check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "commit", "-m", "feature"],
+                cwd=str(repo_root),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            subprocess.run(["git", "checkout", "main"], cwd=str(repo_root), check=True, capture_output=True, text=True)
+            (repo_root / "main-only.txt").write_text("main\n", encoding="utf-8")
+            subprocess.run(["git", "add", "main-only.txt"], cwd=str(repo_root), check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "commit", "-m", "main only"],
+                cwd=str(repo_root),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            diff_stat = tools.load_local_diff_stat(repo_root, "main", "feature/writeup")
+
+        self.assertIsNotNone(diff_stat)
+        self.assertIn("feature.txt", diff_stat)
+        self.assertNotIn("main-only.txt", diff_stat)
+        self.assertIn("1 file changed", diff_stat)
+
     def test_infer_repo_slug_accepts_dotted_repo_names(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

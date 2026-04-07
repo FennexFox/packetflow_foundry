@@ -11,6 +11,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 sys.modules.pop("write_evaluation_log", None)
 import write_evaluation_log as eval_log  # noqa: E402
+import pr_writeup_contract as contract  # noqa: E402
 
 
 def context() -> dict:
@@ -35,7 +36,6 @@ def context() -> dict:
 def orchestrator() -> dict:
     return {
         "review_mode": "targeted-delegation",
-        "recommended_worker_count": 2,
         "packet_files": [
             "global_packet.json",
             "rules_packet.json",
@@ -53,6 +53,13 @@ class WriteEvaluationLogGhFixPrWriteupTests(unittest.TestCase):
         result = {
             "review_mode": "broad-delegation",
             "recommended_worker_count": 3,
+            "override_signals": [{"reason": "diff_stat_threshold", "detail": "Large churn"}],
+            "recommended_workers": [
+                {"agent_type": "packet_explorer"},
+                {"agent_type": "packet_explorer"},
+                {"agent_type": "evidence_summarizer"},
+            ],
+            "delegation_non_use_cases": contract.DELEGATION_NON_USE_CASES,
             "rewrite_strategy": "full-rewrite",
             "qa_required": True,
             "qa_reason": "broad-delegation full rewrite requires QA cross-check",
@@ -70,12 +77,15 @@ class WriteEvaluationLogGhFixPrWriteupTests(unittest.TestCase):
 
         data = log["skill_specific"]["data"]
         self.assertEqual(data["packet_count"], 6)
+        self.assertEqual(data["delegation_non_use_cases"], contract.DELEGATION_NON_USE_CASES)
         self.assertEqual(data["rewrite_strategy"], "full-rewrite")
         self.assertTrue(data["qa_required"])
         self.assertTrue(data["common_path_sufficient"])
         self.assertEqual(data["raw_reread_count"], 0)
         self.assertEqual(data["estimated_packet_tokens"], 900)
         self.assertEqual(data["estimated_delegation_savings"], 1500)
+        self.assertEqual(log["orchestration"]["override_signals"], ["diff_stat_threshold"])
+        self.assertEqual(log["orchestration"]["worker_roles"], ["packet_explorer", "packet_explorer", "evidence_summarizer"])
         self.assertEqual(log["baseline"]["estimated_local_only_tokens"], 2400)
         self.assertEqual(log["baseline"]["estimated_token_savings"], 1500)
         self.assertEqual(log["measurement"]["token_source"], "estimated")
