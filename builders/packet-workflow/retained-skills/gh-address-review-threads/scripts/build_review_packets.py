@@ -498,6 +498,11 @@ def delta_request_anchor_evidence(
         for raw_anchor, canonical_anchor in identifier_pairs
         if canonical_anchor in evidence_terms
     ]
+    changed_line_texts = [
+        normalize_text_for_matching(raw_line[1:])
+        for raw_line in str(diff_snippet).splitlines()
+        if raw_line[:1] in {"+", "-"} and not raw_line.startswith(("+++", "---"))
+    ]
     line_term_sets = [
         set(match_terms(raw_line[1:], canonical=True))
         for raw_line in str(diff_snippet).splitlines()
@@ -515,9 +520,24 @@ def delta_request_anchor_evidence(
         ]
         if not view_identifier_pairs:
             continue
+        normalized_anchor = str(view.get("normalized_text") or "").strip()
+        raw_anchor = str(view.get("raw") or "").strip()
+        call_anchor = re.sub(r"\([^)]*\)", "(", normalized_anchor)
+        structural_anchor = re.sub(r"\([^)]*\)", "", normalized_anchor).strip()
+        if "(" in raw_anchor and ")" in raw_anchor:
+            if call_anchor and any(call_anchor in line_text for line_text in changed_line_texts):
+                strong_identifier_match = True
+                break
+            continue
+        if any(separator in raw_anchor for separator in (".", "/", "::", "->")):
+            if structural_anchor and any(structural_anchor in line_text for line_text in changed_line_texts):
+                strong_identifier_match = True
+                break
+            continue
         required_identifier_terms = dedupe_preserve([str(canonical_anchor) for _, canonical_anchor in view_identifier_pairs])
-        if required_identifier_terms and any(
-            all(term in line_terms for term in required_identifier_terms) for line_terms in line_term_sets
+        if (
+            len(required_identifier_terms) == 1
+            and any(all(term in line_terms for term in required_identifier_terms) for line_terms in line_term_sets)
         ):
             strong_identifier_match = True
             break
