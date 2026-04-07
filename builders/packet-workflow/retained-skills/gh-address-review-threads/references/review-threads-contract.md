@@ -187,6 +187,7 @@ Each `thread-*.json` packet keeps:
   - `validation_provenance`
   - `current_head_evidence`
     - evidence comes from the exact pre-push to post-push `HEAD` delta, not the full PR base-to-head diff
+    - line-based hunk coverage remains the primary signal; when that misses because of drift, exact quoted anchors or code-identifier anchors that still appear in the same delta can support auto-resolution for same-run accepted runtime/docs/tests threads
   - `resolution_verdict`
   - `verdict_reason`
   - `auto_resolution_candidate`

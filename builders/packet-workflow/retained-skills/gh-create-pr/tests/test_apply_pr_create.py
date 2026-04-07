@@ -18,7 +18,7 @@ import apply_pr_create as apply_create  # noqa: E402
 import pr_create_contract as contract  # noqa: E402
 
 
-def request_payload(repo_root: Path) -> dict:
+def request_payload(repo_root: Path, *, maintainer_can_modify: bool = False) -> dict:
     normalized = {
         "repo_root": str(repo_root),
         "repo_slug": "owner/repo",
@@ -46,7 +46,7 @@ def request_payload(repo_root: Path) -> dict:
         "assignees": ["bob"],
         "labels": ["automation"],
         "milestone": "v1",
-        "maintainer_can_modify": False,
+        "maintainer_can_modify": maintainer_can_modify,
         "validation_commands": ["candidate lint", "gh auth status"],
         "review_mode": "targeted-delegation",
         "qa_gate": {"required": False, "reason": None, "qa_clear": False},
@@ -272,6 +272,71 @@ class ApplyPrCreateTests(unittest.TestCase):
             self.assertTrue(payload["apply_succeeded"])
             self.assertEqual(payload["created_pr_number"], 10)
             self.assertIn(["gh", "pr", "create"], [call[:3] for call in command_calls])
+
+    def test_apply_ignores_body_line_endings_and_default_maintainer_flag(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            repo_root = tmp / "repo"
+            repo_root.mkdir()
+            validation_path = tmp / "validation.json"
+            result_path = tmp / "result.json"
+            validation = request_payload(repo_root, maintainer_can_modify=True)
+            self.write_json(validation_path, validation)
+
+            def fake_run_command(args: list[str], cwd: Path) -> str:
+                if args[:3] == ["gh", "auth", "status"]:
+                    return "Logged in to github.com"
+                if args[:3] == ["gh", "pr", "create"]:
+                    return "https://example.invalid/pr/11"
+                raise AssertionError(f"Unexpected command: {args}")
+
+            created_pr = {
+                "number": 11,
+                "url": "https://example.invalid/pr/11",
+                "title": validation["normalized_create_request"]["title"],
+                "body": validation["normalized_create_request"]["body"].replace("\n", "\r\n"),
+                "headRefName": "feature/pr-create",
+                "baseRefName": "main",
+                "isDraft": True,
+                "labels": [{"name": "automation"}],
+                "assignees": [{"login": "bob"}],
+                "reviewRequests": [{"requestedReviewer": {"login": "alice"}}],
+                "milestone": {"title": "v1"},
+                "maintainerCanModify": False,
+            }
+
+            with (
+                mock.patch.object(apply_create.tools, "run_command", side_effect=fake_run_command),
+                mock.patch.object(apply_create.tools, "local_head_oid", return_value="abc123"),
+                mock.patch.object(apply_create.tools, "remote_head_oid", return_value="abc123"),
+                mock.patch.object(apply_create.tools, "load_changed_files_between", return_value=["src/creator.py"]),
+                mock.patch.object(
+                    apply_create.tools,
+                    "select_pr_template",
+                    return_value={"selected_path": "C:/repo/.github/pull_request_template.md", "fingerprint": contract.json_fingerprint("template")},
+                ),
+                mock.patch.object(
+                    apply_create.tools,
+                    "duplicate_check_summary",
+                    return_value={
+                        "status": "clear",
+                        "matched_repo_slug": "owner/repo",
+                        "matched_head": "feature/pr-create",
+                        "existing_pr_count": 0,
+                    },
+                ),
+                mock.patch.object(apply_create.tools, "load_open_prs_for_head", return_value=[created_pr]),
+                mock.patch.object(
+                    sys,
+                    "argv",
+                    ["apply_pr_create.py", "--validation", str(validation_path), "--result-output", str(result_path)],
+                ),
+            ):
+                exit_code = apply_create.main()
+
+            self.assertEqual(exit_code, 0)
+            payload = self.read_json(result_path)
+            self.assertTrue(payload["apply_succeeded"])
 
 
 if __name__ == "__main__":

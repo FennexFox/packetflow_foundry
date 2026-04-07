@@ -120,7 +120,7 @@ Strict claim gates:
 - issue references require process-packet issue hints
 - positive testing claims require exact commands from testing evidence
 - `no behavior change` is allowed only when runtime packet is empty
-- rollout, restart/reload, migration, and compatibility claims fail closed by default
+- rollout, restart/reload, and consumer migration/compatibility claims fail closed by default
 
 ## Validate Contract
 
@@ -223,7 +223,8 @@ Apply rules:
 - do not call `gh pr create --dry-run`
 - real apply uses `gh pr create --head --base --title --body-file` plus validated options only
 - re-fetch the created PR by the same `repo_slug + head` key
-- fail closed when the fetched PR does not match the normalized request
+- fail closed when the fetched PR does not match the normalized request after line-ending normalization
+- treat `maintainer_can_modify=true` as advisory unless the request explicitly disabled maintainer edits
 
 Apply result should report:
 - `apply_succeeded`

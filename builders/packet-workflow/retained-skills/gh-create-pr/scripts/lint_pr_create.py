@@ -30,7 +30,28 @@ CLOSING_REF_PATTERN = re.compile(r"\b(?:fixes|closes)\s+#(?P<number>\d+)", re.IG
 NO_BEHAVIOR_CHANGE_PATTERN = re.compile(r"\bno behavior change\b", re.IGNORECASE)
 ROLLOUT_PATTERN = re.compile(r"\brollout\b", re.IGNORECASE)
 RESTART_PATTERN = re.compile(r"\b(restart|reload)\b", re.IGNORECASE)
-MIGRATION_PATTERN = re.compile(r"\b(migration|backward[- ]compat(?:ibility)?)\b", re.IGNORECASE)
+MIGRATION_AUDIENCE_PATTERN = (
+    r"(?:(?:(?:all|any|every|most|many|some|new|existing|current|future|legacy|active|external|internal|vendored)\s+)+)?"
+    r"(?:consumer|consumers|vendor|vendors|project|projects|repo|repos|installation|installations|deployment|deployments|users?)"
+)
+MIGRATION_CLAIM_PATTERN = re.compile(
+    r"\b(?:requires?|needs?|needed|includes?|included|adds?|added|documents?|documented|provides?|provided)\s+"
+    rf"(?:an?\s+)?migration (?:guide|guidance|note|notes|step|steps|plan|plans|path|paths|work|works)\s+(?:for|by)\s+{MIGRATION_AUDIENCE_PATTERN}\b"
+    rf"|(?:\brequires?|\bneeds?|\bneeded)\s+(?:an?\s+)?migration\s+(?:for|by)\s+{MIGRATION_AUDIENCE_PATTERN}(?=$|[.!,;:])"
+    rf"|\bmigration (?:guide|guidance|note|notes|step|steps|plan|plans|path|paths)\s+(?:for|by)\s+{MIGRATION_AUDIENCE_PATTERN}\b"
+    rf"|\bmigration for\s+{MIGRATION_AUDIENCE_PATTERN}\b"
+    rf"|\bmigration\s+(?:is|was|were|be|been|being)\s+(?:required|needed)\s+for\s+{MIGRATION_AUDIENCE_PATTERN}\b"
+    rf"|\bmigrat(?:e|es|ed|ing)\s+{MIGRATION_AUDIENCE_PATTERN}\b"
+    rf"|\b{MIGRATION_AUDIENCE_PATTERN}\s+migration\s+(?:is|was|were|be|been|being)\s+(?:required|needed)\b"
+    rf"|\b{MIGRATION_AUDIENCE_PATTERN}\s+(?:need|needs|needed|must|should)\s+(?:to\s+)?migrat(?:e|es|ed|ing)\b"
+    rf"|\b{MIGRATION_AUDIENCE_PATTERN}\s+(?:is|are|was|were|be|been|being)\s+(?:required|needed)\s+(?:to\s+)?migrat(?:e|es|ed|ing)\b",
+    re.IGNORECASE,
+)
+COMPATIBILITY_CLAIM_PATTERN = re.compile(
+    rf"(?:\b(?:backward[- ]compat(?:ibility)?|backwardly compatible|compatible with|breaking change(?:s)?)\b[^\n]{{0,120}}\b{MIGRATION_AUDIENCE_PATTERN}\b"
+    rf"|\b{MIGRATION_AUDIENCE_PATTERN}\b[^\n]{{0,120}}\b(?:backward[- ]compat(?:ibility)?|backwardly compatible|compatible with|breaking change(?:s)?)\b)",
+    re.IGNORECASE,
+)
 POSITIVE_TEST_PATTERN = re.compile(r"\b(tested|verified|validated|manual(?:ly)?|ran)\b", re.IGNORECASE)
 NOT_RUN_PATTERN = re.compile(r"\bnot run\b", re.IGNORECASE)
 COMMAND_PATTERN = re.compile(r"`([^`]+)`")
@@ -354,8 +375,10 @@ def collect_candidate_findings(context: dict[str, Any], title: str, body: str) -
         unsupported_claims.append("`No behavior change` is unsupported because runtime files changed.")
     if RESTART_PATTERN.search(body):
         unsupported_claims.append("Restart or reload claims require direct runtime evidence and are blocked by default.")
-    if MIGRATION_PATTERN.search(body):
-        unsupported_claims.append("Migration or compatibility claims require direct runtime/process evidence and are blocked by default.")
+    if MIGRATION_CLAIM_PATTERN.search(body) or COMPATIBILITY_CLAIM_PATTERN.search(body):
+        unsupported_claims.append(
+            "Consumer migration or compatibility claims require direct runtime/process evidence and are blocked by default."
+        )
     if ROLLOUT_PATTERN.search(body):
         unsupported_claims.append("Rollout claims require direct process evidence and are blocked by default.")
 

@@ -265,6 +265,25 @@ def diff_churn(orchestrator: dict[str, Any], context: dict[str, Any]) -> int:
 def normalize_override_signals(orchestrator: dict[str, Any]) -> list[str]:
     signals: list[str] = []
     seen: set[str] = set()
+    override_signals = orchestrator.get("override_signals")
+    if isinstance(override_signals, dict):
+        for key, value in override_signals.items():
+            text = str(key).strip()
+            if bool(value) and text and text not in seen:
+                seen.add(text)
+                signals.append(text)
+    elif isinstance(override_signals, list):
+        for item in override_signals:
+            if isinstance(item, dict):
+                reason = str(item.get("reason") or "").strip()
+                if reason and reason not in seen:
+                    seen.add(reason)
+                    signals.append(reason)
+            else:
+                text = str(item).strip()
+                if text and text not in seen:
+                    seen.add(text)
+                    signals.append(text)
     for key in ("review_mode_overrides", "review_overrides"):
         for item in orchestrator.get(key, []):
             if isinstance(item, dict):
@@ -727,6 +746,9 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
             orchestration["review_mode_baseline"] = result.get(
                 "review_mode_baseline"
             )
+        override_signals = normalize_override_signals(result)
+        if override_signals:
+            orchestration["override_signals"] = override_signals
         review_mode_adjustments = list_of_strings(
             result.get("review_mode_adjustments")
         )
@@ -735,8 +757,14 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
         worker_count = safe_int(result.get("recommended_worker_count"))
         if worker_count is not None:
             orchestration["worker_count"] = worker_count
+        worker_role_list = worker_roles(result)
+        if worker_role_list:
+            orchestration["worker_roles"] = worker_role_list
         packet_metrics = result.get("packet_metrics") or {}
         skill_data = log.setdefault("skill_specific", {}).setdefault("data", {})
+        delegation_non_use_cases = result.get("delegation_non_use_cases")
+        if isinstance(delegation_non_use_cases, dict):
+            skill_data["delegation_non_use_cases"] = delegation_non_use_cases
         packet_count = safe_int(packet_metrics.get("packet_count"))
         if packet_count is None:
             packet_count = safe_int(result.get("packet_count"))

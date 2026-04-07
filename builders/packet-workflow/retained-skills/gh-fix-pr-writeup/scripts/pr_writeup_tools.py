@@ -255,10 +255,10 @@ def load_local_diff_stat(repo_root: Path, base_ref: str | None, head_ref: str | 
         return None
 
     candidates = [
-        f"{base_ref}..{head_ref}",
-        f"origin/{base_ref}..{head_ref}",
-        f"{base_ref}..origin/{head_ref}",
-        f"origin/{base_ref}..origin/{head_ref}",
+        f"{base_ref}...{head_ref}",
+        f"origin/{base_ref}...{head_ref}",
+        f"{base_ref}...origin/{head_ref}",
+        f"origin/{base_ref}...origin/{head_ref}",
     ]
     for revision_range in candidates:
         try:

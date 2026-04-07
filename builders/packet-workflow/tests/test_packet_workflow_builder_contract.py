@@ -260,6 +260,15 @@ RETAINED_MINIMUM_HEADERS = (
 FORBIDDEN_DEFAULT_RETAINED_HEADERS = ("## Scripts", "## Evaluation")
 PYTHON_BIN_SKILL_PREFIX = "<python-bin> -B <skill-dir>/scripts/"
 FORBIDDEN_OPERATOR_DOC_PATTERNS = ("python scripts/", "py -3")
+MIGRATED_GITHUB_MUTATION_FORBIDDEN_HEADERS = (
+    "## Workflow",
+    "## Packet Contract",
+    "## Delegation Rules",
+    "## Scripts",
+    "## Evaluation",
+    "## Stop Conditions",
+    "## Output",
+)
 
 
 def assert_skill_md_execution_contract(
@@ -408,6 +417,25 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 skill_md,
                 source=skill_dir / "SKILL.md",
             )
+
+    def test_migrated_github_mutation_skill_docs_follow_minimum_operator_contract(self) -> None:
+        foundry_root = builder.foundry_root_dir()
+        for skill_name in ("gh-create-pr", "gh-fix-pr-writeup"):
+            skill_path = (
+                foundry_root
+                / "builders"
+                / "packet-workflow"
+                / "retained-skills"
+                / skill_name
+                / "SKILL.md"
+            )
+            skill_md = skill_path.read_text(encoding="utf-8")
+            with self.subTest(skill=skill_name):
+                assert_skill_md_execution_contract(self, skill_md, source=skill_path)
+                for header in RETAINED_MINIMUM_HEADERS:
+                    self.assertIn(header, skill_md, skill_path)
+                for header in MIGRATED_GITHUB_MUTATION_FORBIDDEN_HEADERS:
+                    self.assertNotIn(header, skill_md, skill_path)
 
     def test_builder_uses_root_core_assets(self) -> None:
         foundry_root = builder.foundry_root_dir()

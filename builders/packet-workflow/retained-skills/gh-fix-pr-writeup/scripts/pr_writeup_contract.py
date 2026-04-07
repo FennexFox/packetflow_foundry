@@ -61,6 +61,23 @@ WORKER_SELECTION_GUIDANCE = {
     },
 }
 
+ROUTING_CONTRACT = {
+    "routing_authority": "packet_worker_map",
+    "preferred_worker_families_role": "registry_metadata_only",
+    "derived_worker_fields": ["recommended_workers", "optional_workers"],
+}
+
+DELEGATION_NON_USE_CASES = {
+    "runtime_routing_authority": "packet_worker_map",
+    "record_only": [
+        "review_mode_local_only",
+        "rules_packet_kept_local_authority",
+        "no_additional_packet_needed",
+        "optional_cross_check_not_requested",
+    ],
+    "fatal": [],
+}
+
 STANDARD_RETURN_CONTRACT = [
     "primary outcome",
     "evidence files",

@@ -374,14 +374,75 @@ def list_of_strings(value: Any) -> list[str]:
     return [str(value).strip()] if str(value).strip() else []
 
 
-def match_terms(text: str | None) -> list[str]:
+def dedupe_preserve(items: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        if not item or item in seen:
+            continue
+        deduped.append(item)
+        seen.add(item)
+    return deduped
+
+
+def canonical_match_terms(token: str) -> list[str]:
+    terms: list[str] = []
+    for part in re.split(r"[./-]+", token):
+        candidate = part.strip(".-/")
+        if len(candidate) < 3 or candidate in REQUEST_ANCHOR_STOPWORDS:
+            continue
+        normalized_candidate = canonical_match_term(candidate)
+        if normalized_candidate:
+            terms.append(normalized_candidate)
+    return dedupe_preserve(terms)
+
+
+def match_terms(text: str | None, *, canonical: bool = False) -> list[str]:
     normalized = normalize_text_for_matching(text)
     terms: list[str] = []
     for raw_token in re.findall(r"[a-z0-9_./-]+", normalized):
         token = raw_token.strip(".-/")
+        if canonical:
+            terms.extend(canonical_match_terms(token))
+            continue
         if len(token) >= 3 and token not in REQUEST_ANCHOR_STOPWORDS:
             terms.append(token)
-    return terms
+    return dedupe_preserve(terms)
+
+
+def canonical_match_term(text: str | None) -> str:
+    return re.sub(r"[^a-z0-9]+", "", normalize_text_for_matching(text))
+
+
+def extract_exact_anchor_views(reviewer_body: str) -> list[dict[str, Any]]:
+    anchors: list[dict[str, Any]] = []
+    for match in REQUEST_ANCHOR_RE.finditer(reviewer_body):
+        raw_anchor = next(group for group in match.groups() if group)
+        normalized_text = normalize_text_for_matching(raw_anchor)
+        if not normalized_text:
+            continue
+
+        identifier_pairs: list[tuple[str, str]] = []
+        if re.search(r"[()_./-]|[A-Z]", raw_anchor):
+            seen_canonical: set[str] = set()
+            for token in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", raw_anchor):
+                normalized_token = token.lower()
+                if len(normalized_token) < 3 or normalized_token in REQUEST_ANCHOR_STOPWORDS:
+                    continue
+                canonical_token = canonical_match_term(normalized_token)
+                if not canonical_token or canonical_token in seen_canonical:
+                    continue
+                seen_canonical.add(canonical_token)
+                identifier_pairs.append((normalized_token, canonical_token))
+
+        anchors.append(
+            {
+                "raw": raw_anchor,
+                "normalized_text": normalized_text,
+                "identifier_pairs": identifier_pairs,
+            }
+        )
+    return anchors
 
 
 def request_anchor_evidence(
@@ -394,14 +455,8 @@ def request_anchor_evidence(
     if not evidence_text:
         return False, [], [], []
 
-    exact_anchors = [
-        normalized
-        for normalized in (
-            normalize_text_for_matching(next(group for group in match.groups() if group))
-            for match in REQUEST_ANCHOR_RE.finditer(reviewer_body)
-        )
-        if normalized
-    ]
+    anchor_views = extract_exact_anchor_views(reviewer_body)
+    exact_anchors = [str(view["normalized_text"]) for view in anchor_views]
     matched_exact_anchors = [anchor for anchor in exact_anchors if anchor in evidence_text]
     if exact_anchors:
         return bool(matched_exact_anchors), exact_anchors, matched_exact_anchors, []
@@ -413,6 +468,85 @@ def request_anchor_evidence(
     evidence_terms = set(match_terms(evidence_text))
     matched_terms = [term for term in requested_terms if term in evidence_terms]
     return len(matched_terms) >= 2, [], [], matched_terms
+
+
+def delta_request_anchor_evidence(
+    reviewer_body: str,
+    *,
+    diff_snippet: str | None,
+) -> tuple[bool, list[str], list[str], list[str]]:
+    added_line_texts = [
+        normalize_text_for_matching(raw_line[1:])
+        for raw_line in str(diff_snippet).splitlines()
+        if raw_line[:1] == "+" and not raw_line.startswith("+++")
+    ]
+    if not added_line_texts:
+        return False, [], [], []
+    evidence_text = "\n".join(added_line_texts)
+
+    anchor_views = extract_exact_anchor_views(reviewer_body)
+    if not anchor_views:
+        return False, [], [], []
+
+    exact_anchors = [str(view["normalized_text"]) for view in anchor_views]
+    matched_exact_anchors = [anchor for anchor in exact_anchors if anchor in evidence_text]
+    evidence_terms = set(match_terms(evidence_text, canonical=True))
+    identifier_pairs = [
+        pair
+        for view in anchor_views
+        for pair in list(view.get("identifier_pairs") or [])
+        if isinstance(pair, tuple) and len(pair) == 2
+    ]
+    identifier_anchors = dedupe_preserve([str(raw_anchor) for raw_anchor, _ in identifier_pairs])
+    matched_identifier_anchors = [
+        raw_anchor
+        for raw_anchor, canonical_anchor in identifier_pairs
+        if canonical_anchor in evidence_terms
+    ]
+    line_term_sets = [
+        set(match_terms(raw_line[1:], canonical=True))
+        for raw_line in str(diff_snippet).splitlines()
+        if raw_line[:1] == "+" and not raw_line.startswith("+++")
+    ]
+    # Keep diagnostics token-granular for existing consumers, but only treat an
+    # identifier anchor as resolution evidence when every token from one quoted
+    # anchor is present within the same added diff line.
+    strong_identifier_match = False
+    for view in anchor_views:
+        view_identifier_pairs = [
+            pair
+            for pair in list(view.get("identifier_pairs") or [])
+            if isinstance(pair, tuple) and len(pair) == 2
+        ]
+        if not view_identifier_pairs:
+            continue
+        normalized_anchor = str(view.get("normalized_text") or "").strip()
+        raw_anchor = str(view.get("raw") or "").strip()
+        call_anchor = re.sub(r"\([^)]*\)", "(", normalized_anchor)
+        structural_anchor = re.sub(r"\([^)]*\)", "", normalized_anchor).strip()
+        if "(" in raw_anchor and ")" in raw_anchor:
+            if call_anchor and any(call_anchor in line_text for line_text in added_line_texts):
+                strong_identifier_match = True
+                break
+            continue
+        if any(separator in raw_anchor for separator in (".", "/", "::", "->")):
+            if structural_anchor and any(structural_anchor in line_text for line_text in added_line_texts):
+                strong_identifier_match = True
+                break
+            continue
+        required_identifier_terms = dedupe_preserve([str(canonical_anchor) for _, canonical_anchor in view_identifier_pairs])
+        if (
+            len(required_identifier_terms) == 1
+            and any(all(term in line_terms for term in required_identifier_terms) for line_terms in line_term_sets)
+        ):
+            strong_identifier_match = True
+            break
+    return (
+        bool(matched_exact_anchors or strong_identifier_match),
+        matched_exact_anchors,
+        identifier_anchors,
+        dedupe_preserve(matched_identifier_anchors),
+    )
 
 
 def comment_summary(comment: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -635,6 +769,15 @@ def build_accepted_recheck(
         snippet=file_context.get("snippet"),
         diff_snippet=post_push_diff_snippet,
     )
+    (
+        delta_request_anchor_visible,
+        matched_delta_exact_anchors,
+        identifier_anchors,
+        matched_identifier_anchors,
+    ) = delta_request_anchor_evidence(
+        reviewer_body,
+        diff_snippet=post_push_diff_snippet,
+    )
 
     if accepted_thread is None:
         verdict = "still-applies"
@@ -654,12 +797,15 @@ def build_accepted_recheck(
     elif not bool(file_context.get("path_exists")):
         verdict = "ambiguous"
         verdict_reason = "path_missing_in_current_head"
-    elif not current_head_visible:
-        verdict = "still-applies"
-        verdict_reason = "missing_post_push_delta_evidence"
-    else:
+    elif current_head_visible:
         verdict = "auto-accept"
         verdict_reason = "accepted_same_run_with_post_push_delta_evidence"
+    elif area in {"docs", "runtime", "tests"} and delta_request_anchor_visible:
+        verdict = "auto-accept"
+        verdict_reason = "accepted_same_run_with_post_push_anchor_evidence"
+    else:
+        verdict = "still-applies"
+        verdict_reason = "missing_post_push_delta_evidence"
 
     return {
         "same_run_acceptance": {
@@ -681,8 +827,12 @@ def build_accepted_recheck(
             "post_push_head_sha": post_push_head_sha,
             "evidence_visible": current_head_visible,
             "request_anchor_visible": request_anchor_visible,
+            "delta_request_anchor_visible": delta_request_anchor_visible,
             "exact_request_anchors": exact_anchors,
             "matched_exact_request_anchors": matched_exact_anchors,
+            "matched_delta_exact_request_anchors": matched_delta_exact_anchors,
+            "identifier_request_anchors": identifier_anchors,
+            "matched_identifier_request_anchors": matched_identifier_anchors,
             "matched_request_terms": matched_terms,
         },
         "resolution_verdict": verdict,

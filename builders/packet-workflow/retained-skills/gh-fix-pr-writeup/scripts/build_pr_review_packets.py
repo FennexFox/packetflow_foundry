@@ -308,7 +308,6 @@ def build_global_packet(
     context: dict[str, Any],
     *,
     review_mode: str,
-    override_signals: list[dict[str, str]],
     focused_packet_hint: str | None,
 ) -> dict[str, Any]:
     pr = context.get("pr") or {}
@@ -336,7 +335,7 @@ def build_global_packet(
         ],
         "packet_worker_map": contract.PACKET_WORKER_MAP,
         "preferred_worker_families": contract.PREFERRED_WORKER_FAMILIES,
-        "worker_selection_guidance": contract.WORKER_SELECTION_GUIDANCE,
+        "routing_contract": contract.ROUTING_CONTRACT,
         "raw_reread_policy": {
             "allowed_reasons": contract.RAW_REREAD_ALLOWED_REASONS,
             "packet_insufficiency_is_failure": True,
@@ -344,7 +343,6 @@ def build_global_packet(
         },
         "qa_policy": contract.QA_TRIGGER_POLICY,
         "focused_packet_hint": focused_packet_hint,
-        "review_overrides": override_signals,
         "local_gate_reminders": [
             "Keep final title/body synthesis local.",
             "Use rules_packet.json as the only authority source for hard constraints.",
@@ -624,7 +622,6 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         "global_packet.json": build_global_packet(
             context,
             review_mode=review_mode,
-            override_signals=override_signals,
             focused_packet_hint=focused_packet_hint,
         ),
         "rules_packet.json": build_rules_packet(context),
@@ -656,7 +653,6 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         packet_payloads["global_packet.json"] = build_global_packet(
             context,
             review_mode=review_mode,
-            override_signals=override_signals,
             focused_packet_hint=focused_packet_hint,
         )
         packet_payloads["synthesis_packet.json"] = build_synthesis_packet(
@@ -692,6 +688,10 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         "review_mode_adjustments": review_mode_adjustments,
         "recommended_worker_count": len(recommended_workers),
         "optional_worker_count": len(optional_workers),
+        "override_signals": override_signals,
+        "recommended_workers": recommended_workers,
+        "optional_workers": optional_workers,
+        "delegation_non_use_cases": contract.DELEGATION_NON_USE_CASES,
         "packet_files": packet_files,
         "orchestrator_profile": contract.ORCHESTRATOR_PROFILE,
         "shared_local_packet": contract.SHARED_LOCAL_PACKET,
@@ -716,10 +716,6 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         "repo_profile_path": context.get("repo_profile_path"),
         "repo_profile_summary": context.get("repo_profile_summary"),
         "review_mode": review_mode,
-        "review_mode_baseline": review_mode_baseline,
-        "review_mode_adjustments": review_mode_adjustments,
-        "recommended_worker_count": len(recommended_workers),
-        "optional_worker_count": len(optional_workers),
         "shared_packet": "global_packet.json",
         "shared_local_packet": contract.SHARED_LOCAL_PACKET,
         "decision_ready_packets": contract.DECISION_READY_PACKETS,
@@ -727,8 +723,7 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         "worker_output_shape": contract.WORKER_OUTPUT_SHAPE,
         "preferred_worker_families": contract.PREFERRED_WORKER_FAMILIES,
         "packet_worker_map": contract.PACKET_WORKER_MAP,
-        "worker_selection_guidance": contract.WORKER_SELECTION_GUIDANCE,
-        "review_overrides": override_signals,
+        "routing_contract": contract.ROUTING_CONTRACT,
         "raw_reread_allowed_reasons": contract.RAW_REREAD_ALLOWED_REASONS,
         "common_path_contract": {
             "required_packets": contract.COMMON_PATH_REQUIRED_PACKETS,
@@ -746,8 +741,6 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
             "Run apply_pr_writeup.py only from validator output.",
         ],
         "packet_files": packet_files,
-        "recommended_workers": recommended_workers,
-        "optional_workers": optional_workers,
         "current_writeup": {
             "title_matches_conventional_commit": context.get("checks", {}).get("title_matches_conventional_commit"),
             "body_has_template_sections": context.get("checks", {}).get("body_has_template_sections"),

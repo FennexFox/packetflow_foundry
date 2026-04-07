@@ -16,6 +16,92 @@ import pr_writeup_tools as tools  # noqa: E402
 
 
 class PrWriteupToolsTests(unittest.TestCase):
+    def test_load_local_diff_stat_uses_pr_scoped_merge_base(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            repo_root = Path(tmp)
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_root), check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "config", "user.name", "PacketFlow Tests"],
+                cwd=str(repo_root),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            subprocess.run(
+                ["git", "config", "user.email", "packetflow-tests@example.invalid"],
+                cwd=str(repo_root),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            (repo_root / "base.txt").write_text("base\n", encoding="utf-8")
+            subprocess.run(["git", "add", "base.txt"], cwd=str(repo_root), check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "commit", "-m", "base"],
+                cwd=str(repo_root),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            subprocess.run(
+                ["git", "checkout", "-b", "feature/writeup"],
+                cwd=str(repo_root),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+            (repo_root / "feature.txt").write_text("feature\n", encoding="utf-8")
+            subprocess.run(["git", "add", "feature.txt"], cwd=str(repo_root), check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "commit", "-m", "feature"],
+                cwd=str(repo_root),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            subprocess.run(["git", "checkout", "main"], cwd=str(repo_root), check=True, capture_output=True, text=True)
+            (repo_root / "main-only.txt").write_text("main\n", encoding="utf-8")
+            subprocess.run(["git", "add", "main-only.txt"], cwd=str(repo_root), check=True, capture_output=True, text=True)
+            subprocess.run(
+                ["git", "commit", "-m", "main only"],
+                cwd=str(repo_root),
+                check=True,
+                capture_output=True,
+                text=True,
+            )
+
+            diff_stat = tools.load_local_diff_stat(repo_root, "main", "feature/writeup")
+
+        self.assertIsNotNone(diff_stat)
+        self.assertIn("feature.txt", diff_stat)
+        self.assertNotIn("main-only.txt", diff_stat)
+        self.assertIn("1 file changed", diff_stat)
+
+    def test_load_local_diff_stat_prefers_local_refs_before_stale_origin_refs(self) -> None:
+        outputs = {
+            "main...feature/writeup": " feature.txt | 1 +\n 1 file changed, 1 insertion(+)\n",
+            "origin/main...feature/writeup": " stale.txt | 1 +\n 1 file changed, 1 insertion(+)\n",
+            "main...origin/feature/writeup": " mixed.txt | 1 +\n 1 file changed, 1 insertion(+)\n",
+            "origin/main...origin/feature/writeup": " remote.txt | 1 +\n 1 file changed, 1 insertion(+)\n",
+        }
+
+        def fake_run_command(args: list[str], cwd: Path) -> str:
+            self.assertEqual(args[:3], ["git", "diff", "--stat"])
+            return outputs[args[3]]
+
+        with mock.patch.object(tools, "run_command", side_effect=fake_run_command) as run_command:
+            diff_stat = tools.load_local_diff_stat(Path("C:/repo"), "main", "feature/writeup")
+
+        self.assertEqual(diff_stat, outputs["main...feature/writeup"].strip())
+        self.assertEqual(run_command.call_count, 1)
+        self.assertEqual(
+            run_command.call_args_list[0].args[0],
+            ["git", "diff", "--stat", "main...feature/writeup"],
+        )
+
     def test_infer_repo_slug_accepts_dotted_repo_names(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)

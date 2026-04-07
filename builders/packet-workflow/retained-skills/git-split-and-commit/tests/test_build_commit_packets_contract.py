@@ -19,6 +19,20 @@ import build_commit_packets  # type: ignore  # noqa: E402
 
 
 class BuildCommitPacketsContractTest(unittest.TestCase):
+    def test_source_test_partner_handles_retained_skill_layout(self) -> None:
+        self.assertEqual(
+            build_commit_packets.source_test_partner(
+                "builders/packet-workflow/retained-skills/gh-address-review-threads/scripts/build_review_packets.py"
+            ),
+            "builders/packet-workflow/retained-skills/gh-address-review-threads/tests/test_build_review_packets.py",
+        )
+        self.assertEqual(
+            build_commit_packets.source_test_partner(
+                "builders/packet-workflow/retained-skills/gh-address-review-threads/tests/test_build_review_packets.py"
+            ),
+            "builders/packet-workflow/retained-skills/gh-address-review-threads/scripts/build_review_packets.py",
+        )
+
     def run_script(self, rules: dict, worktree: dict) -> tuple[int, Path, dict, dict]:
         tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(tmpdir.cleanup)
