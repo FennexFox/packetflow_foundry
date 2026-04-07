@@ -7,12 +7,12 @@ import argparse
 import hashlib
 import json
 import os
-import shlex
 import shutil
 import sys
 from pathlib import Path
 from typing import Any
 
+from command_argv import parse_command_argv
 from collect_worktree_context import build_worktree_context
 
 
@@ -302,33 +302,6 @@ def dedupe_preserve(values: list[str]) -> list[str]:
         seen.add(text)
         ordered.append(text)
     return ordered
-
-
-def parse_command_argv(command: str) -> list[str] | None:
-    text = str(command).strip()
-    if not text:
-        return None
-    if os.name == "nt":
-        import ctypes
-
-        argc = ctypes.c_int()
-        command_line_to_argv = ctypes.windll.shell32.CommandLineToArgvW
-        command_line_to_argv.argtypes = [ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_int)]
-        command_line_to_argv.restype = ctypes.POINTER(ctypes.c_wchar_p)
-        local_free = ctypes.windll.kernel32.LocalFree
-        local_free.argtypes = [ctypes.c_void_p]
-        local_free.restype = ctypes.c_void_p
-        argv_ptr = command_line_to_argv(text, ctypes.byref(argc))
-        if not argv_ptr:
-            return None
-        try:
-            return [str(argv_ptr[index]) for index in range(argc.value)]
-        finally:
-            local_free(argv_ptr)
-    try:
-        return shlex.split(text, posix=True)
-    except ValueError:
-        return None
 
 
 def command_head_token(command: str) -> str | None:

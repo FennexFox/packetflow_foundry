@@ -50,7 +50,7 @@ Keep these values in `skill_specific.data` when they are available:
   - record `packet_metrics`
   - record `common_path_sufficient`
   - record `raw_reread_count` and `raw_reread_reasons`
-  - record record-only/fatal `delegation_non_use_cases`
+  - record record-only/fatal cases in `delegation_non_use_cases`
   - populate baseline token estimates from the build result
 - `phase=validate`
   - record `fingerprint_match`, stop reasons, and rules reliability

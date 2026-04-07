@@ -5,13 +5,12 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import shlex
 import subprocess
 import tempfile
 from pathlib import Path
 from typing import Any
 
+from command_argv import parse_command_argv
 from collect_worktree_context import detect_operation, parse_patch_hunks, raw_diff_against_head
 from validate_commit_plan import (
     command_feasibility_issues,
@@ -226,33 +225,6 @@ def validation_command_argv_map(worktree: dict[str, Any]) -> dict[str, list[str]
     return mapping
 
 
-def parse_command_argv(command: str) -> list[str] | None:
-    text = str(command).strip()
-    if not text:
-        return None
-    if os.name == "nt":
-        import ctypes
-
-        argc = ctypes.c_int()
-        command_line_to_argv = ctypes.windll.shell32.CommandLineToArgvW
-        command_line_to_argv.argtypes = [ctypes.c_wchar_p, ctypes.POINTER(ctypes.c_int)]
-        command_line_to_argv.restype = ctypes.POINTER(ctypes.c_wchar_p)
-        local_free = ctypes.windll.kernel32.LocalFree
-        local_free.argtypes = [ctypes.c_void_p]
-        local_free.restype = ctypes.c_void_p
-        argv_ptr = command_line_to_argv(text, ctypes.byref(argc))
-        if not argv_ptr:
-            return None
-        try:
-            return [str(argv_ptr[index]) for index in range(argc.value)]
-        finally:
-            local_free(argv_ptr)
-    try:
-        return shlex.split(text, posix=True)
-    except ValueError:
-        return None
-
-
 def resolve_validation_command_argv(command: str, command_argvs: dict[str, list[str]]) -> list[str] | None:
     argv = command_argvs.get(command)
     if argv:
@@ -264,7 +236,7 @@ def resolve_validation_command_argv(command: str, command_argvs: dict[str, list[
     for candidate_argv in command_argvs.values():
         if tuple(candidate_argv) == parsed_signature:
             return candidate_argv
-    return None
+    return parsed
 
 
 def run_targeted_checks(repo_root: Path, commands: list[str], command_argvs: dict[str, list[str]]) -> None:
