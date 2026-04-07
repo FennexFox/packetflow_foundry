@@ -30,7 +30,17 @@ CLOSING_REF_PATTERN = re.compile(r"\b(?:fixes|closes)\s+#(?P<number>\d+)", re.IG
 NO_BEHAVIOR_CHANGE_PATTERN = re.compile(r"\bno behavior change\b", re.IGNORECASE)
 ROLLOUT_PATTERN = re.compile(r"\brollout\b", re.IGNORECASE)
 RESTART_PATTERN = re.compile(r"\b(restart|reload)\b", re.IGNORECASE)
-MIGRATION_PATTERN = re.compile(r"\b(migration|backward[- ]compat(?:ibility)?)\b", re.IGNORECASE)
+MIGRATION_CLAIM_PATTERN = re.compile(
+    r"\b(?:requires?|needs?|needed|includes?|included|adds?|added|documents?|documented|provides?|provided)\s+"
+    r"(?:an?\s+)?migration (?:guide|guidance|note|notes|step|steps|plan|plans|path|paths|work|works)\b"
+    r"|\bmigration (?:guide|guidance|note|notes|step|steps|plan|plans|path|paths|required|requires?|needed|impact|impacts)\b"
+    r"|\bmigrat(?:e|es|ed|ing)\s+(?:existing|consumer|consumers|vendor|vendors|project|projects|repo|repos|installation|installations|deployment|deployments|users?)\b",
+    re.IGNORECASE,
+)
+COMPATIBILITY_CLAIM_PATTERN = re.compile(
+    r"\b(?:backward[- ]compat(?:ibility)?|backwardly compatible|compatible with|breaking change(?:s)?)\b",
+    re.IGNORECASE,
+)
 POSITIVE_TEST_PATTERN = re.compile(r"\b(tested|verified|validated|manual(?:ly)?|ran)\b", re.IGNORECASE)
 NOT_RUN_PATTERN = re.compile(r"\bnot run\b", re.IGNORECASE)
 COMMAND_PATTERN = re.compile(r"`([^`]+)`")
@@ -354,8 +364,10 @@ def collect_candidate_findings(context: dict[str, Any], title: str, body: str) -
         unsupported_claims.append("`No behavior change` is unsupported because runtime files changed.")
     if RESTART_PATTERN.search(body):
         unsupported_claims.append("Restart or reload claims require direct runtime evidence and are blocked by default.")
-    if MIGRATION_PATTERN.search(body):
-        unsupported_claims.append("Migration or compatibility claims require direct runtime/process evidence and are blocked by default.")
+    if MIGRATION_CLAIM_PATTERN.search(body) or COMPATIBILITY_CLAIM_PATTERN.search(body):
+        unsupported_claims.append(
+            "Consumer migration or compatibility claims require direct runtime/process evidence and are blocked by default."
+        )
     if ROLLOUT_PATTERN.search(body):
         unsupported_claims.append("Rollout claims require direct process evidence and are blocked by default.")
 

@@ -146,6 +146,55 @@ class LintPrCreateTests(unittest.TestCase):
 
         self.assertIn("Issue references are present without matching issue hints from the process packet.", findings["detected"]["unsupported_claims"])
 
+    def test_candidate_findings_allow_internal_migration_batch_wording(self) -> None:
+        findings = lint.collect_candidate_findings(
+            collected_context(),
+            "fix(pr-create): harden guarded flow",
+            "\n".join(
+                [
+                    "## Why",
+                    "Complete the next internal migration slice for the guarded create flow.",
+                    "## What changed",
+                    "- Tightened verifier comparisons.",
+                    "## How",
+                    "- Keep the migrated workflow shape local to the retained skill boundary.",
+                    "## Risk / Rollback",
+                    "- Revert if the migrated workflow shape drifts.",
+                    "## Testing",
+                    "- Not run.",
+                    "Refs: #42",
+                ]
+            ),
+        )
+
+        self.assertEqual(findings["detected"]["unsupported_claims"], [])
+
+    def test_candidate_findings_block_consumer_migration_claim(self) -> None:
+        findings = lint.collect_candidate_findings(
+            collected_context(),
+            "fix(pr-create): harden guarded flow",
+            "\n".join(
+                [
+                    "## Why",
+                    "Document the guarded create flow.",
+                    "## What changed",
+                    "- Tightened verifier comparisons.",
+                    "## How",
+                    "- Requires a migration note for vendored consumers.",
+                    "## Risk / Rollback",
+                    "- Revert the create flow changes.",
+                    "## Testing",
+                    "- Not run.",
+                    "Refs: #42",
+                ]
+            ),
+        )
+
+        self.assertIn(
+            "Consumer migration or compatibility claims require direct runtime/process evidence and are blocked by default.",
+            findings["detected"]["unsupported_claims"],
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

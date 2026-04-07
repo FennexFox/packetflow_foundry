@@ -107,7 +107,7 @@ def build_rules_packet(context: dict[str, Any], drafting_basis: dict[str, Any]) 
             "issue references must match process-packet issue hints",
             "positive testing claims require exact commands from testing packet evidence",
             "`no behavior change` is only supportable when runtime packet is empty",
-            "restart/reload, migration, rollout, and compatibility claims are blocked by default",
+            "restart/reload, rollout, and consumer migration/compatibility claims are blocked by default",
         ],
         "repo_instruction_excerpts": {
             "pull_request_title_rules_excerpt": snippets.get("pull_request_title_rules_excerpt"),

@@ -79,6 +79,25 @@ def valid_body() -> str:
     )
 
 
+def internal_migration_body() -> str:
+    return "\n".join(
+        [
+            "## Why",
+            "Complete the next internal migration slice for the guarded create flow.",
+            "## What changed",
+            "- Added validator-normalized create flow.",
+            "- Re-check duplicate and template state before create.",
+            "## How",
+            "- Keep the migrated workflow shape local to the retained skill boundary.",
+            "## Risk / Rollback",
+            "- Revert if the migrated workflow shape drifts.",
+            "## Testing",
+            "- Not run.",
+            "Refs: #42",
+        ]
+    )
+
+
 class ValidatePrCreateTests(unittest.TestCase):
     def test_validator_rejects_repo_inference_failure_before_gh_calls(self) -> None:
         context = collected_context(Path.cwd(), repo_slug="")
@@ -204,6 +223,34 @@ class ValidatePrCreateTests(unittest.TestCase):
                 ]
             ),
         )
+
+    def test_validator_allows_internal_migration_wording(self) -> None:
+        context = collected_context(Path.cwd())
+        with (
+            mock.patch.object(validator.tools, "run_command", return_value="Logged in to github.com"),
+            mock.patch.object(validator.tools, "local_head_oid", return_value="abc123"),
+            mock.patch.object(validator.tools, "remote_head_oid", return_value="abc123"),
+            mock.patch.object(validator.tools, "load_changed_files_between", return_value=context["changed_files"]),
+            mock.patch.object(validator.tools, "select_pr_template", return_value=context["template_selection"]),
+            mock.patch.object(
+                validator.tools,
+                "duplicate_check_summary",
+                return_value={
+                    "status": "clear",
+                    "matched_repo_slug": "owner/repo",
+                    "matched_head": "feature/pr-create",
+                    "existing_pr_count": 0,
+                },
+            ),
+        ):
+            payload = validator.validate_pr_create(
+                context,
+                "feat(pr-create): create guarded PRs",
+                internal_migration_body(),
+            )
+
+        self.assertTrue(payload["valid"])
+        self.assertTrue(payload["can_apply"])
 
     def test_validator_rejects_stale_snapshot_when_changed_files_drift(self) -> None:
         context = collected_context(Path.cwd())

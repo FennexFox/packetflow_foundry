@@ -76,6 +76,10 @@ def live_snapshot(request: dict[str, Any]) -> dict[str, Any]:
     return contract.build_validated_snapshot(context_like, duplicate_summary)
 
 
+def normalize_body_text(value: Any) -> str:
+    return str(value or "").replace("\r\n", "\n").replace("\r", "\n").rstrip()
+
+
 def normalized_pr_result(pr_payload: dict[str, Any]) -> dict[str, Any]:
     labels = sorted(
         str(item.get("name") or "").strip()
@@ -97,7 +101,7 @@ def normalized_pr_result(pr_payload: dict[str, Any]) -> dict[str, Any]:
         "number": pr_payload.get("number"),
         "url": str(pr_payload.get("url") or "").strip() or None,
         "title": str(pr_payload.get("title") or "").strip(),
-        "body": str(pr_payload.get("body") or "").rstrip(),
+        "body": normalize_body_text(pr_payload.get("body")),
         "head": str(pr_payload.get("headRefName") or "").strip(),
         "base": str(pr_payload.get("baseRefName") or "").strip(),
         "draft": bool(pr_payload.get("isDraft")),
@@ -113,7 +117,7 @@ def compare_request_to_pr(request: dict[str, Any], pr_payload: dict[str, Any]) -
     normalized = normalized_pr_result(pr_payload)
     expected = {
         "title": str(request.get("title") or "").strip(),
-        "body": str(request.get("body") or "").rstrip(),
+        "body": normalize_body_text(request.get("body")),
         "head": str(request.get("head") or "").strip(),
         "base": str(request.get("base") or "").strip(),
         "draft": bool(request.get("draft")),
@@ -121,8 +125,12 @@ def compare_request_to_pr(request: dict[str, Any], pr_payload: dict[str, Any]) -
         "assignees": [str(item).lower() for item in request.get("assignees", [])],
         "reviewers": [str(item).lower() for item in request.get("reviewers", [])],
         "milestone": request.get("milestone"),
-        "maintainer_can_modify": bool(request.get("maintainer_can_modify")),
     }
+    # GitHub may report `maintainerCanModify=false` for same-repo PRs even when
+    # `gh pr create` omitted `--no-maintainer-edit`, so only enforce the field
+    # when the validated request explicitly disabled maintainer edits.
+    if request.get("maintainer_can_modify") is False:
+        expected["maintainer_can_modify"] = False
     mismatches: list[dict[str, Any]] = []
     for field, expected_value in expected.items():
         actual_value = normalized.get(field)

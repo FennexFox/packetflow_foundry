@@ -89,6 +89,10 @@ class BuildPrCreatePacketsTests(unittest.TestCase):
         self.assertNotIn("recommended_workers", packets["orchestrator.json"])
         self.assertNotIn("optional_workers", packets["orchestrator.json"])
         self.assertNotIn("review_overrides", packets["global_packet.json"])
+        self.assertIn(
+            "restart/reload, rollout, and consumer migration/compatibility claims are blocked by default",
+            packets["rules_packet.json"]["strict_claim_gates"],
+        )
         self.assertEqual(build_result["review_mode_baseline"], "local-only")
         self.assertIn("recommended_workers", build_result)
         self.assertIn("optional_workers", build_result)
