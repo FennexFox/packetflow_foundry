@@ -51,6 +51,23 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertEqual(identifier_anchors, ["build_global_packet"])
         self.assertEqual(matched_identifier_anchors, ["build_global_packet"])
 
+    def test_delta_request_anchor_evidence_requires_full_multi_token_identifier_match(self) -> None:
+        visible, matched_exact_anchors, identifier_anchors, matched_identifier_anchors = (
+            packets.delta_request_anchor_evidence(
+                "Please update `module.helper()` to match the renamed parameter.",
+                diff_snippet=(
+                    "@@ -1,2 +1,2 @@\n"
+                    "-module = legacy_factory()\n"
+                    "+module = updated_factory()\n"
+                ),
+            )
+        )
+
+        self.assertFalse(visible)
+        self.assertEqual(matched_exact_anchors, [])
+        self.assertEqual(identifier_anchors, ["module", "helper"])
+        self.assertEqual(matched_identifier_anchors, ["module"])
+
     def _run_estimated_savings_observation_case(
         self,
     ) -> tuple[

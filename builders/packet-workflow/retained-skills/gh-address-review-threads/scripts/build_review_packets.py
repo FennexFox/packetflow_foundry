@@ -472,6 +472,7 @@ def delta_request_anchor_evidence(
 
     exact_anchors = [str(view["normalized_text"]) for view in anchor_views]
     matched_exact_anchors = [anchor for anchor in exact_anchors if anchor in evidence_text]
+    evidence_terms = set(match_terms(diff_snippet, canonical=True))
     identifier_pairs = [
         pair
         for view in anchor_views
@@ -479,14 +480,29 @@ def delta_request_anchor_evidence(
         if isinstance(pair, tuple) and len(pair) == 2
     ]
     identifier_anchors = dedupe_preserve([str(raw_anchor) for raw_anchor, _ in identifier_pairs])
-    evidence_terms = set(match_terms(diff_snippet, canonical=True))
     matched_identifier_anchors = [
         raw_anchor
         for raw_anchor, canonical_anchor in identifier_pairs
         if canonical_anchor in evidence_terms
     ]
+    # Keep diagnostics token-granular for existing consumers, but only treat an
+    # identifier anchor as resolution evidence when every token from one quoted
+    # anchor is present in the post-push delta.
+    strong_identifier_match = False
+    for view in anchor_views:
+        view_identifier_pairs = [
+            pair
+            for pair in list(view.get("identifier_pairs") or [])
+            if isinstance(pair, tuple) and len(pair) == 2
+        ]
+        if not view_identifier_pairs:
+            continue
+        required_identifier_terms = dedupe_preserve([str(canonical_anchor) for _, canonical_anchor in view_identifier_pairs])
+        if required_identifier_terms and all(term in evidence_terms for term in required_identifier_terms):
+            strong_identifier_match = True
+            break
     return (
-        bool(matched_exact_anchors or matched_identifier_anchors),
+        bool(matched_exact_anchors or strong_identifier_match),
         matched_exact_anchors,
         identifier_anchors,
         dedupe_preserve(matched_identifier_anchors),

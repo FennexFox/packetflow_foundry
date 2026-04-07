@@ -40,7 +40,7 @@ MIGRATION_CLAIM_PATTERN = re.compile(
     r"|\bmigration (?:guide|guidance|note|notes|step|steps|plan|plans|path|paths|required|requires?|needed|impact|impacts)\b"
     rf"|\bmigration for\s+{MIGRATION_AUDIENCE_PATTERN}\b"
     rf"|\bmigrat(?:e|es|ed|ing)\s+{MIGRATION_AUDIENCE_PATTERN}\b"
-    rf"|\b{MIGRATION_AUDIENCE_PATTERN}\s+(?:need|needs|needed|must)\s+(?:to\s+)?migrat(?:e|es|ed|ing)\b",
+    rf"|\b{MIGRATION_AUDIENCE_PATTERN}\s+(?:need|needs|needed|must|should)\s+(?:to\s+)?migrat(?:e|es|ed|ing)\b",
     re.IGNORECASE,
 )
 COMPATIBILITY_CLAIM_PATTERN = re.compile(
