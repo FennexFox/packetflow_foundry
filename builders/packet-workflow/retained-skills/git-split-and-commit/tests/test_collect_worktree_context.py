@@ -136,6 +136,36 @@ class CollectWorktreeContextTests(unittest.TestCase):
                 ],
             )
 
+    def test_targeted_validation_candidates_keep_script_candidates_when_tests_also_change(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo = Path(tmp_dir)
+            write_text(repo / ".github" / "scripts" / "tests" / "test_existing.py", "import unittest\n")
+            write_text(repo / "tests" / "test_unrelated.py", "import unittest\n")
+
+            candidates = worktree_context.targeted_validation_candidates(
+                repo,
+                [
+                    ".github/scripts/subdir/task.py",
+                    "tests/test_unrelated.py",
+                ],
+            )
+
+            self.assertEqual(
+                candidates,
+                [
+                    {
+                        "command": 'python -m unittest discover -s tests -p "test_unrelated.py"',
+                        "reason": "Changed test file tests/test_unrelated.py.",
+                        "paths": ["tests/test_unrelated.py"],
+                    },
+                    {
+                        "command": 'python -m unittest discover -s .github/scripts/tests -p "test_*.py"',
+                        "reason": "Changed Python code without a complete one-to-one test mapping in the sibling tests directory.",
+                        "paths": [".github/scripts/subdir/task.py"],
+                    },
+                ],
+            )
+
     def test_targeted_validation_candidates_dedupe_duplicate_mapped_test_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             repo = Path(tmp_dir)

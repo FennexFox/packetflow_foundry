@@ -624,7 +624,7 @@ def targeted_validation_candidates(repo_root: Path, changed_paths: list[str]) ->
             )
             seen_commands.add(command)
 
-    if not changed_tests and changed_scripts:
+    if changed_scripts:
         mapped_tests = {path: tracked_test_for_script(repo_root, path) for path in changed_scripts}
         for script_path, test_path in mapped_tests.items():
             if not test_path:
