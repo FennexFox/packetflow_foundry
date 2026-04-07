@@ -145,7 +145,7 @@ State-gate rules:
 
 - `record-validation` requires `ack-applied`
 - `post-push` requires `ack-applied`
-- `post-push` emits `reconciliation-input.json` with accepted thread ids and validation commands for complete-phase seeding
+- `post-push` emits `reconciliation-input.json` with accepted thread ids, validation commands, and pre/post push `HEAD` SHAs for complete-phase seeding
 - `record-plan --phase complete` requires `post-prepared`
 - `record-apply` requires the matching `*-validated` state
 - `record-apply` advances only on `apply_succeeded=true`, `fingerprint_match=true`, and a non-dry-run result for live runs
@@ -186,6 +186,7 @@ Each `thread-*.json` packet keeps:
   - `same_run_acceptance`
   - `validation_provenance`
   - `current_head_evidence`
+    - evidence comes from the exact pre-push to post-push `HEAD` delta, not the full PR base-to-head diff
   - `resolution_verdict`
   - `verdict_reason`
   - `auto_resolution_candidate`
@@ -245,6 +246,7 @@ Each `thread-batch-*.json` packet keeps:
   - note the remaining caveat only if it matters
 
 Resolve only accepted threads after the relevant change is pushed and validation is complete.
+Same-run accepted non-outdated threads may auto-resolve only when the post-push delta itself shows the requested change on current `HEAD`.
 Same-run outdated transitions may reuse the normal accepted completion-and-resolve path only when `current HEAD` already proves the request is satisfied.
 
 ## Thread Action Validation

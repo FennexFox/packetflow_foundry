@@ -55,6 +55,7 @@ def repo_head_sha(repo_root: Path) -> str | None:
     result = subprocess.run(
         ["git", "rev-parse", "HEAD"],
         cwd=str(repo_root),
+        stdin=subprocess.DEVNULL,
         text=True,
         encoding="utf-8",
         errors="replace",
@@ -378,6 +379,8 @@ def build_reconciliation_input(manifest: dict[str, Any]) -> dict[str, Any]:
         if str(thread_id).strip()
     ]
     return {
+        "pre_push_head_sha": str(manifest["git"].get("pre_push_head_sha") or "").strip() or None,
+        "post_push_head_sha": str(manifest["git"].get("post_push_head_sha") or "").strip() or None,
         "default_validation_commands": validation_commands,
         "accepted_threads": accepted_threads,
     }

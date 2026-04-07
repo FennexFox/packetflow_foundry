@@ -62,6 +62,7 @@ def run_process(args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[st
             command,
             cwd=str(cwd),
             env=env,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -90,6 +91,7 @@ def run_git(repo_root: Path, *args: str) -> str:
     result = subprocess.run(
         ["git", *args],
         cwd=str(repo_root),
+        stdin=subprocess.DEVNULL,
         text=True,
         encoding="utf-8",
         errors="replace",
@@ -108,6 +110,10 @@ def read_json(path: Path) -> dict[str, Any]:
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+
+
+def synthetic_post_push_plan_path(temp_dir: Path) -> Path:
+    return temp_dir / "synthetic-post-push.json"
 
 
 def synthetic_pr_body() -> str:
@@ -199,10 +205,22 @@ def build_synthetic_context(temp_dir: Path) -> tuple[Path, Path, Path, list[str]
     run_git(repo_root, "add", ".")
     run_git(repo_root, "commit", "--no-gpg-sign", "-m", "fix(repo): seed synthetic review context")
     run_git(repo_root, "checkout", "-b", "feature/packets")
-    (repo_root / "src" / "helper.py").write_text("alpha\nbeta updated\ngamma\n", encoding="utf-8")
-    (repo_root / "docs" / "guide.md").write_text("# Guide\nCurrent wording\n", encoding="utf-8")
-    run_git(repo_root, "add", "src/helper.py", "docs/guide.md")
-    run_git(repo_root, "commit", "--no-gpg-sign", "-m", "fix(app): apply accepted review changes")
+    write_json(
+        synthetic_post_push_plan_path(temp_dir),
+        {
+            "commit_message": "fix(app): apply accepted review changes",
+            "files": [
+                {
+                    "path": "src/helper.py",
+                    "content": "alpha\nbeta updated\ngamma\n",
+                },
+                {
+                    "path": "docs/guide.md",
+                    "content": "# Guide\nCurrent wording\n",
+                },
+            ],
+        },
+    )
 
     base_context = {
         "repo_root": str(repo_root),
@@ -288,6 +306,37 @@ def build_synthetic_context(temp_dir: Path) -> tuple[Path, Path, Path, list[str]
         context_path,
         ["t-1", "t-2"],
         ["python -m pytest tests/test_docs.py"],
+    )
+
+
+def apply_synthetic_post_push_updates(repo_root: Path, temp_dir: Path) -> None:
+    plan_path = synthetic_post_push_plan_path(temp_dir)
+    if not plan_path.is_file():
+        return
+    payload = read_json(plan_path)
+    files = payload.get("files")
+    if not isinstance(files, list) or not files:
+        return
+    staged_paths: list[str] = []
+    for entry in files:
+        if not isinstance(entry, dict):
+            continue
+        relative_path = str(entry.get("path") or "").strip()
+        if not relative_path:
+            continue
+        target = repo_root / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(str(entry.get("content") or ""), encoding="utf-8")
+        staged_paths.append(relative_path)
+    if not staged_paths:
+        return
+    run_git(repo_root, "add", *staged_paths)
+    run_git(
+        repo_root,
+        "commit",
+        "--no-gpg-sign",
+        "-m",
+        str(payload.get("commit_message") or "fix(smoke): apply synthetic post-push updates"),
     )
 
 
@@ -583,6 +632,7 @@ def run_smoke_workflow(
             record_validation_args.extend(["--validation-command", command])
         manifest = manage_run(record_validation_args, cwd=repo_root)
 
+    apply_synthetic_post_push_updates(repo_root, temp_dir)
     manifest_response = manage_run(
         [
             "post-push",

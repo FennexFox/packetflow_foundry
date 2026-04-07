@@ -33,6 +33,7 @@ def init_repo(repo_root: Path) -> None:
         result = subprocess.run(
             command,
             cwd=str(repo_root),
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -146,6 +147,8 @@ class ReviewThreadRunTests(unittest.TestCase):
             self.assertEqual(
                 reconciliation,
                 {
+                    "pre_push_head_sha": manifest["git"]["pre_push_head_sha"],
+                    "post_push_head_sha": manifest["git"]["post_push_head_sha"],
                     "default_validation_commands": ["py -3 -m unittest tests/test_docs.py"],
                     "accepted_threads": [
                         {

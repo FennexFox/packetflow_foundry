@@ -40,6 +40,7 @@ SNIPPET_RADIUS = 12
 DIFF_SNIPPET_CHAR_LIMIT = 2200
 DIFF_HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@", re.MULTILINE)
 REQUEST_ANCHOR_RE = re.compile(r"`([^`]+)`|\"([^\"]+)\"|'([^']+)'")
+DiffCacheKey = tuple[str, str, str]
 REQUEST_ANCHOR_STOPWORDS = frozenset(
     {
         "a",
@@ -227,6 +228,7 @@ def run_git(repo_root: Path, args: list[str]) -> str:
     result = subprocess.run(
         ["git", *args],
         cwd=str(repo_root),
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -282,10 +284,11 @@ def diff_snippet_for_path(
     head_ref: str | None,
     path: str,
     line_number: int | None,
-    cache: dict[str, str | None],
+    cache: dict[DiffCacheKey, str | None],
 ) -> str | None:
-    if path in cache:
-        return cache[path]
+    cache_key = (str(base_ref or "").strip(), str(head_ref or "").strip(), path.replace("\\", "/"))
+    if cache_key in cache:
+        return cache[cache_key]
     normalized_path = path.replace("\\", "/")
     full_diff = None
     for revision_range in diff_range_candidates(base_ref, head_ref):
@@ -294,11 +297,11 @@ def diff_snippet_for_path(
             full_diff = output
             break
     if not full_diff:
-        cache[path] = None
+        cache[cache_key] = None
         return None
     if line_number is None or len(full_diff) <= DIFF_SNIPPET_CHAR_LIMIT:
-        cache[path] = full_diff[:DIFF_SNIPPET_CHAR_LIMIT].rstrip()
-        return cache[path]
+        cache[cache_key] = full_diff[:DIFF_SNIPPET_CHAR_LIMIT].rstrip()
+        return cache[cache_key]
     matches = list(DIFF_HUNK_HEADER_RE.finditer(full_diff))
     selected = None
     for index, match in enumerate(matches):
@@ -311,8 +314,8 @@ def diff_snippet_for_path(
             break
     if selected is None:
         selected = full_diff[:DIFF_SNIPPET_CHAR_LIMIT].strip()
-    cache[path] = selected[:DIFF_SNIPPET_CHAR_LIMIT].rstrip()
-    return cache[path]
+    cache[cache_key] = selected[:DIFF_SNIPPET_CHAR_LIMIT].rstrip()
+    return cache[cache_key]
 
 
 def clean_headline_line(line: str) -> str:
@@ -436,6 +439,8 @@ def candidate_decision(thread: dict[str, Any]) -> str:
 def load_reconciliation_input(path: Path | None) -> dict[str, Any]:
     if path is None:
         return {
+            "pre_push_head_sha": None,
+            "post_push_head_sha": None,
             "default_validation_commands": [],
             "accepted_threads": {},
         }
@@ -444,6 +449,8 @@ def load_reconciliation_input(path: Path | None) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise RuntimeError("reconciliation input must be a JSON object")
 
+    pre_push_head_sha = str(payload.get("pre_push_head_sha") or "").strip() or None
+    post_push_head_sha = str(payload.get("post_push_head_sha") or "").strip() or None
     default_validation_commands = list_of_strings(payload.get("default_validation_commands"))
     accepted_threads: dict[str, dict[str, Any]] = {}
     for item in payload.get("accepted_threads") or []:
@@ -459,6 +466,8 @@ def load_reconciliation_input(path: Path | None) -> dict[str, Any]:
         }
 
     return {
+        "pre_push_head_sha": pre_push_head_sha,
+        "post_push_head_sha": post_push_head_sha,
         "default_validation_commands": default_validation_commands,
         "accepted_threads": accepted_threads,
     }
@@ -604,21 +613,27 @@ def build_outdated_recheck(
 def build_accepted_recheck(
     *,
     thread: dict[str, Any],
+    previous_thread: dict[str, Any] | None,
     file_context: dict[str, Any],
     area: str,
     accepted_thread: dict[str, Any] | None,
+    pre_push_head_sha: str | None,
+    post_push_head_sha: str | None,
+    post_push_diff_snippet: str | None,
 ) -> dict[str, Any]:
     validation_commands = list(accepted_thread.get("validation_commands") or []) if accepted_thread else []
+    delta_range_available = bool(pre_push_head_sha and post_push_head_sha)
+    delta_range_changed = bool(delta_range_available and pre_push_head_sha != post_push_head_sha)
     current_head_visible = diff_hunk_covers_thread_location(
-        file_context.get("diff_snippet"),
-        previous_thread=thread,
+        post_push_diff_snippet,
+        previous_thread=previous_thread or thread,
         current_thread=thread,
     )
     reviewer_body = str((thread.get("reviewer_comment") or {}).get("body") or "").strip()
     request_anchor_visible, exact_anchors, matched_exact_anchors, matched_terms = request_anchor_evidence(
         reviewer_body,
         snippet=file_context.get("snippet"),
-        diff_snippet=file_context.get("diff_snippet"),
+        diff_snippet=post_push_diff_snippet,
     )
 
     if accepted_thread is None:
@@ -627,6 +642,12 @@ def build_accepted_recheck(
     elif not validation_commands:
         verdict = "ambiguous"
         verdict_reason = "missing_validation_provenance"
+    elif not delta_range_available:
+        verdict = "ambiguous"
+        verdict_reason = "missing_post_push_revision_range"
+    elif not delta_range_changed:
+        verdict = "still-applies"
+        verdict_reason = "missing_post_push_delta"
     elif area not in {"docs", "runtime", "tests"} and not request_anchor_visible:
         verdict = "ambiguous"
         verdict_reason = "unsupported_area_for_auto_resolve"
@@ -635,10 +656,10 @@ def build_accepted_recheck(
         verdict_reason = "path_missing_in_current_head"
     elif not current_head_visible:
         verdict = "still-applies"
-        verdict_reason = "missing_current_head_evidence"
+        verdict_reason = "missing_post_push_delta_evidence"
     else:
         verdict = "auto-accept"
-        verdict_reason = "accepted_same_run_with_current_head_evidence"
+        verdict_reason = "accepted_same_run_with_post_push_delta_evidence"
 
     return {
         "same_run_acceptance": {
@@ -654,7 +675,10 @@ def build_accepted_recheck(
             "path_exists": bool(file_context.get("path_exists")),
             "area": area,
             "snippet": file_context.get("snippet"),
-            "diff_snippet": file_context.get("diff_snippet"),
+            "diff_snippet": post_push_diff_snippet,
+            "evidence_kind": "post_push_delta",
+            "pre_push_head_sha": pre_push_head_sha,
+            "post_push_head_sha": post_push_head_sha,
             "evidence_visible": current_head_visible,
             "request_anchor_visible": request_anchor_visible,
             "exact_request_anchors": exact_anchors,
@@ -1080,7 +1104,7 @@ def main() -> int:
     batch_files: list[str] = []
     thread_files: list[str] = []
     marker_conflicts: list[dict[str, Any]] = []
-    diff_cache: dict[str, str | None] = {}
+    diff_cache: dict[DiffCacheKey, str | None] = {}
     packet_quality_records: list[dict[str, Any]] = []
     runtime_payloads: dict[str, Any] = {}
     previous_threads = previous_thread_lookup(previous_context)
@@ -1250,11 +1274,23 @@ def main() -> int:
         previous_thread = previous_threads.get(str(thread["thread_id"]))
         accepted_thread = reconciliation_input["accepted_threads"].get(str(thread["thread_id"]))
         if accepted_thread is not None and not bool(thread.get("is_outdated")):
+            post_push_diff_snippet = diff_snippet_for_path(
+                repo_root,
+                reconciliation_input.get("pre_push_head_sha"),
+                reconciliation_input.get("post_push_head_sha"),
+                path,
+                int(line) if line else None,
+                diff_cache,
+            )
             packet["accepted_recheck"] = build_accepted_recheck(
                 thread=thread,
+                previous_thread=previous_thread,
                 file_context=file_context,
                 area=area,
                 accepted_thread=accepted_thread,
+                pre_push_head_sha=reconciliation_input.get("pre_push_head_sha"),
+                post_push_head_sha=reconciliation_input.get("post_push_head_sha"),
+                post_push_diff_snippet=post_push_diff_snippet,
             )
         if transitioned_to_outdated(previous_thread, thread):
             recheck = build_outdated_recheck(

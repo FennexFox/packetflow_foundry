@@ -886,10 +886,10 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertEqual(build_result["outdated_auto_resolve_candidates"], 1)
             self.assertEqual(build_result["outdated_recheck_ambiguous"], 0)
 
-    def test_post_push_marks_non_outdated_accepted_thread_with_completion_evidence(self) -> None:
+    def test_post_push_marks_non_outdated_accepted_thread_with_delta_evidence(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
-            threads = [
+            previous_threads = [
                 review_thread(
                     thread_id="t-1",
                     path="src/helper.py",
@@ -898,7 +898,9 @@ class BuildReviewPacketsTests(unittest.TestCase):
                     reviewer_body="Please fix the helper branch.",
                 )
             ]
-            context = context_with_threads(tmp, threads)
+            current_threads = json.loads(json.dumps(previous_threads))
+            previous_context = context_with_threads(tmp, previous_threads)
+            context = context_with_threads(tmp, current_threads)
             repo_root = Path(context["repo_root"])
             (repo_root / "src" / "helper.py").write_text(
                 "alpha\nbeta updated\ngamma\n",
@@ -912,13 +914,18 @@ class BuildReviewPacketsTests(unittest.TestCase):
             context["context_fingerprint"] = build_context_fingerprint(context)
 
             context_path = tmp / "context.json"
+            previous_context_path = tmp / "previous-context.json"
             reconciliation_input_path = tmp / "reconciliation-input.json"
             output_dir = tmp / "packets"
             build_result_path = tmp / "build-result.json"
+            previous_context["context_fingerprint"] = build_context_fingerprint(previous_context)
+            write_json(previous_context_path, previous_context)
             write_json(context_path, context)
             write_json(
                 reconciliation_input_path,
                 {
+                    "pre_push_head_sha": "pre-sha",
+                    "post_push_head_sha": "post-sha",
                     "accepted_threads": [
                         {
                             "thread_id": "t-1",
@@ -932,6 +939,8 @@ class BuildReviewPacketsTests(unittest.TestCase):
                 "build_review_packets.py",
                 "--context",
                 str(context_path),
+                "--previous-context",
+                str(previous_context_path),
                 "--reconciliation-input",
                 str(reconciliation_input_path),
                 "--repo-root",
@@ -948,9 +957,11 @@ class BuildReviewPacketsTests(unittest.TestCase):
                 head_ref: str | None,
                 path: str,
                 line_number: int | None,
-                cache: dict[str, str | None],
+                cache: dict[object, str | None],
             ) -> str | None:
-                if path == "src/helper.py":
+                if path == "src/helper.py" and base_ref == "pre-sha" and head_ref == "post-sha":
+                    return "@@ -1,3 +1,3 @@\n alpha\n-beta\n+beta updated\n gamma\n"
+                if path == "src/helper.py" and base_ref == "main" and head_ref == "feature/packets":
                     return "@@ -1,3 +1,3 @@\n alpha\n-beta\n+beta updated\n gamma\n"
                 return None
 
@@ -965,9 +976,104 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertEqual(thread_packet["accepted_recheck"]["resolution_verdict"], "auto-accept")
             self.assertEqual(
                 thread_packet["accepted_recheck"]["verdict_reason"],
-                "accepted_same_run_with_current_head_evidence",
+                "accepted_same_run_with_post_push_delta_evidence",
             )
             self.assertTrue(thread_packet["accepted_recheck"]["current_head_evidence"]["evidence_visible"])
+            self.assertEqual(thread_packet["accepted_recheck"]["current_head_evidence"]["evidence_kind"], "post_push_delta")
+
+    def test_post_push_keeps_non_outdated_accepted_thread_open_without_delta_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            previous_threads = [
+                review_thread(
+                    thread_id="t-1",
+                    path="src/helper.py",
+                    line=2,
+                    reviewer_login="reviewer-a",
+                    reviewer_body="Please fix the helper branch.",
+                )
+            ]
+            current_threads = json.loads(json.dumps(previous_threads))
+            previous_context = context_with_threads(tmp, previous_threads)
+            context = context_with_threads(tmp, current_threads)
+            repo_root = Path(context["repo_root"])
+            (repo_root / "src" / "helper.py").write_text(
+                "alpha\nbeta\ngamma\n",
+                encoding="utf-8",
+            )
+            context["changed_files"] = ["src/helper.py"]
+            context["changed_file_groups"]["runtime"] = {
+                "count": 1,
+                "sample_files": ["src/helper.py"],
+            }
+            previous_context["context_fingerprint"] = build_context_fingerprint(previous_context)
+            context["context_fingerprint"] = build_context_fingerprint(context)
+
+            context_path = tmp / "context.json"
+            previous_context_path = tmp / "previous-context.json"
+            reconciliation_input_path = tmp / "reconciliation-input.json"
+            output_dir = tmp / "packets"
+            build_result_path = tmp / "build-result.json"
+            write_json(previous_context_path, previous_context)
+            write_json(context_path, context)
+            write_json(
+                reconciliation_input_path,
+                {
+                    "pre_push_head_sha": "pre-sha",
+                    "post_push_head_sha": "post-sha",
+                    "accepted_threads": [
+                        {
+                            "thread_id": "t-1",
+                            "validation_commands": ["python -m pytest tests/test_helper.py"],
+                        }
+                    ],
+                },
+            )
+
+            argv = [
+                "build_review_packets.py",
+                "--context",
+                str(context_path),
+                "--previous-context",
+                str(previous_context_path),
+                "--reconciliation-input",
+                str(reconciliation_input_path),
+                "--repo-root",
+                context["repo_root"],
+                "--output-dir",
+                str(output_dir),
+                "--result-output",
+                str(build_result_path),
+            ]
+
+            def fake_diff_snippet(
+                repo_root: Path,
+                base_ref: str | None,
+                head_ref: str | None,
+                path: str,
+                line_number: int | None,
+                cache: dict[object, str | None],
+            ) -> str | None:
+                if path == "src/helper.py" and base_ref == "main" and head_ref == "feature/packets":
+                    return "@@ -1,3 +1,3 @@\n alpha\n-beta\n+beta updated\n gamma\n"
+                if path == "src/helper.py" and base_ref == "pre-sha" and head_ref == "post-sha":
+                    return None
+                return None
+
+            with patch.object(sys, "argv", argv), patch.object(
+                packets,
+                "diff_snippet_for_path",
+                side_effect=fake_diff_snippet,
+            ):
+                self.assertEqual(packets.main(), 0)
+
+            thread_packet = json.loads((output_dir / "thread-01.json").read_text(encoding="utf-8"))
+            self.assertEqual(thread_packet["accepted_recheck"]["resolution_verdict"], "still-applies")
+            self.assertEqual(
+                thread_packet["accepted_recheck"]["verdict_reason"],
+                "missing_post_push_delta_evidence",
+            )
+            self.assertFalse(thread_packet["accepted_recheck"]["current_head_evidence"]["evidence_visible"])
 
 
 if __name__ == "__main__":

@@ -43,6 +43,7 @@ Use this skill to handle unresolved GitHub PR review threads on the current bran
 - `apply_thread_action_plan.py` consumes only normalized validator output.
 - `packet_worker_map` is the runtime routing authority.
 - `packet_metrics.json` and build-result worker derivation are evaluation-side only.
+- same-run accepted non-outdated auto-resolve uses post-push `HEAD` delta evidence from the manifest reconciliation input, not the full PR base-to-head diff.
 - same-run outdated auto-resolve has accepted-before-push provenance, current-`HEAD` evidence, and real validation evidence.
 - broad or cross-cutting fixes stay local even when delegation is allowed for narrow analysis.
 
