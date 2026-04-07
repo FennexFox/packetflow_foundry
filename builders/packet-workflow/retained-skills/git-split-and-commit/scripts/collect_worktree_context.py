@@ -582,10 +582,30 @@ def sibling_tests_dir(repo_root: Path, path: str) -> str | None:
     return normalize_path(str(candidate)) if absolute_candidate.is_dir() else None
 
 
+def posix_command_token(value: str) -> str:
+    text = str(value)
+    if not text:
+        return "''"
+    if "'" not in text:
+        return shlex.quote(text)
+
+    escaped: list[str] = []
+    for index, char in enumerate(text):
+        if char in {'"', "$", "`"}:
+            escaped.append("\\" + char)
+            continue
+        if char == "\\":
+            next_char = text[index + 1] if index + 1 < len(text) else ""
+            escaped.append("\\\\" if next_char in {'"', "$", "`", "\\"} else "\\")
+            continue
+        escaped.append(char)
+    return '"' + "".join(escaped) + '"'
+
+
 def command_string(argv: list[str]) -> str:
     if os.name == "nt":
         return subprocess.list2cmdline(argv)
-    return " ".join(shlex.quote(part) for part in argv)
+    return " ".join(posix_command_token(part) for part in argv)
 
 
 def unittest_discover_argv(test_dir: str, pattern: str) -> list[str]:

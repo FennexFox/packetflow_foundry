@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import shlex
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 TEST_DIR = Path(__file__).resolve().parent
@@ -267,6 +269,24 @@ class CollectWorktreeContextTests(unittest.TestCase):
                     }
                 ],
             )
+
+    def test_command_string_round_trips_posix_executable_with_apostrophe(self) -> None:
+        argv = [
+            "/home/o'connor/.venv/bin/python",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests",
+            "-p",
+            "test_*.py",
+        ]
+
+        with patch.object(worktree_context.os, "name", "posix"):
+            command = worktree_context.command_string(argv)
+
+        self.assertTrue(command.startswith("\"/home/o'connor/.venv/bin/python\""))
+        self.assertEqual(shlex.split(command), argv)
 
 
 if __name__ == "__main__":
