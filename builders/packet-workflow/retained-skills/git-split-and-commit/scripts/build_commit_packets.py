@@ -106,11 +106,18 @@ def feature_tokens(entry: dict[str, Any]) -> list[str]:
 
 def source_test_partner(path: str) -> str | None:
     normalized = normalize_path(path)
+    path_obj = Path(normalized)
     if normalized.startswith(".github/scripts/tests/test_") and normalized.endswith(".py"):
         stem = Path(normalized).stem.removeprefix("test_")
         return f".github/scripts/{stem}.py"
     if normalized.startswith(".github/scripts/") and normalized.endswith(".py") and not normalized.startswith(".github/scripts/tests/"):
         return f".github/scripts/tests/test_{Path(normalized).stem}.py"
+    if path_obj.suffix != ".py":
+        return None
+    if path_obj.parent.name == "tests" and path_obj.name.startswith("test_"):
+        return normalize_path(str(path_obj.parent.parent / "scripts" / path_obj.name.removeprefix("test_")))
+    if path_obj.parent.name == "scripts":
+        return normalize_path(str(path_obj.parent.parent / "tests" / f"test_{path_obj.name}"))
     return None
 
 

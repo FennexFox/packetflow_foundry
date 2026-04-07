@@ -374,40 +374,62 @@ def list_of_strings(value: Any) -> list[str]:
     return [str(value).strip()] if str(value).strip() else []
 
 
-def match_terms(text: str | None) -> list[str]:
+def dedupe_preserve(items: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        if not item or item in seen:
+            continue
+        deduped.append(item)
+        seen.add(item)
+    return deduped
+
+
+def match_terms(text: str | None, *, canonical: bool = False) -> list[str]:
     normalized = normalize_text_for_matching(text)
     terms: list[str] = []
     for raw_token in re.findall(r"[a-z0-9_./-]+", normalized):
         token = raw_token.strip(".-/")
         if len(token) >= 3 and token not in REQUEST_ANCHOR_STOPWORDS:
-            terms.append(token)
-    return terms
+            normalized_token = canonical_match_term(token) if canonical else token
+            if normalized_token:
+                terms.append(normalized_token)
+    return dedupe_preserve(terms)
 
 
-def request_exact_anchor_pairs(reviewer_body: str) -> list[tuple[str, str]]:
-    anchors: list[tuple[str, str]] = []
+def canonical_match_term(text: str | None) -> str:
+    return re.sub(r"[^a-z0-9]+", "", normalize_text_for_matching(text))
+
+
+def extract_exact_anchor_views(reviewer_body: str) -> list[dict[str, Any]]:
+    anchors: list[dict[str, Any]] = []
     for match in REQUEST_ANCHOR_RE.finditer(reviewer_body):
         raw_anchor = next(group for group in match.groups() if group)
-        normalized = normalize_text_for_matching(raw_anchor)
-        if normalized:
-            anchors.append((raw_anchor, normalized))
-    return anchors
-
-
-def codeish_anchor_terms(raw_anchors: list[str]) -> list[str]:
-    identifiers: list[str] = []
-    for raw_anchor in raw_anchors:
-        if not re.search(r"[()_./-]|[A-Z]", raw_anchor):
+        normalized_text = normalize_text_for_matching(raw_anchor)
+        if not normalized_text:
             continue
-        for token in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", raw_anchor):
-            normalized = token.lower()
-            if len(normalized) >= 3 and normalized not in REQUEST_ANCHOR_STOPWORDS:
-                identifiers.append(normalized)
-    return list(dict.fromkeys(identifiers))
 
+        identifier_pairs: list[tuple[str, str]] = []
+        if re.search(r"[()_./-]|[A-Z]", raw_anchor):
+            seen_canonical: set[str] = set()
+            for token in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", raw_anchor):
+                normalized_token = token.lower()
+                if len(normalized_token) < 3 or normalized_token in REQUEST_ANCHOR_STOPWORDS:
+                    continue
+                canonical_token = canonical_match_term(normalized_token)
+                if not canonical_token or canonical_token in seen_canonical:
+                    continue
+                seen_canonical.add(canonical_token)
+                identifier_pairs.append((normalized_token, canonical_token))
 
-def canonical_codeish_term(text: str) -> str:
-    return re.sub(r"[^a-z0-9]+", "", normalize_text_for_matching(text))
+        anchors.append(
+            {
+                "raw": raw_anchor,
+                "normalized_text": normalized_text,
+                "identifier_pairs": identifier_pairs,
+            }
+        )
+    return anchors
 
 
 def request_anchor_evidence(
@@ -420,7 +442,8 @@ def request_anchor_evidence(
     if not evidence_text:
         return False, [], [], []
 
-    exact_anchors = [normalized for _, normalized in request_exact_anchor_pairs(reviewer_body)]
+    anchor_views = extract_exact_anchor_views(reviewer_body)
+    exact_anchors = [str(view["normalized_text"]) for view in anchor_views]
     matched_exact_anchors = [anchor for anchor in exact_anchors if anchor in evidence_text]
     if exact_anchors:
         return bool(matched_exact_anchors), exact_anchors, matched_exact_anchors, []
@@ -443,22 +466,31 @@ def delta_request_anchor_evidence(
     if not evidence_text:
         return False, [], [], []
 
-    anchor_pairs = request_exact_anchor_pairs(reviewer_body)
-    if not anchor_pairs:
+    anchor_views = extract_exact_anchor_views(reviewer_body)
+    if not anchor_views:
         return False, [], [], []
 
-    exact_anchors = [normalized for _, normalized in anchor_pairs]
+    exact_anchors = [str(view["normalized_text"]) for view in anchor_views]
     matched_exact_anchors = [anchor for anchor in exact_anchors if anchor in evidence_text]
-    identifier_anchors = codeish_anchor_terms([raw for raw, _ in anchor_pairs])
-    evidence_terms = {
-        canonical
-        for canonical in (canonical_codeish_term(term) for term in match_terms(diff_snippet))
-        if canonical
-    }
-    matched_identifier_anchors = [
-        anchor for anchor in identifier_anchors if canonical_codeish_term(anchor) in evidence_terms
+    identifier_pairs = [
+        pair
+        for view in anchor_views
+        for pair in list(view.get("identifier_pairs") or [])
+        if isinstance(pair, tuple) and len(pair) == 2
     ]
-    return bool(matched_exact_anchors or matched_identifier_anchors), matched_exact_anchors, identifier_anchors, matched_identifier_anchors
+    identifier_anchors = dedupe_preserve([str(raw_anchor) for raw_anchor, _ in identifier_pairs])
+    evidence_terms = set(match_terms(diff_snippet, canonical=True))
+    matched_identifier_anchors = [
+        raw_anchor
+        for raw_anchor, canonical_anchor in identifier_pairs
+        if canonical_anchor in evidence_terms
+    ]
+    return (
+        bool(matched_exact_anchors or matched_identifier_anchors),
+        matched_exact_anchors,
+        identifier_anchors,
+        dedupe_preserve(matched_identifier_anchors),
+    )
 
 
 def comment_summary(comment: dict[str, Any] | None) -> dict[str, Any] | None:

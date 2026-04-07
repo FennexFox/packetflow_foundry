@@ -529,29 +529,63 @@ def diff_header_text(patch_text: str) -> str:
 
 def tracked_test_for_script(repo_root: Path, path: str) -> str | None:
     normalized = normalize_path(path)
-    if not normalized.startswith(".github/scripts/") or normalized.startswith(".github/scripts/tests/"):
+    path_obj = Path(normalized)
+    if path_obj.suffix != ".py" or path_obj.parent.name != "scripts":
         return None
-    stem = Path(normalized).stem
-    candidate = repo_root / ".github/scripts/tests" / f"test_{stem}.py"
-    return normalize_path(str(candidate.relative_to(repo_root))) if candidate.is_file() else None
+    if normalized.startswith(".github/scripts/") and not normalized.startswith(".github/scripts/tests/"):
+        candidate = Path(".github/scripts/tests") / f"test_{path_obj.stem}.py"
+    else:
+        candidate = path_obj.parent.parent / "tests" / f"test_{path_obj.stem}.py"
+    absolute_candidate = repo_root / candidate
+    return normalize_path(str(candidate)) if absolute_candidate.is_file() else None
+
+
+def tracked_python_test_path(repo_root: Path, path: str) -> str | None:
+    normalized = normalize_path(path)
+    path_obj = Path(normalized)
+    if path_obj.suffix != ".py" or path_obj.parent.name != "tests" or not path_obj.name.startswith("test_"):
+        return None
+    absolute_path = repo_root / path_obj
+    return normalized if absolute_path.is_file() else None
+
+
+def sibling_tests_dir(repo_root: Path, path: str) -> str | None:
+    normalized = normalize_path(path)
+    path_obj = Path(normalized)
+    if path_obj.suffix != ".py":
+        return None
+    if normalized.startswith(".github/scripts/tests/"):
+        candidate = Path(".github/scripts/tests")
+    elif normalized.startswith(".github/scripts/") and path_obj.parent.name == "scripts":
+        candidate = Path(".github/scripts/tests")
+    elif path_obj.parent.name == "tests":
+        candidate = path_obj.parent
+    elif path_obj.parent.name == "scripts":
+        candidate = path_obj.parent.parent / "tests"
+    else:
+        return None
+    absolute_candidate = repo_root / candidate
+    return normalize_path(str(candidate)) if absolute_candidate.is_dir() else None
+
+
+def unittest_discover_command(test_dir: str, pattern: str) -> str:
+    return f'python -m unittest discover -s {test_dir} -p "{pattern}"'
 
 
 def targeted_validation_candidates(repo_root: Path, changed_paths: list[str]) -> list[dict[str, Any]]:
     normalized_paths = [normalize_path(path) for path in changed_paths]
     changed_tests = sorted(
         {
-            path
+            test_path
             for path in normalized_paths
-            if path.startswith(".github/scripts/tests/test_") and path.endswith(".py")
+            if (test_path := tracked_python_test_path(repo_root, path)) is not None
         }
     )
     changed_scripts = sorted(
         {
             path
             for path in normalized_paths
-            if path.startswith(".github/scripts/")
-            and path.endswith(".py")
-            and not path.startswith(".github/scripts/tests/")
+            if Path(path).suffix == ".py" and Path(path).parent.name == "scripts"
         }
     )
     docs_only = all(
@@ -566,9 +600,7 @@ def targeted_validation_candidates(repo_root: Path, changed_paths: list[str]) ->
     candidates: list[dict[str, Any]] = []
     seen_commands: set[str] = set()
     for test_path in changed_tests:
-        command = (
-            f'python -m unittest discover -s .github/scripts/tests -p "{Path(test_path).name}"'
-        )
+        command = unittest_discover_command(normalize_path(str(Path(test_path).parent)), Path(test_path).name)
         if command not in seen_commands:
             candidates.append(
                 {
@@ -580,42 +612,52 @@ def targeted_validation_candidates(repo_root: Path, changed_paths: list[str]) ->
             seen_commands.add(command)
 
     if not changed_tests and changed_scripts:
-        mapped_tests = [tracked_test_for_script(repo_root, path) for path in changed_scripts]
-        if all(mapped_tests):
-            for script_path, test_path in zip(changed_scripts, mapped_tests):
-                command = (
-                    f'python -m unittest discover -s .github/scripts/tests -p "{Path(str(test_path)).name}"'
-                )
-                if command in seen_commands:
-                    continue
-                candidates.append(
-                    {
-                        "command": command,
-                        "reason": f"Changed script {script_path} with matching test {test_path}.",
-                        "paths": [script_path, str(test_path)],
-                    }
-                )
-                seen_commands.add(command)
-        else:
-            command = 'python -m unittest discover -s .github/scripts/tests -p "test_*.py"'
+        mapped_tests = {path: tracked_test_for_script(repo_root, path) for path in changed_scripts}
+        for script_path, test_path in mapped_tests.items():
+            if not test_path:
+                continue
+            command = unittest_discover_command(normalize_path(str(Path(test_path).parent)), Path(test_path).name)
             candidates.append(
                 {
                     "command": command,
-                    "reason": "Changed .github/scripts Python code without a complete one-to-one test mapping.",
-                    "paths": changed_scripts,
+                    "reason": f"Changed script {script_path} with matching test {test_path}.",
+                    "paths": [script_path, test_path],
+                }
+            )
+            seen_commands.add(command)
+
+        unmatched_by_tests_dir: dict[str, list[str]] = {}
+        for script_path, test_path in mapped_tests.items():
+            if test_path:
+                continue
+            tests_dir = sibling_tests_dir(repo_root, script_path)
+            if tests_dir:
+                unmatched_by_tests_dir.setdefault(tests_dir, []).append(script_path)
+
+        for tests_dir, script_paths in sorted(unmatched_by_tests_dir.items()):
+            command = unittest_discover_command(tests_dir, "test_*.py")
+            if command in seen_commands:
+                continue
+            candidates.append(
+                {
+                    "command": command,
+                    "reason": "Changed Python code without a complete one-to-one test mapping in the sibling tests directory.",
+                    "paths": sorted(script_paths),
                 }
             )
             seen_commands.add(command)
 
     if not candidates and any(path.startswith(".github/workflows/") for path in normalized_paths):
-        command = 'python -m unittest discover -s .github/scripts/tests -p "test_*.py"'
-        candidates.append(
-            {
-                "command": command,
-                "reason": "Changed GitHub workflow files that orchestrate automation tests.",
-                "paths": [path for path in normalized_paths if path.startswith(".github/workflows/")],
-            }
-        )
+        tests_dir = normalize_path(".github/scripts/tests") if (repo_root / ".github/scripts/tests").is_dir() else None
+        if tests_dir:
+            command = unittest_discover_command(tests_dir, "test_*.py")
+            candidates.append(
+                {
+                    "command": command,
+                    "reason": "Changed GitHub workflow files that orchestrate automation tests.",
+                    "paths": [path for path in normalized_paths if path.startswith(".github/workflows/")],
+                }
+            )
 
     return candidates
 

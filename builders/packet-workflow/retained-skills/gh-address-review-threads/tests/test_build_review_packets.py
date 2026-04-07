@@ -22,6 +22,35 @@ from thread_action_contract import build_context_fingerprint  # type: ignore  # 
 
 
 class BuildReviewPacketsTests(unittest.TestCase):
+    def test_request_anchor_evidence_keeps_exact_anchor_strict(self) -> None:
+        visible, exact_anchors, matched_exact_anchors, matched_terms = packets.request_anchor_evidence(
+            "Please update `build_global_packet()` to match the renamed parameter.",
+            snippet="def build_global_packet(context):\n    return context\n",
+            diff_snippet=None,
+        )
+
+        self.assertFalse(visible)
+        self.assertEqual(exact_anchors, ["buildglobalpacket()"])
+        self.assertEqual(matched_exact_anchors, [])
+        self.assertEqual(matched_terms, [])
+
+    def test_delta_request_anchor_evidence_matches_canonical_identifier_terms(self) -> None:
+        visible, matched_exact_anchors, identifier_anchors, matched_identifier_anchors = (
+            packets.delta_request_anchor_evidence(
+                "Please update `build_global_packet()` to match the renamed parameter.",
+                diff_snippet=(
+                    "@@ -1,2 +1,2 @@\n"
+                    "-def build_global_packet(report):\n"
+                    "+def build_global_packet(context):\n"
+                ),
+            )
+        )
+
+        self.assertTrue(visible)
+        self.assertEqual(matched_exact_anchors, [])
+        self.assertEqual(identifier_anchors, ["build_global_packet"])
+        self.assertEqual(matched_identifier_anchors, ["build_global_packet"])
+
     def _run_estimated_savings_observation_case(
         self,
     ) -> tuple[
