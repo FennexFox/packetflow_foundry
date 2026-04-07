@@ -315,13 +315,14 @@ def builtin_command_names() -> set[str]:
     return WINDOWS_SHELL_BUILTINS if os.name == "nt" else POSIX_SHELL_BUILTINS
 
 
+def is_shell_builtin(token: str) -> bool:
+    return str(token).strip().lower() in builtin_command_names()
+
+
 def resolve_command_executable(repo_root: Path, token: str) -> str | None:
     candidate = str(token).strip()
     if not candidate:
         return None
-    lowered = candidate.lower()
-    if lowered in builtin_command_names():
-        return candidate
 
     path_candidate = Path(candidate)
     if path_candidate.is_absolute() or any(separator in candidate for separator in ("/", "\\")):
@@ -372,6 +373,17 @@ def command_feasibility_issues(repo_root: Path, commands: list[str]) -> list[dic
                 {
                     "command": command,
                     "detail": "command is empty or does not expose a launch token",
+                }
+            )
+            continue
+        if is_shell_builtin(token):
+            issues.append(
+                {
+                    "command": command,
+                    "detail": (
+                        f"command head token `{token}` is a shell builtin and is not executable "
+                        "with shell=False targeted checks"
+                    ),
                 }
             )
             continue

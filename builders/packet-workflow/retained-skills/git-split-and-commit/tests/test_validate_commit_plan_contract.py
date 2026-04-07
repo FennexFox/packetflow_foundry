@@ -243,6 +243,13 @@ class ValidateCommitPlanContractTests(unittest.TestCase):
         self.assertIn("shell-control syntax", issues[0]["detail"])
         self.assertIn("newline", issues[0]["detail"])
 
+    def test_command_feasibility_rejects_shell_builtin_for_shell_false_checks(self) -> None:
+        issues = validator.command_feasibility_issues(Path("/repo"), ["cd ."])
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("shell builtin", issues[0]["detail"])
+        self.assertIn("shell=False", issues[0]["detail"])
+
     def test_validator_allows_supporting_paths_to_overlap_owned_paths(self) -> None:
         worktree = sample_worktree()
         plan = sample_plan()
