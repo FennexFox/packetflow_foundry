@@ -45,6 +45,39 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
         self.assertIn("run_id", payload)
         self.assertIn("manifest_path", payload)
         self.assertIn("run_root", payload)
+        self.assertIn("evaluation_final_path", payload)
+
+    def test_synthetic_run_smoke_workflow_completes_accepted_current_threads(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            temp_dir = Path(tmp_dir_name)
+            (
+                repo_root,
+                previous_context_path,
+                context_path,
+                accepted_thread_ids,
+                validation_commands,
+            ) = smoke.build_synthetic_context(temp_dir)
+
+            payload = smoke.run_smoke_workflow(
+                repo_root=repo_root,
+                context_path=context_path,
+                temp_dir=temp_dir,
+                previous_context_path=previous_context_path,
+                accepted_thread_ids=accepted_thread_ids,
+                validation_commands=validation_commands,
+            )
+
+            manifest = json.loads(Path(payload["manifest_path"]).read_text(encoding="utf-8"))
+            complete_plan = json.loads(
+                Path(manifest["paths"]["complete"]["validated_plan"]).read_text(encoding="utf-8")
+            )
+            normalized_actions = {
+                action["thread_id"]: action for action in complete_plan["normalized_thread_actions"]
+            }
+            self.assertEqual(normalized_actions["t-1"]["decision"], "accept")
+            self.assertTrue(normalized_actions["t-1"]["resolve_after_complete"])
+            self.assertEqual(normalized_actions["t-2"]["decision"], "accept")
+            self.assertTrue(normalized_actions["t-2"]["resolve_after_complete"])
 
     def test_main_reports_blocked_schema_when_gh_cli_is_missing(self) -> None:
         with patch.object(sys, "argv", ["smoke_gh_address_review_threads.py"]):
@@ -86,8 +119,12 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
             )
             context["context_fingerprint"] = build_context_fingerprint(context)
 
+            real_run_script = smoke.run_script
+
             def fake_run_script(args: list[str], *, cwd: Path) -> str:
                 arg_list = [str(item) for item in args]
+                if arg_list[0].endswith("manage_review_thread_run.py"):
+                    return real_run_script(args, cwd=cwd)
                 if arg_list[0].endswith("collect_review_threads.py"):
                     write_json(Path(arg_list[arg_list.index("--output") + 1]), context)
                     return ""
@@ -208,6 +245,12 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
             self.assertEqual(payload["outdated_recheck_ambiguous"], 0)
             self.assertIn("run_id", payload)
             self.assertIn("manifest_path", payload)
+            self.assertIn("evaluation_final_path", payload)
+            manifest = json.loads(Path(payload["manifest_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(manifest["state"]["last_completed_phase"], "complete-applied")
+            self.assertTrue(Path(payload["evaluation_final_path"]).is_file())
+            finalized = json.loads(Path(payload["evaluation_final_path"]).read_text(encoding="utf-8"))
+            self.assertEqual(finalized["quality"]["result_status"], "dry-run")
 
     def test_main_reports_noop_schema_when_no_unresolved_threads(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir_name:
@@ -217,8 +260,12 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
             context = context_with_threads(tmp_dir, [])
             context["context_fingerprint"] = build_context_fingerprint(context)
 
+            real_run_script = smoke.run_script
+
             def fake_run_script(args: list[str], *, cwd: Path) -> str:
                 arg_list = [str(item) for item in args]
+                if arg_list[0].endswith("manage_review_thread_run.py"):
+                    return real_run_script(args, cwd=cwd)
                 if arg_list[0].endswith("collect_review_threads.py"):
                     write_json(Path(arg_list[arg_list.index("--output") + 1]), context)
                 return ""

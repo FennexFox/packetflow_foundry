@@ -29,6 +29,10 @@ def core_templates_dir() -> Path:
     return foundry_root_dir() / "core" / "templates" / "packet-workflow"
 
 
+def core_contracts_dir() -> Path:
+    return foundry_root_dir() / "core" / "contracts" / "packet-workflow"
+
+
 def core_defaults_dir() -> Path:
     return foundry_root_dir() / "core" / "defaults" / "packet-workflow"
 
@@ -2365,6 +2369,9 @@ def build_render_context(spec: dict) -> dict[str, str]:
     lint_step, lint_script_section, build_lint_arg = lint_cli_section(spec)
     skill_title = title_case(spec["skill_name"])
     contract_file = spec["domain_slug"].replace("_", "-") + "-contract.md"
+    evaluation_contract_file = (
+        spec["domain_slug"].replace("_", "-") + "-evaluation-contract.md"
+    )
     spec_metadata = {
         "skill_name": spec["skill_name"],
         "domain_slug": spec["domain_slug"],
@@ -2455,6 +2462,7 @@ def build_render_context(spec: dict) -> dict[str, str]:
         "APPLY_SCRIPT_SECTION": apply_script_section(spec),
         "BUILD_LINT_ARG": build_lint_arg,
         "DOMAIN_CONTRACT_FILE": contract_file,
+        "DOMAIN_EVALUATION_CONTRACT_FILE": evaluation_contract_file,
         "DOMAIN_CONTRACT_PLAN_NOTE": contract_plan_note(spec),
         "VALIDATE_PLAN_CONTRACT": validate_plan_contract(spec),
         "APPLY_PLAN_CONTRACT": apply_plan_contract(spec),
@@ -2532,6 +2540,7 @@ def generate_retained_files(skill_dir: Path, spec: dict) -> list[Path]:
         "SKILL.md": "skill_md.tmpl",
         "agents/openai.yaml": "openai_yaml.tmpl",
         "references/core-contract.md": "core_contract.tmpl",
+        "references/retained-skill-doc-contract.md": None,
         "references/delegation-playbook.md": "delegation_playbook.tmpl",
         f"references/{spec['domain_slug'].replace('_', '-')}-contract.md": "domain_contract.tmpl",
         "references/evaluation-log-contract.md": "evaluation_log_contract.tmpl",
@@ -2550,7 +2559,11 @@ def generate_retained_files(skill_dir: Path, spec: dict) -> list[Path]:
 
     for relative_path, template_name in outputs.items():
         destination = skill_dir / relative_path
-        write_text(destination, render(template_name, context))
+        if template_name is None:
+            shared_contract = core_contracts_dir() / "retained-skill-doc-contract.md"
+            write_text(destination, shared_contract.read_text(encoding="utf-8"))
+        else:
+            write_text(destination, render(template_name, context))
         generated.append(destination)
 
     return generated

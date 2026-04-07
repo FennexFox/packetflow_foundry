@@ -57,3 +57,20 @@
 - `unversioned -> packet-workflow 0.1.0`
   - change reason: introduced explicit builder-version compatibility metadata and upgrade rules for packet-workflow retained skills.
   - manual migration scope: added `builder_versioning` to `builder-spec.json`, added `metadata.versioning` to `profiles/default/profile.json`, and wired collector-side `builder_compatibility` reporting.
+
+## Pilot Hardening Outcome
+- Prose-only invariants moved into script or test enforcement:
+  - `ack-before-work` now requires a recorded `ack-applied` checkpoint before `record-validation` or `post-push`
+  - `record-apply` now requires `apply_succeeded=true`, `fingerprint_match=true`, and a non-dry-run result for live manifest advancement
+  - synthetic smoke now mirrors the manifest lifecycle by recording `ack` and `complete` apply results instead of skipping directly from validation to later phases
+- Delegation non-use classification:
+  - record-only: `review_mode_local_only`, `code_change_guardrail_blockers`, `broad_or_cross_cutting_fix_kept_local`, `validation_path_unclear`, `optional_qa_not_requested`
+  - fatal: none in this pilot; lifecycle, fingerprint, marker-conflict, and missing-target failures stay on separate fatal gates
+- Runtime to eval-only moves:
+  - moved from runtime packets into build-result/eval-side artifacts: `review_mode_baseline`, `review_mode_adjustments`, `override_signals`, `recommended_workers`, `optional_workers`, `active_paths`, `active_areas`, `analysis_targets`, `thread_batches`, `delegation_non_use_cases`
+  - kept in runtime: final `review_mode`, `packet_worker_map`, `routing_contract`, `same_run_reconciliation`, `context_fingerprint`, and marker-conflict safety context
+- Retained `SKILL.md` reduction:
+  - reduced from 179 lines to 73 lines while keeping the minimum operator execution contract in the retained file
+- Extracted helper boundary check:
+  - `review_thread_run.py` and `review_thread_packet_contract.py` remain skill-local shared helpers for this retained skill only
+  - no new generic core helper was introduced; domain-local GitHub reply, reconciliation, and delegation policy stayed inside the skill

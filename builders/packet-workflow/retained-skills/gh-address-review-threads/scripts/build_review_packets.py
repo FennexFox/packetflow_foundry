@@ -16,7 +16,7 @@ from review_thread_packet_contract import (
     BROAD_TARGET_LIMIT,
     CHURN_OVERRIDE_LIMIT,
     COMMON_PATH_CONTRACT,
-    DELEGATION_SAVINGS_FLOOR,
+    DELEGATION_NON_USE_CASES,
     DECISION_READY_PACKETS,
     LOCAL_THREAD_LIMIT,
     MEANINGFUL_GENERATED_FILE_MIN_COUNT,
@@ -40,6 +40,7 @@ SNIPPET_RADIUS = 12
 DIFF_SNIPPET_CHAR_LIMIT = 2200
 DIFF_HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@", re.MULTILINE)
 REQUEST_ANCHOR_RE = re.compile(r"`([^`]+)`|\"([^\"]+)\"|'([^']+)'")
+DiffCacheKey = tuple[str, str, str]
 REQUEST_ANCHOR_STOPWORDS = frozenset(
     {
         "a",
@@ -227,6 +228,7 @@ def run_git(repo_root: Path, args: list[str]) -> str:
     result = subprocess.run(
         ["git", *args],
         cwd=str(repo_root),
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -282,10 +284,11 @@ def diff_snippet_for_path(
     head_ref: str | None,
     path: str,
     line_number: int | None,
-    cache: dict[str, str | None],
+    cache: dict[DiffCacheKey, str | None],
 ) -> str | None:
-    if path in cache:
-        return cache[path]
+    cache_key = (str(base_ref or "").strip(), str(head_ref or "").strip(), path.replace("\\", "/"))
+    if cache_key in cache:
+        return cache[cache_key]
     normalized_path = path.replace("\\", "/")
     full_diff = None
     for revision_range in diff_range_candidates(base_ref, head_ref):
@@ -294,11 +297,11 @@ def diff_snippet_for_path(
             full_diff = output
             break
     if not full_diff:
-        cache[path] = None
+        cache[cache_key] = None
         return None
     if line_number is None or len(full_diff) <= DIFF_SNIPPET_CHAR_LIMIT:
-        cache[path] = full_diff[:DIFF_SNIPPET_CHAR_LIMIT].rstrip()
-        return cache[path]
+        cache[cache_key] = full_diff[:DIFF_SNIPPET_CHAR_LIMIT].rstrip()
+        return cache[cache_key]
     matches = list(DIFF_HUNK_HEADER_RE.finditer(full_diff))
     selected = None
     for index, match in enumerate(matches):
@@ -311,8 +314,8 @@ def diff_snippet_for_path(
             break
     if selected is None:
         selected = full_diff[:DIFF_SNIPPET_CHAR_LIMIT].strip()
-    cache[path] = selected[:DIFF_SNIPPET_CHAR_LIMIT].rstrip()
-    return cache[path]
+    cache[cache_key] = selected[:DIFF_SNIPPET_CHAR_LIMIT].rstrip()
+    return cache[cache_key]
 
 
 def clean_headline_line(line: str) -> str:
@@ -436,6 +439,8 @@ def candidate_decision(thread: dict[str, Any]) -> str:
 def load_reconciliation_input(path: Path | None) -> dict[str, Any]:
     if path is None:
         return {
+            "pre_push_head_sha": None,
+            "post_push_head_sha": None,
             "default_validation_commands": [],
             "accepted_threads": {},
         }
@@ -444,6 +449,8 @@ def load_reconciliation_input(path: Path | None) -> dict[str, Any]:
     if not isinstance(payload, dict):
         raise RuntimeError("reconciliation input must be a JSON object")
 
+    pre_push_head_sha = str(payload.get("pre_push_head_sha") or "").strip() or None
+    post_push_head_sha = str(payload.get("post_push_head_sha") or "").strip() or None
     default_validation_commands = list_of_strings(payload.get("default_validation_commands"))
     accepted_threads: dict[str, dict[str, Any]] = {}
     for item in payload.get("accepted_threads") or []:
@@ -459,6 +466,8 @@ def load_reconciliation_input(path: Path | None) -> dict[str, Any]:
         }
 
     return {
+        "pre_push_head_sha": pre_push_head_sha,
+        "post_push_head_sha": post_push_head_sha,
         "default_validation_commands": default_validation_commands,
         "accepted_threads": accepted_threads,
     }
@@ -545,7 +554,7 @@ def build_outdated_recheck(
     elif not validation_commands:
         verdict = "ambiguous"
         verdict_reason = "missing_validation_provenance"
-    elif area not in {"docs", "runtime", "tests"}:
+    elif area not in {"docs", "runtime", "tests"} and not request_anchor_visible:
         verdict = "ambiguous"
         verdict_reason = "unsupported_area_for_auto_resolve"
     elif not bool(file_context.get("path_exists")):
@@ -589,6 +598,87 @@ def build_outdated_recheck(
             "area": area,
             "snippet": file_context.get("snippet"),
             "diff_snippet": file_context.get("diff_snippet"),
+            "evidence_visible": current_head_visible,
+            "request_anchor_visible": request_anchor_visible,
+            "exact_request_anchors": exact_anchors,
+            "matched_exact_request_anchors": matched_exact_anchors,
+            "matched_request_terms": matched_terms,
+        },
+        "resolution_verdict": verdict,
+        "verdict_reason": verdict_reason,
+        "auto_resolution_candidate": verdict == "auto-accept",
+    }
+
+
+def build_accepted_recheck(
+    *,
+    thread: dict[str, Any],
+    previous_thread: dict[str, Any] | None,
+    file_context: dict[str, Any],
+    area: str,
+    accepted_thread: dict[str, Any] | None,
+    pre_push_head_sha: str | None,
+    post_push_head_sha: str | None,
+    post_push_diff_snippet: str | None,
+) -> dict[str, Any]:
+    validation_commands = list(accepted_thread.get("validation_commands") or []) if accepted_thread else []
+    delta_range_available = bool(pre_push_head_sha and post_push_head_sha)
+    delta_range_changed = bool(delta_range_available and pre_push_head_sha != post_push_head_sha)
+    current_head_visible = diff_hunk_covers_thread_location(
+        post_push_diff_snippet,
+        previous_thread=previous_thread or thread,
+        current_thread=thread,
+    )
+    reviewer_body = str((thread.get("reviewer_comment") or {}).get("body") or "").strip()
+    request_anchor_visible, exact_anchors, matched_exact_anchors, matched_terms = request_anchor_evidence(
+        reviewer_body,
+        snippet=file_context.get("snippet"),
+        diff_snippet=post_push_diff_snippet,
+    )
+
+    if accepted_thread is None:
+        verdict = "still-applies"
+        verdict_reason = "thread_was_not_accepted_before_push"
+    elif not validation_commands:
+        verdict = "ambiguous"
+        verdict_reason = "missing_validation_provenance"
+    elif not delta_range_available:
+        verdict = "ambiguous"
+        verdict_reason = "missing_post_push_revision_range"
+    elif not delta_range_changed:
+        verdict = "still-applies"
+        verdict_reason = "missing_post_push_delta"
+    elif area not in {"docs", "runtime", "tests"} and not request_anchor_visible:
+        verdict = "ambiguous"
+        verdict_reason = "unsupported_area_for_auto_resolve"
+    elif not bool(file_context.get("path_exists")):
+        verdict = "ambiguous"
+        verdict_reason = "path_missing_in_current_head"
+    elif not current_head_visible:
+        verdict = "still-applies"
+        verdict_reason = "missing_post_push_delta_evidence"
+    else:
+        verdict = "auto-accept"
+        verdict_reason = "accepted_same_run_with_post_push_delta_evidence"
+
+    return {
+        "same_run_acceptance": {
+            "accepted_in_previous_plan": accepted_thread is not None,
+        },
+        "validation_provenance": {
+            "commands": validation_commands,
+        },
+        "current_head_evidence": {
+            "path": str(thread.get("path") or ""),
+            "line": thread.get("line"),
+            "original_line": thread.get("original_line"),
+            "path_exists": bool(file_context.get("path_exists")),
+            "area": area,
+            "snippet": file_context.get("snippet"),
+            "diff_snippet": post_push_diff_snippet,
+            "evidence_kind": "post_push_delta",
+            "pre_push_head_sha": pre_push_head_sha,
+            "post_push_head_sha": post_push_head_sha,
             "evidence_visible": current_head_visible,
             "request_anchor_visible": request_anchor_visible,
             "exact_request_anchors": exact_anchors,
@@ -837,30 +927,10 @@ def apply_override_adjustment(
     return review_mode, adjustments
 
 
-def maybe_apply_delegation_savings_floor(
-    review_mode: str,
-    packet_metrics: dict[str, Any],
-    adjustments: list[str],
-) -> tuple[str, list[str]]:
-    estimated_savings = int(packet_metrics.get("estimated_delegation_savings", 0) or 0)
-    if (
-        review_mode == "local-only"
-        and estimated_savings >= DELEGATION_SAVINGS_FLOOR
-        and "delegation_savings_floor" not in adjustments
-    ):
-        return "targeted-delegation", [*adjustments, "delegation_savings_floor"]
-    return review_mode, adjustments
-
-
 def recommended_worker_minimum(
     review_mode: str,
     review_mode_adjustments: list[str],
 ) -> int:
-    if (
-        review_mode == "targeted-delegation"
-        and "delegation_savings_floor" in review_mode_adjustments
-    ):
-        return 2
     return 0
 
 
@@ -995,7 +1065,6 @@ def main() -> int:
             "Do not claim config, workflow, or public-interface changes are low risk without checking the files.",
         ],
         "context_fingerprint": context_fingerprint(context),
-        "review_mode_overrides": override_signals,
         "managed_reply_markers": {
             "ack": "<!-- codex:review-thread v1 phase=ack thread=<thread-id> -->",
             "complete": "<!-- codex:review-thread v1 phase=complete thread=<thread-id> -->",
@@ -1035,7 +1104,7 @@ def main() -> int:
     batch_files: list[str] = []
     thread_files: list[str] = []
     marker_conflicts: list[dict[str, Any]] = []
-    diff_cache: dict[str, str | None] = {}
+    diff_cache: dict[DiffCacheKey, str | None] = {}
     packet_quality_records: list[dict[str, Any]] = []
     runtime_payloads: dict[str, Any] = {}
     previous_threads = previous_thread_lookup(previous_context)
@@ -1203,8 +1272,27 @@ def main() -> int:
             "reply_update_basis_policy": "Advisory only; record explicit allowed reread reasons or stops before leaving the packet-first path.",
         }
         previous_thread = previous_threads.get(str(thread["thread_id"]))
+        accepted_thread = reconciliation_input["accepted_threads"].get(str(thread["thread_id"]))
+        if accepted_thread is not None and not bool(thread.get("is_outdated")):
+            post_push_diff_snippet = diff_snippet_for_path(
+                repo_root,
+                reconciliation_input.get("pre_push_head_sha"),
+                reconciliation_input.get("post_push_head_sha"),
+                path,
+                int(line) if line else None,
+                diff_cache,
+            )
+            packet["accepted_recheck"] = build_accepted_recheck(
+                thread=thread,
+                previous_thread=previous_thread,
+                file_context=file_context,
+                area=area,
+                accepted_thread=accepted_thread,
+                pre_push_head_sha=reconciliation_input.get("pre_push_head_sha"),
+                post_push_head_sha=reconciliation_input.get("post_push_head_sha"),
+                post_push_diff_snippet=post_push_diff_snippet,
+            )
         if transitioned_to_outdated(previous_thread, thread):
-            accepted_thread = reconciliation_input["accepted_threads"].get(str(thread["thread_id"]))
             recheck = build_outdated_recheck(
                 thread=thread,
                 previous_thread=previous_thread,
@@ -1327,6 +1415,14 @@ def main() -> int:
         "unresolved_non_outdated": len(unresolved_non_outdated),
         "unresolved_outdated": len(unresolved_outdated),
     }
+    analysis_targets = {
+        "batch_count": len(batch_files),
+        "singleton_count": len(singleton_packets),
+    }
+    thread_batches = {
+        batch_id: [thread_id for thread_id, assigned_batch in thread_to_batch.items() if assigned_batch == batch_id]
+        for batch_id in sorted(set(thread_to_batch.values()))
+    }
     orchestrator = {
         "pr": {
             "number": pr.get("number"),
@@ -1340,8 +1436,6 @@ def main() -> int:
         "repo_profile_path": context.get("repo_profile_path"),
         "repo_profile_summary": context.get("repo_profile_summary"),
         "review_mode": review_mode,
-        "review_mode_baseline": review_mode_baseline,
-        "review_mode_adjustments": review_mode_adjustments,
         "shared_packet": global_packet_name,
         "context_fingerprint": context_fingerprint(context),
         "decision_ready_packets": DECISION_READY_PACKETS,
@@ -1350,24 +1444,9 @@ def main() -> int:
         "common_path_contract": COMMON_PATH_CONTRACT,
         "preferred_worker_families": PREFERRED_WORKER_FAMILIES,
         "packet_worker_map": packet_worker_map,
-        "recommended_worker_count": len(recommended_workers),
-        "optional_worker_count": len(optional_workers),
-        "recommended_workers": recommended_workers,
-        "optional_workers": optional_workers,
         "thread_counts": thread_counts,
-        "active_paths": active_paths,
-        "active_areas": active_areas,
-        "analysis_targets": {
-            "batch_count": len(batch_files),
-            "singleton_count": len(singleton_packets),
-        },
-        "review_mode_overrides": override_signals,
         "marker_conflict_summary": marker_conflict_summary(unresolved_threads),
         "same_run_reconciliation": global_packet["same_run_reconciliation"],
-        "thread_batches": {
-            batch_id: [thread_id for thread_id, assigned_batch in thread_to_batch.items() if assigned_batch == batch_id]
-            for batch_id in sorted(set(thread_to_batch.values()))
-        },
         "local_responsibilities": [
             "Decide accept, reject, defer, or defer-outdated locally for each unresolved thread.",
             "Draft final acknowledgement and completion replies locally.",
@@ -1403,46 +1482,6 @@ def main() -> int:
             "override_signals": override_signals,
         },
     )
-    review_mode, review_mode_adjustments = maybe_apply_delegation_savings_floor(
-        review_mode,
-        packet_metrics,
-        review_mode_adjustments,
-    )
-    recommended_workers = derive_recommended_workers(
-        review_mode=review_mode,
-        global_packet_name=global_packet_name,
-        analysis_packet_names=batch_files + singleton_packets,
-        packet_worker_map=packet_worker_map,
-        minimum_count=recommended_worker_minimum(
-            review_mode,
-            review_mode_adjustments,
-        ),
-    )
-    optional_workers = derive_optional_workers(
-        review_mode=review_mode,
-        global_packet_name=global_packet_name,
-        optional_qa_packets=(batch_files + singleton_packets)[:6],
-    )
-    orchestrator["review_mode"] = review_mode
-    orchestrator["review_mode_baseline"] = review_mode_baseline
-    orchestrator["review_mode_adjustments"] = review_mode_adjustments
-    orchestrator["recommended_worker_count"] = len(recommended_workers)
-    orchestrator["optional_worker_count"] = len(optional_workers)
-    orchestrator["recommended_workers"] = recommended_workers
-    orchestrator["optional_workers"] = optional_workers
-    runtime_payloads["orchestrator.json"] = orchestrator
-    write_json(output_dir / "orchestrator.json", orchestrator)
-    packet_metrics = compute_packet_metrics(
-        runtime_payloads,
-        common_path_packet_names=common_path_packet_names,
-        local_only_sources={
-            "context": context,
-            "threads": unresolved_threads,
-            "pr": pr,
-            "changed_files": changed_files,
-            "override_signals": override_signals,
-        },
-    )
     packet_metrics_path = output_dir / "packet_metrics.json"
     write_json(packet_metrics_path, packet_metrics)
 
@@ -1455,7 +1494,11 @@ def main() -> int:
         thread_batch_count=len(batch_files),
         singleton_thread_packet_count=len(thread_files),
         active_paths=active_paths,
+        active_areas=active_areas,
+        analysis_targets=analysis_targets,
+        thread_batches=thread_batches,
         override_signals=override_signals,
+        delegation_non_use_cases=DELEGATION_NON_USE_CASES,
         common_path_sufficient=common_path_sufficient,
         common_path_failures=common_path_failures,
         thread_counts=thread_counts,

@@ -33,6 +33,19 @@ def parse_args() -> argparse.Namespace:
     record_plan.add_argument("--phase", choices=["ack", "complete"], required=True)
     record_plan.add_argument("--validated-plan", type=Path, required=True)
 
+    record_apply = subparsers.add_parser(
+        "record-apply",
+        help="Copy a phase apply result into the run manifest and advance the state machine.",
+    )
+    record_apply.add_argument("--manifest", type=Path, required=True)
+    record_apply.add_argument("--phase", choices=["ack", "complete"], required=True)
+    record_apply.add_argument("--result", type=Path, required=True)
+    record_apply.add_argument(
+        "--allow-dry-run",
+        action="store_true",
+        help="Allow dry-run apply results for smoke or synthetic verification without live mutations.",
+    )
+
     record_validation = subparsers.add_parser(
         "record-validation",
         help="Store the validation commands that should feed same-run post-push reconciliation.",
@@ -103,13 +116,33 @@ def main() -> int:
         print_json(manifest)
         return 0
 
+    if action == "record-apply":
+        manifest_path = args.manifest.resolve()
+        manifest = run_support.load_manifest(manifest_path)
+        required_state = {"ack-validated"} if args.phase == "ack" else {"complete-validated"}
+        run_support.require_last_completed_phase(
+            manifest,
+            action_label=f"record-apply --phase {args.phase}",
+            allowed=required_state,
+        )
+        run_support.copy_apply_result_into_manifest(
+            manifest,
+            phase=str(args.phase),
+            source_path=args.result.resolve(),
+            allow_dry_run=bool(args.allow_dry_run),
+        )
+        run_support.write_manifest(manifest_path, manifest)
+        run_support.write_latest_pointer(Path(manifest["repo_root"]), manifest)
+        print_json(manifest)
+        return 0
+
     if action == "record-validation":
         manifest_path = args.manifest.resolve()
         manifest = run_support.load_manifest(manifest_path)
         run_support.require_last_completed_phase(
             manifest,
             action_label="record-validation",
-            allowed={"ack-validated"},
+            allowed={"ack-applied"},
         )
         run_support.set_validation_commands(manifest, list(args.validation_commands or []))
         run_support.write_manifest(manifest_path, manifest)
@@ -132,7 +165,7 @@ def main() -> int:
         run_support.require_last_completed_phase(
             manifest,
             action_label="post-push",
-            allowed={"ack-validated"},
+            allowed={"ack-applied"},
         )
         run_support.require_post_push_validation_provenance(manifest)
         run_support.copy_context_into_manifest(

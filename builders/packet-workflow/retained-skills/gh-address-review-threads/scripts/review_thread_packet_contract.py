@@ -14,7 +14,6 @@ DECISION_READY_PACKETS = False
 WORKER_RETURN_CONTRACT = "generic"
 WORKER_OUTPUT_SHAPE = "flat"
 XHIGH_REREAD_POLICY = "packet-first local adjudication with raw rereads only for explicit exception reasons"
-DELEGATION_SAVINGS_FLOOR = 250
 
 LOCAL_THREAD_LIMIT = 1
 TARGETED_THREAD_LIMIT = 4
@@ -28,6 +27,18 @@ PREFERRED_WORKER_FAMILIES = {
     "context_findings": ["packet_explorer"],
     "candidate_producers": [],
     "verifiers": [],
+}
+
+DELEGATION_NON_USE_CASES = {
+    "runtime_routing_authority": "packet_worker_map",
+    "record_only": [
+        "review_mode_local_only",
+        "code_change_guardrail_blockers",
+        "broad_or_cross_cutting_fix_kept_local",
+        "validation_path_unclear",
+        "optional_qa_not_requested",
+    ],
+    "fatal": [],
 }
 
 ALLOWED_REREAD_REASONS = [
@@ -53,7 +64,7 @@ COMMON_PATH_CONTRACT = {
     "allowed_reread_reasons": ALLOWED_REREAD_REASONS,
     "sufficiency_requirements": COMMON_PATH_SUFFICIENCY_REQUIREMENTS,
     "quality_escape_hints_policy": "advisory-only",
-    "override_policy": "review_mode_overrides may widen worker recommendation but must not upgrade missing evidence or ownership ambiguity into common_path_sufficient=true",
+    "override_policy": "build-result override_signals may widen the recommended review mode, but they must not upgrade missing evidence or ownership ambiguity into common_path_sufficient=true",
 }
 
 PACKET_METRIC_FIELDS = [
@@ -220,7 +231,11 @@ def build_result_payload(
     thread_batch_count: int,
     singleton_thread_packet_count: int,
     active_paths: list[str],
+    active_areas: list[str],
+    analysis_targets: dict[str, int],
+    thread_batches: dict[str, list[str]],
     override_signals: list[dict[str, str]],
+    delegation_non_use_cases: dict[str, Any],
     common_path_sufficient: bool,
     common_path_failures: list[dict[str, Any]],
     thread_counts: dict[str, Any],
@@ -236,11 +251,16 @@ def build_result_payload(
         "review_mode_adjustments": review_mode_adjustments,
         "recommended_worker_count": len(recommended_workers),
         "recommended_workers": recommended_workers,
+        "optional_worker_count": len(optional_workers),
         "optional_workers": optional_workers,
         "thread_batch_count": thread_batch_count,
         "singleton_thread_packet_count": singleton_thread_packet_count,
         "active_paths": active_paths,
+        "active_areas": active_areas,
+        "analysis_targets": analysis_targets,
+        "thread_batches": thread_batches,
         "override_signals": override_signals,
+        "delegation_non_use_cases": delegation_non_use_cases,
         "common_path_sufficient": common_path_sufficient,
         "common_path_failures": common_path_failures,
         "thread_counts": thread_counts,

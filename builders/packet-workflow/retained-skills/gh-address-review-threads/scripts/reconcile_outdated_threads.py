@@ -37,6 +37,26 @@ def packet_lookup(packet_dir: Path) -> dict[str, dict[str, Any]]:
     return lookup
 
 
+def load_reconciliation_input(path: Path | None) -> dict[str, dict[str, Any]]:
+    if path is None:
+        return {}
+    payload = load_json(path)
+    if not isinstance(payload, dict):
+        raise RuntimeError("reconciliation input must be a JSON object")
+    accepted_lookup: dict[str, dict[str, Any]] = {}
+    for item in payload.get("accepted_threads") or []:
+        if not isinstance(item, dict):
+            raise RuntimeError("accepted_threads entries must be JSON objects")
+        thread_id = str(item.get("thread_id") or "").strip()
+        if not thread_id:
+            raise RuntimeError("accepted_threads entries must include thread_id")
+        accepted_lookup[thread_id] = {
+            "thread_id": thread_id,
+            "validation_commands": [str(command).strip() for command in item.get("validation_commands") or [] if str(command).strip()],
+        }
+    return accepted_lookup
+
+
 def format_validation(commands: list[str]) -> str | None:
     normalized = [str(command).strip() for command in commands if str(command).strip()]
     if not normalized:
@@ -62,6 +82,20 @@ def completion_body(packet: dict[str, Any]) -> str:
     return f"{first_sentence} Validation: {validation_text}."
 
 
+def accepted_completion_body(*, packet: dict[str, Any], validation_commands: list[str]) -> str:
+    thread = packet.get("thread") or {}
+    file_context = packet.get("file_context") or {}
+    path = str(file_context.get("path") or thread.get("path") or "").strip()
+    area = str(file_context.get("area") or "").strip()
+    request_phrase = "requested wording change" if area == "docs" else "requested change"
+    target = f" `{path}`" if path else ""
+    first_sentence = f"Updated{target} to address the {request_phrase} on the current HEAD."
+    validation_text = format_validation(validation_commands)
+    if not validation_text:
+        return first_sentence
+    return f"{first_sentence} Validation: {validation_text}."
+
+
 def complete_reply_action(packet: dict[str, Any]) -> dict[str, Any]:
     complete_basis = ((packet.get("reply_update_basis") or {}).get("complete") or {})
     mode = str(complete_basis.get("mode") or "").strip()
@@ -74,10 +108,36 @@ def complete_reply_action(packet: dict[str, Any]) -> dict[str, Any]:
     return {"complete_mode": "add"}
 
 
-def decision_for_thread(thread: dict[str, Any], packet: dict[str, Any]) -> tuple[dict[str, Any], dict[str, Any] | None]:
+def decision_for_thread(
+    thread: dict[str, Any],
+    packet: dict[str, Any],
+    *,
+    accepted_thread: dict[str, Any] | None,
+) -> tuple[dict[str, Any], dict[str, Any] | None]:
     thread_id = str(thread.get("thread_id") or "").strip()
     if not thread_id:
         raise RuntimeError("thread packet is missing thread_id")
+
+    validation_commands = list((accepted_thread or {}).get("validation_commands") or [])
+    if accepted_thread is not None and not bool(thread.get("is_outdated")):
+        recheck = packet.get("accepted_recheck") or {}
+        verdict = str(recheck.get("resolution_verdict") or "").strip()
+        if not validation_commands or verdict != "auto-accept":
+            return {
+                "thread_id": thread_id,
+                "decision": "defer",
+                "complete_mode": "skip",
+                "resolve_after_complete": False,
+            }, None
+        action = {
+            "thread_id": thread_id,
+            "decision": "accept",
+            **complete_reply_action(packet),
+            "complete_body": accepted_completion_body(packet=packet, validation_commands=validation_commands),
+            "resolve_after_complete": True,
+        }
+        return action, None
+
     decision = "defer-outdated" if bool(thread.get("is_outdated")) else "defer"
     action: dict[str, Any] = {
         "thread_id": thread_id,
@@ -119,11 +179,17 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--context", type=Path, required=True, help="Path to post-push review-thread context JSON.")
     parser.add_argument("--packet-dir", type=Path, required=True, help="Directory containing thread packet JSON files.")
+    parser.add_argument(
+        "--reconciliation-input",
+        type=Path,
+        help="Optional reconciliation-input.json from manage_review_thread_run.py post-push.",
+    )
     parser.add_argument("--output", type=Path, help="Optional path to write the raw complete-phase plan JSON.")
     args = parser.parse_args()
 
     context = load_json(args.context)
     packets_by_thread = packet_lookup(args.packet_dir)
+    accepted_lookup = load_reconciliation_input(args.reconciliation_input)
     thread_actions: list[dict[str, Any]] = []
     candidates: list[dict[str, Any]] = []
 
@@ -136,7 +202,11 @@ def main() -> int:
         packet = packets_by_thread.get(thread_id)
         if packet is None:
             raise RuntimeError(f"missing thread packet for {thread_id}")
-        action, candidate = decision_for_thread(thread, packet)
+        action, candidate = decision_for_thread(
+            thread,
+            packet,
+            accepted_thread=accepted_lookup.get(thread_id),
+        )
         thread_actions.append(action)
         if candidate is not None:
             candidates.append(candidate)

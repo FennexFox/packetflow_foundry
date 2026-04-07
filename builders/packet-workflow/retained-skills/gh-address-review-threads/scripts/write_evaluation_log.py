@@ -544,6 +544,8 @@ def build_base_log(
             "collector_seconds": None,
             "linter_seconds": None,
             "packet_builder_seconds": None,
+            "packet_builder_seconds_pre": None,
+            "packet_builder_seconds_post": None,
             "model_seconds": None,
             "validator_seconds": None,
             "apply_seconds": None,
@@ -593,19 +595,35 @@ def build_base_log(
     }
 
 
-def update_latency(log: dict[str, Any], phase: str, duration: float | None) -> None:
+def build_phase_label_key(phase_label: str | None) -> str | None:
+    if not phase_label:
+        return None
+    normalized = slugify(phase_label).replace("-", "_")
+    return f"packet_builder_seconds_{normalized}" if normalized else None
+
+
+def update_latency(log: dict[str, Any], phase: str, duration: float | None, *, phase_label: str | None = None) -> None:
     if duration is None:
         return
+    latency = log.setdefault("latency", {})
+    measurement = log.setdefault("measurement", {})
+    if phase == "build":
+        accumulated = (safe_float(latency.get("packet_builder_seconds")) or 0.0) + duration
+        latency["packet_builder_seconds"] = round(accumulated, 3)
+        labeled_key = build_phase_label_key(phase_label)
+        if labeled_key:
+            latency[labeled_key] = round(duration, 3)
+        measurement["latency_source"] = "measured"
+        return
     mapping = {
-        "build": "packet_builder_seconds",
         "lint": "linter_seconds",
         "validate": "validator_seconds",
         "apply": "apply_seconds",
     }
     key = mapping.get(phase)
     if key:
-        log.setdefault("latency", {})[key] = round(duration, 3)
-        log.setdefault("measurement", {})["latency_source"] = "measured"
+        latency[key] = round(duration, 3)
+        measurement["latency_source"] = "measured"
 
 
 def bool_score(value: bool | None, true_score: float = 1.0, false_score: float = 0.0) -> float | None:
@@ -748,13 +766,50 @@ def compute_scores(log: dict[str, Any]) -> None:
     log["scoring"]["overall_score"] = overall
 
 
-def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], duration: float | None) -> None:
-    update_latency(log, phase, duration)
+def build_phase_snapshot(result: dict[str, Any]) -> dict[str, Any]:
+    packet_metrics = load_packet_metrics_from_build_result(result)
+    thread_counts = result.get("thread_counts") or {}
+    snapshot: dict[str, Any] = {
+        "review_mode": result.get("review_mode"),
+        "review_mode_baseline": result.get("review_mode_baseline"),
+        "review_mode_adjustments": list_of_strings(result.get("review_mode_adjustments")),
+        "recommended_worker_count": safe_int(result.get("recommended_worker_count")),
+        "common_path_sufficient": to_bool(result.get("common_path_sufficient")),
+        "thread_batch_count": safe_int(result.get("thread_batch_count")),
+        "singleton_thread_packet_count": safe_int(result.get("singleton_thread_packet_count")),
+        "unresolved_threads": safe_int(thread_counts.get("unresolved")),
+        "unresolved_outdated_threads": safe_int(thread_counts.get("unresolved_outdated")),
+        "outdated_transition_candidates": safe_int(result.get("outdated_transition_candidates")),
+        "outdated_auto_resolve_candidates": safe_int(result.get("outdated_auto_resolve_candidates")),
+        "outdated_recheck_ambiguous": safe_int(result.get("outdated_recheck_ambiguous")),
+        "packet_count": safe_int(packet_metrics.get("packet_count")),
+        "estimated_local_only_tokens": safe_int(packet_metrics.get("estimated_local_only_tokens")),
+        "estimated_packet_tokens": safe_int(packet_metrics.get("estimated_packet_tokens")),
+        "estimated_delegation_savings": safe_int(packet_metrics.get("estimated_delegation_savings")),
+    }
+    return {key: value for key, value in snapshot.items() if value is not None and value != []}
+
+
+def apply_phase_update(
+    log: dict[str, Any],
+    phase: str,
+    result: dict[str, Any],
+    duration: float | None,
+    *,
+    phase_label: str | None = None,
+) -> None:
+    update_latency(log, phase, duration, phase_label=phase_label)
     if phase == "build":
+        input_size = log.setdefault("input_size", {})
         orchestration = log.setdefault("orchestration", {})
         baseline = log.setdefault("baseline", {})
         measurement = log.setdefault("measurement", {})
         skill_data = log.setdefault("skill_specific", {}).setdefault("data", {})
+        if phase_label:
+            build_phases = skill_data.setdefault("build_phases", {})
+            if isinstance(build_phases, dict):
+                build_phases[str(phase_label)] = build_phase_snapshot(result)
+        skill_data["build_phase_count"] = (safe_int(skill_data.get("build_phase_count")) or 0) + 1
         if result.get("review_mode"):
             orchestration["review_mode"] = result.get("review_mode")
         if result.get("review_mode_baseline"):
@@ -801,9 +856,13 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
         batch_count = safe_int(result.get("thread_batch_count"))
         if batch_count is not None:
             skill_data["thread_batch_count"] = batch_count
+            input_size["candidate_batches"] = batch_count
         singleton_count = safe_int(result.get("singleton_thread_packet_count"))
         if singleton_count is not None:
             skill_data["singleton_thread_packet_count"] = singleton_count
+        active_areas = result.get("active_areas")
+        if isinstance(active_areas, list):
+            input_size["active_areas"] = len([item for item in active_areas if str(item).strip()])
         outdated_transition_candidates = safe_int(result.get("outdated_transition_candidates"))
         if outdated_transition_candidates is not None:
             skill_data["outdated_transition_candidates"] = outdated_transition_candidates
@@ -1079,6 +1138,10 @@ def parse_args() -> argparse.Namespace:
     )
     phase_parser.add_argument("--result", required=True, help="Path to the phase result JSON.")
     phase_parser.add_argument("--duration-seconds", type=float, help="Optional measured duration.")
+    phase_parser.add_argument(
+        "--phase-label",
+        help="Optional subphase label such as `pre` or `post` when a phase is merged more than once.",
+    )
 
     finalize_parser = subparsers.add_parser("finalize", help="Merge final agent observations and score the log.")
     finalize_parser.add_argument("--log", required=True, help="Path to the existing evaluation log.")
@@ -1119,7 +1182,7 @@ def main() -> int:
         log_path = Path(args.log).resolve()
         payload = load_json(log_path)
         result = load_json(Path(args.result))
-        apply_phase_update(payload, args.phase, result, args.duration_seconds)
+        apply_phase_update(payload, args.phase, result, args.duration_seconds, phase_label=args.phase_label)
         compute_scores(payload)
         write_json(log_path, payload)
         print_summary(log_path, payload)

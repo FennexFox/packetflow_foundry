@@ -19,7 +19,6 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-import review_thread_run as run_support
 from thread_action_contract import build_context_fingerprint
 
 
@@ -63,6 +62,7 @@ def run_process(args: list[str], *, cwd: Path) -> subprocess.CompletedProcess[st
             command,
             cwd=str(cwd),
             env=env,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="replace",
@@ -91,6 +91,7 @@ def run_git(repo_root: Path, *args: str) -> str:
     result = subprocess.run(
         ["git", *args],
         cwd=str(repo_root),
+        stdin=subprocess.DEVNULL,
         text=True,
         encoding="utf-8",
         errors="replace",
@@ -109,6 +110,10 @@ def read_json(path: Path) -> dict[str, Any]:
 def write_json(path: Path, payload: dict[str, Any]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+
+
+def synthetic_post_push_plan_path(temp_dir: Path) -> Path:
+    return temp_dir / "synthetic-post-push.json"
 
 
 def synthetic_pr_body() -> str:
@@ -200,10 +205,22 @@ def build_synthetic_context(temp_dir: Path) -> tuple[Path, Path, Path, list[str]
     run_git(repo_root, "add", ".")
     run_git(repo_root, "commit", "--no-gpg-sign", "-m", "fix(repo): seed synthetic review context")
     run_git(repo_root, "checkout", "-b", "feature/packets")
-    (repo_root / "src" / "helper.py").write_text("alpha\nbeta updated\ngamma\n", encoding="utf-8")
-    (repo_root / "docs" / "guide.md").write_text("# Guide\nCurrent wording\n", encoding="utf-8")
-    run_git(repo_root, "add", "src/helper.py", "docs/guide.md")
-    run_git(repo_root, "commit", "--no-gpg-sign", "-m", "fix(app): apply accepted review changes")
+    write_json(
+        synthetic_post_push_plan_path(temp_dir),
+        {
+            "commit_message": "fix(app): apply accepted review changes",
+            "files": [
+                {
+                    "path": "src/helper.py",
+                    "content": "alpha\nbeta updated\ngamma\n",
+                },
+                {
+                    "path": "docs/guide.md",
+                    "content": "# Guide\nCurrent wording\n",
+                },
+            ],
+        },
+    )
 
     base_context = {
         "repo_root": str(repo_root),
@@ -287,8 +304,39 @@ def build_synthetic_context(temp_dir: Path) -> tuple[Path, Path, Path, list[str]
         repo_root,
         previous_context_path,
         context_path,
-        ["t-1"],
+        ["t-1", "t-2"],
         ["python -m pytest tests/test_docs.py"],
+    )
+
+
+def apply_synthetic_post_push_updates(repo_root: Path, temp_dir: Path) -> None:
+    plan_path = synthetic_post_push_plan_path(temp_dir)
+    if not plan_path.is_file():
+        return
+    payload = read_json(plan_path)
+    files = payload.get("files")
+    if not isinstance(files, list) or not files:
+        return
+    staged_paths: list[str] = []
+    for entry in files:
+        if not isinstance(entry, dict):
+            continue
+        relative_path = str(entry.get("path") or "").strip()
+        if not relative_path:
+            continue
+        target = repo_root / relative_path
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(str(entry.get("content") or ""), encoding="utf-8")
+        staged_paths.append(relative_path)
+    if not staged_paths:
+        return
+    run_git(repo_root, "add", *staged_paths)
+    run_git(
+        repo_root,
+        "commit",
+        "--no-gpg-sign",
+        "-m",
+        str(payload.get("commit_message") or "fix(smoke): apply synthetic post-push updates"),
     )
 
 
@@ -332,39 +380,104 @@ def summary(status: str, reason: str | None, thread_counts: dict[str, int], next
     return payload
 
 
-def build_safe_plan(context: dict[str, Any], *, phase: str) -> dict[str, Any]:
+def manage_run(args: list[str], *, cwd: Path) -> dict[str, Any]:
+    return run_json([str(script_path("manage_review_thread_run.py")), *args], cwd=cwd)
+
+
+def minimal_final_payload(*, apply_result: dict[str, Any]) -> dict[str, Any]:
+    dry_run = bool(apply_result.get("dry_run"))
+    applied = apply_result.get("apply_succeeded")
+    if dry_run:
+        status = "dry-run"
+        usable = True
+        human_edit_required = False
+        severity = "none"
+    elif applied is True:
+        status = "completed"
+        usable = True
+        human_edit_required = False
+        severity = "none"
+    elif apply_result.get("stop_reasons"):
+        status = "stopped"
+        usable = False
+        human_edit_required = True
+        severity = "high"
+    else:
+        status = "failed"
+        usable = False
+        human_edit_required = True
+        severity = "high"
+    return {
+        "quality": {
+            "result_status": status,
+            "first_pass_usable": usable,
+            "human_post_edit_required": human_edit_required,
+            "human_post_edit_severity": severity,
+            "final_output_changed_after_review": False,
+        }
+    }
+
+
+def build_safe_plan(
+    context: dict[str, Any],
+    *,
+    phase: str,
+    accepted_thread_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    accepted = {thread_id for thread_id in accepted_thread_ids or [] if thread_id}
     actions = []
     for thread in context.get("threads", []):
         if thread.get("is_resolved"):
             continue
-        decision = "defer-outdated" if thread.get("is_outdated") else "defer"
-        action = {
-            "thread_id": thread.get("thread_id"),
-            "decision": decision,
-        }
+        thread_id = str(thread.get("thread_id") or "").strip()
+        if not thread_id:
+            continue
+        is_accepted = phase == "ack" and thread_id in accepted
         if phase == "ack":
-            action["ack_mode"] = "skip"
+            action = {
+                "thread_id": thread_id,
+                "decision": "accept" if is_accepted else ("defer-outdated" if thread.get("is_outdated") else "defer"),
+                "ack_mode": "add" if is_accepted else "skip",
+            }
+            if is_accepted:
+                action["ack_body"] = (
+                    "Dry-run smoke: this accepted thread would be addressed before post-push reconciliation."
+                )
         else:
-            action["complete_mode"] = "skip"
-            action["resolve_after_complete"] = False
+            action = {
+                "thread_id": thread_id,
+                "decision": "defer-outdated" if thread.get("is_outdated") else "defer",
+                "complete_mode": "skip",
+                "resolve_after_complete": False,
+            }
         actions.append(action)
-    return {"thread_actions": actions}
+    return {
+        "context_fingerprint": build_context_fingerprint(context),
+        "thread_actions": actions,
+    }
 
 
-def merge_eval_phase(log_path: Path, phase: str, result_path: Path, *, cwd: Path) -> None:
-    run_script(
-        [
-            str(script_path("write_evaluation_log.py")),
-            "phase",
-            "--log",
-            str(log_path),
-            "--phase",
-            phase,
-            "--result",
-            str(result_path),
-        ],
-        cwd=cwd,
-    )
+def merge_eval_phase(
+    log_path: Path,
+    phase: str,
+    result_path: Path,
+    *,
+    cwd: Path,
+    phase_label: str | None = None,
+) -> None:
+    args = [
+        str(script_path("write_evaluation_log.py")),
+        "phase",
+        "--log",
+        str(log_path),
+        "--phase",
+        phase,
+        "--result",
+        str(result_path),
+    ]
+    if phase_label:
+        args.extend(["--phase-label", phase_label])
+    run_script(args, cwd=cwd)
 
 
 def run_smoke_workflow(
@@ -376,35 +489,22 @@ def run_smoke_workflow(
     accepted_thread_ids: list[str] | None = None,
     validation_commands: list[str] | None = None,
 ) -> dict[str, Any]:
-    manifest = run_support.create_run(
-        repo_root,
-        previous_context_path or context_path,
-        evaluation_log_path=temp_dir / "eval-log.json",
+    manifest = manage_run(
+        [
+            "start",
+            "--repo-root",
+            str(repo_root),
+            "--context",
+            str(previous_context_path or context_path),
+            "--eval-log",
+            str(temp_dir / "eval-log.json"),
+        ],
+        cwd=repo_root,
     )
     manifest_path = Path(manifest["paths"]["manifest"])
-    if validation_commands:
-        run_support.set_validation_commands(manifest, validation_commands)
-    if accepted_thread_ids:
-        run_support.set_accepted_threads(manifest, accepted_thread_ids)
-
-    if previous_context_path is not None:
-        run_support.copy_context_into_manifest(
-            manifest,
-            phase="post",
-            source_path=context_path,
-        )
-        run_support.write_reconciliation_input(manifest)
-        build_context_path = Path(manifest["paths"]["post"]["context"])
-        packet_dir = Path(manifest["paths"]["post"]["packet_dir"])
-        build_result_path = Path(manifest["paths"]["post"]["build_result"])
-        reconciliation_input_path = Path(manifest["paths"]["post"]["reconciliation_input"])
-        previous_context_path = Path(manifest["paths"]["pre"]["context"])
-    else:
-        build_context_path = Path(manifest["paths"]["pre"]["context"])
-        packet_dir = Path(manifest["paths"]["pre"]["packet_dir"])
-        build_result_path = Path(manifest["paths"]["pre"]["build_result"])
-        reconciliation_input_path = None
-
+    pre_context_path = Path(manifest["paths"]["pre"]["context"])
+    pre_packet_dir = Path(manifest["paths"]["pre"]["packet_dir"])
+    pre_build_result_path = Path(manifest["paths"]["pre"]["build_result"])
     ack_plan_path = Path(manifest["paths"]["ack"]["raw_plan"])
     ack_validation_path = Path(manifest["paths"]["ack"]["validated_plan"])
     ack_result_path = Path(manifest["paths"]["ack"]["result"])
@@ -412,85 +512,91 @@ def run_smoke_workflow(
     complete_validation_path = Path(manifest["paths"]["complete"]["validated_plan"])
     complete_result_path = Path(manifest["paths"]["complete"]["result"])
     eval_log_path = Path(manifest["paths"]["evaluation_log"])
+    final_eval_path = Path(manifest["paths"]["evaluation"]["final"])
 
-    run_support.write_manifest(manifest_path, manifest)
-    run_support.write_latest_pointer(repo_root, manifest)
-
-    context = read_json(build_context_path)
-    counts = thread_counts_from_context(context)
+    pre_context = read_json(pre_context_path)
+    counts = thread_counts_from_context(pre_context)
     if counts["unresolved"] == 0:
         return summary(
             "noop",
             "no_unresolved_threads",
             counts,
             "nothing_to_do",
-            pr_url=context.get("pr", {}).get("url"),
+            pr_url=pre_context.get("pr", {}).get("url"),
             run_id=manifest["run_id"],
             run_root=manifest["paths"]["run_root"],
             manifest_path=manifest["paths"]["manifest"],
         )
 
-    build_args = [
-        str(script_path("build_review_packets.py")),
-        "--context",
-        str(build_context_path),
-        "--repo-root",
-        str(repo_root),
-        "--output-dir",
-        str(packet_dir),
-        "--result-output",
-        str(build_result_path),
-    ]
-    if previous_context_path is not None:
-        build_args.extend(["--previous-context", str(previous_context_path)])
-    if reconciliation_input_path is not None:
-        build_args.extend(["--reconciliation-input", str(reconciliation_input_path)])
-    run_script(build_args, cwd=repo_root)
-    build_result = read_json(build_result_path)
-
+    run_script(
+        [
+            str(script_path("build_review_packets.py")),
+            "--context",
+            str(pre_context_path),
+            "--repo-root",
+            str(repo_root),
+            "--output-dir",
+            str(pre_packet_dir),
+            "--result-output",
+            str(pre_build_result_path),
+        ],
+        cwd=repo_root,
+    )
     run_script(
         [
             str(script_path("write_evaluation_log.py")),
             "init",
             "--context",
-            str(context_path),
+            str(pre_context_path),
             "--orchestrator",
-            str(packet_dir / "orchestrator.json"),
+            str(pre_packet_dir / "orchestrator.json"),
             "--output",
             str(eval_log_path),
         ],
         cwd=repo_root,
     )
-    merge_eval_phase(eval_log_path, "build", build_result_path, cwd=repo_root)
+    merge_eval_phase(eval_log_path, "build", pre_build_result_path, cwd=repo_root, phase_label="pre")
 
-    write_json(ack_plan_path, build_safe_plan(context, phase="ack"))
+    write_json(
+        ack_plan_path,
+        build_safe_plan(
+            pre_context,
+            phase="ack",
+            accepted_thread_ids=accepted_thread_ids,
+        ),
+    )
     run_script(
         [
             str(script_path("validate_thread_action_plan.py")),
             "--context",
-            str(context_path),
+            str(pre_context_path),
             "--plan",
             str(ack_plan_path),
-        "--phase",
-        "ack",
-        "--output",
-        str(ack_validation_path),
+            "--phase",
+            "ack",
+            "--output",
+            str(ack_validation_path),
         ],
         cwd=repo_root,
     )
     merge_eval_phase(eval_log_path, "validate", ack_validation_path, cwd=repo_root)
-    run_support.copy_validated_plan_into_manifest(
-        manifest,
-        phase="ack",
-        source_path=ack_validation_path,
+    manage_run(
+        [
+            "record-plan",
+            "--manifest",
+            str(manifest_path),
+            "--phase",
+            "ack",
+            "--validated-plan",
+            str(ack_validation_path),
+        ],
+        cwd=repo_root,
     )
-    run_support.write_manifest(manifest_path, manifest)
-    run_support.write_latest_pointer(repo_root, manifest)
     run_script(
         [
             str(script_path("apply_thread_action_plan.py")),
             "--context",
-            str(build_context_path),
+            str(pre_context_path),
             "--plan",
             str(ack_validation_path),
             "--phase",
@@ -501,15 +607,77 @@ def run_smoke_workflow(
         ],
         cwd=repo_root,
     )
+    manifest = manage_run(
+        [
+            "record-apply",
+            "--manifest",
+            str(manifest_path),
+            "--phase",
+            "ack",
+            "--result",
+            str(ack_result_path),
+            "--allow-dry-run",
+        ],
+        cwd=repo_root,
+    )
     merge_eval_phase(eval_log_path, "apply", ack_result_path, cwd=repo_root)
+
+    if validation_commands:
+        record_validation_args = [
+            "record-validation",
+            "--manifest",
+            str(manifest_path),
+        ]
+        for command in validation_commands:
+            record_validation_args.extend(["--validation-command", command])
+        manifest = manage_run(record_validation_args, cwd=repo_root)
+
+    apply_synthetic_post_push_updates(repo_root, temp_dir)
+    manifest_response = manage_run(
+        [
+            "post-push",
+            "--manifest",
+            str(manifest_path),
+            "--context",
+            str(context_path),
+        ],
+        cwd=repo_root,
+    )
+    manifest = manifest_response["manifest"]
+    post_context_path = Path(manifest["paths"]["post"]["context"])
+    post_packet_dir = Path(manifest["paths"]["post"]["packet_dir"])
+    post_build_result_path = Path(manifest["paths"]["post"]["build_result"])
+    reconciliation_input_path = Path(manifest["paths"]["post"]["reconciliation_input"])
+    run_script(
+        [
+            str(script_path("build_review_packets.py")),
+            "--context",
+            str(post_context_path),
+            "--repo-root",
+            str(repo_root),
+            "--output-dir",
+            str(post_packet_dir),
+            "--result-output",
+            str(post_build_result_path),
+            "--previous-context",
+            str(pre_context_path),
+            "--reconciliation-input",
+            str(reconciliation_input_path),
+        ],
+        cwd=repo_root,
+    )
+    build_result = read_json(post_build_result_path)
+    merge_eval_phase(eval_log_path, "build", post_build_result_path, cwd=repo_root, phase_label="post")
 
     run_script(
         [
             str(script_path("reconcile_outdated_threads.py")),
             "--context",
-            str(build_context_path),
+            str(post_context_path),
             "--packet-dir",
-            str(packet_dir),
+            str(post_packet_dir),
+            "--reconciliation-input",
+            str(reconciliation_input_path),
             "--output",
             str(complete_plan_path),
         ],
@@ -519,7 +687,7 @@ def run_smoke_workflow(
         [
             str(script_path("validate_thread_action_plan.py")),
             "--context",
-            str(build_context_path),
+            str(post_context_path),
             "--plan",
             str(complete_plan_path),
             "--phase",
@@ -529,12 +697,24 @@ def run_smoke_workflow(
         ],
         cwd=repo_root,
     )
+    manage_run(
+        [
+            "record-plan",
+            "--manifest",
+            str(manifest_path),
+            "--phase",
+            "complete",
+            "--validated-plan",
+            str(complete_validation_path),
+        ],
+        cwd=repo_root,
+    )
     merge_eval_phase(eval_log_path, "validate", complete_validation_path, cwd=repo_root)
     run_script(
         [
             str(script_path("apply_thread_action_plan.py")),
             "--context",
-            str(build_context_path),
+            str(post_context_path),
             "--plan",
             str(complete_validation_path),
             "--phase",
@@ -545,20 +725,50 @@ def run_smoke_workflow(
         ],
         cwd=repo_root,
     )
+    manifest = manage_run(
+        [
+            "record-apply",
+            "--manifest",
+            str(manifest_path),
+            "--phase",
+            "complete",
+            "--result",
+            str(complete_result_path),
+            "--allow-dry-run",
+        ],
+        cwd=repo_root,
+    )
     merge_eval_phase(eval_log_path, "apply", complete_result_path, cwd=repo_root)
+    write_json(
+        final_eval_path,
+        minimal_final_payload(apply_result=read_json(complete_result_path)),
+    )
+    run_script(
+        [
+            str(script_path("write_evaluation_log.py")),
+            "finalize",
+            "--log",
+            str(eval_log_path),
+            "--final",
+            str(final_eval_path),
+        ],
+        cwd=repo_root,
+    )
 
-    packet_metrics = read_json(packet_dir / "packet_metrics.json")
+    packet_metrics = read_json(post_packet_dir / "packet_metrics.json")
     complete_result = read_json(complete_result_path)
+    post_context = read_json(post_context_path)
     reconciliation_summary = complete_result.get("reconciliation_summary") or {}
     return summary(
         "ok",
         None,
-        counts,
+        thread_counts_from_context(post_context),
         "review_smoke_results",
-        pr_url=context.get("pr", {}).get("url"),
+        pr_url=post_context.get("pr", {}).get("url"),
         run_id=manifest["run_id"],
         run_root=manifest["paths"]["run_root"],
         manifest_path=manifest["paths"]["manifest"],
+        evaluation_final_path=manifest["paths"]["evaluation"]["final"],
         review_mode=build_result.get("review_mode"),
         common_path_sufficient=build_result.get("common_path_sufficient"),
         estimated_packet_tokens=packet_metrics.get("estimated_packet_tokens"),

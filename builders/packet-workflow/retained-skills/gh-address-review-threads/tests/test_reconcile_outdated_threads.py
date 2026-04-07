@@ -47,7 +47,163 @@ def packet_for_thread(
     return packet
 
 
+def reconciliation_input_payload(*, thread_id: str, validation_commands: list[str]) -> dict[str, object]:
+    return {
+        "accepted_threads": [
+            {
+                "thread_id": thread_id,
+                "validation_commands": validation_commands,
+            }
+        ]
+    }
+
+
 class ReconcileOutdatedThreadsTests(unittest.TestCase):
+    def test_reconcile_accepts_non_outdated_same_run_thread_from_reconciliation_input(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            thread = review_thread(
+                thread_id="t-1",
+                path="src/helper.py",
+                line=2,
+                reviewer_login="reviewer-a",
+                reviewer_body="Please fix the helper branch.",
+                is_outdated=False,
+            )
+            context = context_with_threads(tmp, [thread])
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            context_path = tmp / "context.json"
+            packet_dir = tmp / "packets"
+            output_path = tmp / "plan.json"
+            reconciliation_input_path = tmp / "reconciliation-input.json"
+            packet_dir.mkdir()
+            write_json(context_path, context)
+            packet = packet_for_thread(
+                thread,
+                transitioned_to_outdated=False,
+                resolution_verdict="ambiguous",
+                verdict_reason="not_needed_for_non_outdated_accept",
+                area="runtime",
+                validation_commands=[],
+            )
+            packet["file_context"] = {
+                "path": "src/helper.py",
+                "area": "runtime",
+            }
+            packet["accepted_recheck"] = {
+                "validation_provenance": {"commands": ["python -m pytest tests/test_helper.py"]},
+                "current_head_evidence": {
+                    "path": "src/helper.py",
+                    "area": "runtime",
+                    "path_exists": True,
+                    "evidence_visible": True,
+                    "request_anchor_visible": False,
+                },
+                "resolution_verdict": "auto-accept",
+                "verdict_reason": "accepted_same_run_with_current_head_evidence",
+                "auto_resolution_candidate": True,
+            }
+            write_json(packet_dir / "thread-01.json", packet)
+            write_json(
+                reconciliation_input_path,
+                reconciliation_input_payload(
+                    thread_id="t-1",
+                    validation_commands=["python -m pytest tests/test_helper.py"],
+                ),
+            )
+
+            argv = [
+                "reconcile_outdated_threads.py",
+                "--context",
+                str(context_path),
+                "--packet-dir",
+                str(packet_dir),
+                "--reconciliation-input",
+                str(reconciliation_input_path),
+                "--output",
+                str(output_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                self.assertEqual(reconcile.main(), 0)
+
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+            action = payload["thread_actions"][0]
+            self.assertEqual(action["decision"], "accept")
+            self.assertEqual(action["complete_mode"], "add")
+            self.assertTrue(action["resolve_after_complete"])
+            self.assertIn("Updated `src/helper.py` to address the requested change", action["complete_body"])
+            self.assertIn("Validation: `python -m pytest tests/test_helper.py`.", action["complete_body"])
+            self.assertEqual(payload["reconciliation_summary"]["outdated_transition_candidates"], 0)
+
+    def test_reconcile_keeps_non_outdated_thread_open_without_post_push_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            thread = review_thread(
+                thread_id="t-1",
+                path="src/helper.py",
+                line=2,
+                reviewer_login="reviewer-a",
+                reviewer_body="Please fix the helper branch.",
+                is_outdated=False,
+            )
+            context = context_with_threads(tmp, [thread])
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            context_path = tmp / "context.json"
+            packet_dir = tmp / "packets"
+            output_path = tmp / "plan.json"
+            reconciliation_input_path = tmp / "reconciliation-input.json"
+            packet_dir.mkdir()
+            write_json(context_path, context)
+            packet = packet_for_thread(
+                thread,
+                transitioned_to_outdated=False,
+                resolution_verdict="ambiguous",
+                verdict_reason="not_needed_for_non_outdated_accept",
+                area="runtime",
+                validation_commands=[],
+            )
+            packet["accepted_recheck"] = {
+                "validation_provenance": {"commands": ["python -m pytest tests/test_helper.py"]},
+                "current_head_evidence": {
+                    "path": "src/helper.py",
+                    "area": "runtime",
+                    "path_exists": True,
+                    "evidence_visible": False,
+                    "request_anchor_visible": False,
+                },
+                "resolution_verdict": "still-applies",
+                "verdict_reason": "missing_current_head_evidence",
+                "auto_resolution_candidate": False,
+            }
+            write_json(packet_dir / "thread-01.json", packet)
+            write_json(
+                reconciliation_input_path,
+                reconciliation_input_payload(
+                    thread_id="t-1",
+                    validation_commands=["python -m pytest tests/test_helper.py"],
+                ),
+            )
+
+            argv = [
+                "reconcile_outdated_threads.py",
+                "--context",
+                str(context_path),
+                "--packet-dir",
+                str(packet_dir),
+                "--reconciliation-input",
+                str(reconciliation_input_path),
+                "--output",
+                str(output_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                self.assertEqual(reconcile.main(), 0)
+
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+            action = payload["thread_actions"][0]
+            self.assertEqual(action["decision"], "defer")
+            self.assertEqual(action["complete_mode"], "skip")
+            self.assertFalse(action["resolve_after_complete"])
+
     def test_reconcile_auto_accepts_docs_candidate(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)

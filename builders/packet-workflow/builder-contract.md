@@ -230,9 +230,23 @@ Wrapper rules:
 - wrapper must not carry `builder-spec.json`, profiles, references, scripts, tests, or migration worksheets
 
 Generated operator-doc rules:
+- generated retained `SKILL.md` files are the minimum operator-facing execution contract, not the full schema reference
 - generated retained `SKILL.md` files must define the execution contract in terms of `<python-bin>` and `<skill-dir>`
 - generated helper invocations must use `<python-bin> -B <skill-dir>/scripts/...`
 - generated docs must not prescribe launcher-specific shims such as bare `python` or `py`
+- generated retained `SKILL.md` files should keep only:
+  - when to use the skill
+  - how to enter the workflow
+  - what must be true before continuing
+  - what stops the workflow
+  - what the final response must include
+- keep detailed packet schemas, worker field inventories, evaluation contracts, and validator/apply envelopes in `references/` or scripts instead of default retained `SKILL.md` prose
+- `../../core/contracts/packet-workflow/retained-skill-doc-contract.md` is the authoritative shared boundary for what belongs in retained `SKILL.md`
+
+Per-skill retained-doc boundary:
+- `builder-contract.md` owns scaffold knobs, generated-file inventory, and shared template defaults
+- each retained skill owns its domain-specific entry conditions, stop language, and final response contract
+- do not use builder-wide retained docs to smuggle domain-local packet semantics, section ordering rules, or apply gates into unrelated skills
 
 Bump rules:
 - bump `compatibility_epoch` when generated skills or profiles require manual migration

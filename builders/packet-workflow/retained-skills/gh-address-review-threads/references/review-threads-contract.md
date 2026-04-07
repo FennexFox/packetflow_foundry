@@ -76,9 +76,27 @@ Use evidence in this order:
 Rules:
 - `packet_worker_map` is the routing authority for delegated thread analysis
 - `preferred_worker_families` is registry metadata only
-- `recommended_workers` and `optional_workers` are derived convenience fields only
+- `recommended_workers` and `optional_workers` are build-result convenience fields only
 - final per-thread decisions, reply wording, pushes, and resolution stay local
-- runtime logic must never infer routing from `preferred_worker_families` or `optional_workers`
+- runtime logic must never infer routing from `preferred_worker_families`, `recommended_workers`, or `optional_workers`
+
+## Delegation Non-Use Classification
+
+Current pilot classification:
+
+- record-only:
+  - `review_mode_local_only`
+  - `code_change_guardrail_blockers`
+  - `broad_or_cross_cutting_fix_kept_local`
+  - `validation_path_unclear`
+  - `optional_qa_not_requested`
+- fatal:
+  - none in this pilot
+
+Notes:
+- delegation non-use does not fail the workflow by itself
+- keep the implementation local and record the reason instead of forcing delegation
+- lifecycle, fingerprint, marker-conflict, and missing-target failures remain separate fatal workflow gates
 
 ## Common-Path Contract
 
@@ -96,7 +114,7 @@ Rules:
   - ownership ambiguity stays below the escape threshold
   - no explicit reread or escape reason is required
   - a validator-ready recommendation path is closed from packet contents alone
-- `review_mode_overrides` may widen worker recommendation or review mode, but they must not upgrade missing evidence, ownership ambiguity, or reread need into `common_path_sufficient=true`
+- build-result `override_signals` may widen the recommended review mode, but they must not upgrade missing evidence, ownership ambiguity, or reread need into `common_path_sufficient=true`
 - `quality_escape_hints` is advisory only; explicit reread or escape decisions must still use the allowed reason enum or an explicit stop
 
 ## Marker Conflict Stop Rules
@@ -111,6 +129,26 @@ Notes:
 - `adoption-blocking` does not block `add`.
 - `adoption-blocking` allows `update` only when an explicit comment id targets the current exact managed reply.
 - `hard-stop` allows only `skip` for the affected phase.
+
+## Run Manifest Lifecycle
+
+Manifest checkpoints:
+
+- `start`
+- `ack-validated`
+- `ack-applied`
+- `post-prepared`
+- `complete-validated`
+- `complete-applied`
+
+State-gate rules:
+
+- `record-validation` requires `ack-applied`
+- `post-push` requires `ack-applied`
+- `post-push` emits `reconciliation-input.json` with accepted thread ids, validation commands, and pre/post push `HEAD` SHAs for complete-phase seeding
+- `record-plan --phase complete` requires `post-prepared`
+- `record-apply` requires the matching `*-validated` state
+- `record-apply` advances only on `apply_succeeded=true`, `fingerprint_match=true`, and a non-dry-run result for live runs
 
 ## Global Packet Semantics
 
@@ -144,6 +182,14 @@ Each `thread-*.json` packet keeps:
 - `ownership_summary`
 - `reply_update_basis`
 - `quality_escape_hints`
+- `accepted_recheck` for same-run accepted, still-current threads:
+  - `same_run_acceptance`
+  - `validation_provenance`
+  - `current_head_evidence`
+    - evidence comes from the exact pre-push to post-push `HEAD` delta, not the full PR base-to-head diff
+  - `resolution_verdict`
+  - `verdict_reason`
+  - `auto_resolution_candidate`
 - `transitioned_to_outdated` when the thread was unresolved and non-outdated before this run's push, then unresolved and outdated after the push
 - `outdated_recheck` for same-run transitioned outdated threads:
   - `previous_snapshot`
@@ -172,9 +218,11 @@ Each `thread-batch-*.json` packet keeps:
   - `thread-batch-*.json`
   - `thread-*.json`
 - eval-side artifacts:
-  - build result JSON for review mode, worker derivation, packet/thread counts, override signals, `common_path_sufficient`, and same-run outdated-transition counters
+  - build result JSON for `review_mode_baseline`, `review_mode_adjustments`, worker derivation, override signals, `active_paths`, `active_areas`, `analysis_targets`, `thread_batches`, `delegation_non_use_cases`, `common_path_sufficient`, and same-run outdated-transition counters
   - `packet_metrics.json` for size and token-proxy metrics only
-- do not duplicate token-efficiency counters into runtime packets
+  - evaluation-log build merges should use distinct labels such as `pre` and `post` when a run emits more than one build result
+- runtime `orchestrator.json` keeps the final `review_mode`, routing authority, packet files, and safety context only
+- do not duplicate token-efficiency counters or build-result-only observability fields into runtime packets
 
 ## Smoke Modes
 
@@ -183,7 +231,7 @@ Each `thread-batch-*.json` packet keeps:
   - may return `blocked` or `noop` with the fixed `status/reason/thread_counts/next_action` schema
 - synthetic reference smoke:
   - uses a temp fixture and no live GitHub state
-  - must exercise collect-equivalent context, build, validate, apply `--dry-run`, and evaluation merge end to end
+  - must exercise collect-equivalent context, build, validate, apply `--dry-run`, phase-result merges, and evaluation finalize end to end
 - both smoke modes keep the short summary schema at the top level
 
 ## Reply And Resolution Rules
@@ -198,6 +246,7 @@ Each `thread-batch-*.json` packet keeps:
   - note the remaining caveat only if it matters
 
 Resolve only accepted threads after the relevant change is pushed and validation is complete.
+Same-run accepted non-outdated threads may auto-resolve only when the post-push delta itself shows the requested change on current `HEAD`.
 Same-run outdated transitions may reuse the normal accepted completion-and-resolve path only when `current HEAD` already proves the request is satisfied.
 
 ## Thread Action Validation

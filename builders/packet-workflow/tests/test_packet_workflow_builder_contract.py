@@ -249,6 +249,15 @@ def load_module_from_path(module_name: str, script_path: Path):
 
 
 EXECUTION_ROOTS_HEADER = "## Execution Roots"
+RETAINED_MINIMUM_HEADERS = (
+    "## Use When",
+    "## Entry",
+    "## Continue Only If",
+    "## Stop When",
+    "## Final Response",
+    "## References",
+)
+FORBIDDEN_DEFAULT_RETAINED_HEADERS = ("## Scripts", "## Evaluation")
 PYTHON_BIN_SKILL_PREFIX = "<python-bin> -B <skill-dir>/scripts/"
 FORBIDDEN_OPERATOR_DOC_PATTERNS = ("python scripts/", "py -3")
 
@@ -261,6 +270,16 @@ def assert_skill_md_execution_contract(
     testcase.assertIn(PYTHON_BIN_SKILL_PREFIX, skill_md, label)
     for pattern in FORBIDDEN_OPERATOR_DOC_PATTERNS:
         testcase.assertNotIn(pattern, skill_md, label)
+
+
+def assert_generated_retained_skill_minimum_contract(
+    testcase: unittest.TestCase, skill_md: str, *, source: Path | str
+) -> None:
+    label = str(source)
+    for header in RETAINED_MINIMUM_HEADERS:
+        testcase.assertIn(header, skill_md, label)
+    for header in FORBIDDEN_DEFAULT_RETAINED_HEADERS:
+        testcase.assertNotIn(header, skill_md, label)
 
 
 def operator_doc_scan_targets(foundry_root: Path) -> list[Path]:
@@ -370,6 +389,25 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                     if path.is_file()
                 )
                 self.assertEqual(wrapper_files, ["SKILL.md", "agents/openai.yaml"])
+
+    def test_generated_retained_skill_doc_uses_minimum_operator_contract(self) -> None:
+        spec = builder.derive_spec(sample_spec())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp) / str(spec["skill_name"])
+            builder.generate_files(skill_dir, spec)
+
+            skill_md = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
+            assert_skill_md_execution_contract(
+                self,
+                skill_md,
+                source=skill_dir / "SKILL.md",
+            )
+            assert_generated_retained_skill_minimum_contract(
+                self,
+                skill_md,
+                source=skill_dir / "SKILL.md",
+            )
 
     def test_builder_uses_root_core_assets(self) -> None:
         foundry_root = builder.foundry_root_dir()
@@ -685,6 +723,7 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             repo_root = Path(tmp) / "repo"
             repo_root.mkdir()
             builder.generate_files(skill_dir, spec)
+            skill_md = (skill_dir / "SKILL.md").read_text(encoding="utf-8")
 
             scripts_dir = skill_dir / "scripts"
             for script in scripts_dir.glob("*.py"):
@@ -721,6 +760,10 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
 
             self.assertEqual(context["repo_profile_name"], "default")
             self.assertEqual(context["builder_compatibility"]["status"], "current")
+            self.assertIn(
+                "references/weekly-update-like-evaluation-contract.md",
+                skill_md,
+            )
             self.assertEqual(orchestrator["repo_profile_name"], "default")
             self.assertTrue(orchestrator["decision_ready_packets"])
             self.assertEqual(
@@ -817,6 +860,9 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             core_contract = (skill_dir / "references" / "core-contract.md").read_text(
                 encoding="utf-8"
             )
+            retained_doc_contract = (
+                skill_dir / "references" / "retained-skill-doc-contract.md"
+            ).read_text(encoding="utf-8")
             agents_yaml = (skill_dir / "agents" / "openai.yaml").read_text(encoding="utf-8")
             profile_json = json.loads(
                 (skill_dir / "profiles" / "sample-repo" / "profile.json").read_text(
@@ -824,12 +870,18 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 )
             )
 
-            self.assertIn("packet_explorer", skill_md)
+            self.assertNotIn("packet_explorer", skill_md)
             self.assertIn("runtime_packet", skill_md)
             self.assertIn("Orchestrator profile: `standard`.", skill_md)
             self.assertIn("profiles/sample-repo/profile.json", skill_md)
             self.assertIn(".codex/project/profiles/packet-explorer-smoke/profile.json", skill_md)
             self.assertIn("references/core-contract.md", skill_md)
+            self.assertIn("references/retained-skill-doc-contract.md", skill_md)
+            self.assertIn("references/builder-tests-evaluation-contract.md", skill_md)
+            self.assertNotIn(
+                "../../../../core/contracts/packet-workflow/retained-skill-doc-contract.md",
+                skill_md,
+            )
             self.assertIn("data-only", skill_md)
             self.assertIn(
                 ".codex/tmp/packet-workflow/packet-explorer-smoke/<run-id>/",
@@ -844,9 +896,11 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 skill_md,
             )
             self.assertIn(".codex/tmp/", skill_md)
+            self.assertIn("packet_explorer", core_contract)
             self.assertIn("profiles/sample-repo/profile.json", core_contract)
             self.assertIn(".codex/project/profiles/packet-explorer-smoke/profile.json", core_contract)
             self.assertIn("data-only", core_contract)
+            self.assertIn("## Minimum Operator-Facing Contract", retained_doc_contract)
             self.assertIn("## Shared Repo-Local Temporary File Policy", core_contract)
             self.assertIn(
                 "transient file must live inside the repo, place it under `.codex/tmp/`",
