@@ -384,6 +384,32 @@ def match_terms(text: str | None) -> list[str]:
     return terms
 
 
+def request_exact_anchor_pairs(reviewer_body: str) -> list[tuple[str, str]]:
+    anchors: list[tuple[str, str]] = []
+    for match in REQUEST_ANCHOR_RE.finditer(reviewer_body):
+        raw_anchor = next(group for group in match.groups() if group)
+        normalized = normalize_text_for_matching(raw_anchor)
+        if normalized:
+            anchors.append((raw_anchor, normalized))
+    return anchors
+
+
+def codeish_anchor_terms(raw_anchors: list[str]) -> list[str]:
+    identifiers: list[str] = []
+    for raw_anchor in raw_anchors:
+        if not re.search(r"[()_./-]|[A-Z]", raw_anchor):
+            continue
+        for token in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", raw_anchor):
+            normalized = token.lower()
+            if len(normalized) >= 3 and normalized not in REQUEST_ANCHOR_STOPWORDS:
+                identifiers.append(normalized)
+    return list(dict.fromkeys(identifiers))
+
+
+def canonical_codeish_term(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", normalize_text_for_matching(text))
+
+
 def request_anchor_evidence(
     reviewer_body: str,
     *,
@@ -394,14 +420,7 @@ def request_anchor_evidence(
     if not evidence_text:
         return False, [], [], []
 
-    exact_anchors = [
-        normalized
-        for normalized in (
-            normalize_text_for_matching(next(group for group in match.groups() if group))
-            for match in REQUEST_ANCHOR_RE.finditer(reviewer_body)
-        )
-        if normalized
-    ]
+    exact_anchors = [normalized for _, normalized in request_exact_anchor_pairs(reviewer_body)]
     matched_exact_anchors = [anchor for anchor in exact_anchors if anchor in evidence_text]
     if exact_anchors:
         return bool(matched_exact_anchors), exact_anchors, matched_exact_anchors, []
@@ -413,6 +432,33 @@ def request_anchor_evidence(
     evidence_terms = set(match_terms(evidence_text))
     matched_terms = [term for term in requested_terms if term in evidence_terms]
     return len(matched_terms) >= 2, [], [], matched_terms
+
+
+def delta_request_anchor_evidence(
+    reviewer_body: str,
+    *,
+    diff_snippet: str | None,
+) -> tuple[bool, list[str], list[str], list[str]]:
+    evidence_text = normalize_text_for_matching(diff_snippet)
+    if not evidence_text:
+        return False, [], [], []
+
+    anchor_pairs = request_exact_anchor_pairs(reviewer_body)
+    if not anchor_pairs:
+        return False, [], [], []
+
+    exact_anchors = [normalized for _, normalized in anchor_pairs]
+    matched_exact_anchors = [anchor for anchor in exact_anchors if anchor in evidence_text]
+    identifier_anchors = codeish_anchor_terms([raw for raw, _ in anchor_pairs])
+    evidence_terms = {
+        canonical
+        for canonical in (canonical_codeish_term(term) for term in match_terms(diff_snippet))
+        if canonical
+    }
+    matched_identifier_anchors = [
+        anchor for anchor in identifier_anchors if canonical_codeish_term(anchor) in evidence_terms
+    ]
+    return bool(matched_exact_anchors or matched_identifier_anchors), matched_exact_anchors, identifier_anchors, matched_identifier_anchors
 
 
 def comment_summary(comment: dict[str, Any] | None) -> dict[str, Any] | None:
@@ -635,6 +681,15 @@ def build_accepted_recheck(
         snippet=file_context.get("snippet"),
         diff_snippet=post_push_diff_snippet,
     )
+    (
+        delta_request_anchor_visible,
+        matched_delta_exact_anchors,
+        identifier_anchors,
+        matched_identifier_anchors,
+    ) = delta_request_anchor_evidence(
+        reviewer_body,
+        diff_snippet=post_push_diff_snippet,
+    )
 
     if accepted_thread is None:
         verdict = "still-applies"
@@ -654,12 +709,15 @@ def build_accepted_recheck(
     elif not bool(file_context.get("path_exists")):
         verdict = "ambiguous"
         verdict_reason = "path_missing_in_current_head"
-    elif not current_head_visible:
-        verdict = "still-applies"
-        verdict_reason = "missing_post_push_delta_evidence"
-    else:
+    elif current_head_visible:
         verdict = "auto-accept"
         verdict_reason = "accepted_same_run_with_post_push_delta_evidence"
+    elif area in {"docs", "runtime", "tests"} and delta_request_anchor_visible:
+        verdict = "auto-accept"
+        verdict_reason = "accepted_same_run_with_post_push_anchor_evidence"
+    else:
+        verdict = "still-applies"
+        verdict_reason = "missing_post_push_delta_evidence"
 
     return {
         "same_run_acceptance": {
@@ -681,8 +739,12 @@ def build_accepted_recheck(
             "post_push_head_sha": post_push_head_sha,
             "evidence_visible": current_head_visible,
             "request_anchor_visible": request_anchor_visible,
+            "delta_request_anchor_visible": delta_request_anchor_visible,
             "exact_request_anchors": exact_anchors,
             "matched_exact_request_anchors": matched_exact_anchors,
+            "matched_delta_exact_request_anchors": matched_delta_exact_anchors,
+            "identifier_request_anchors": identifier_anchors,
+            "matched_identifier_request_anchors": matched_identifier_anchors,
             "matched_request_terms": matched_terms,
         },
         "resolution_verdict": verdict,
