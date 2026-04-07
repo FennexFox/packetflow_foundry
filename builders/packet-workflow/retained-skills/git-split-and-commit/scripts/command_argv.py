@@ -65,6 +65,11 @@ def shell_control_tokens(command: str) -> list[str]:
             tokens.append(pair)
             index += 2
             continue
+        if char in {"\r", "\n"}:
+            tokens.append("newline")
+            if char == "\r" and pair == "\r\n":
+                index += 2
+                continue
         if char in {"|", "&", ";", "<", ">"}:
             tokens.append(char)
         index += 1
