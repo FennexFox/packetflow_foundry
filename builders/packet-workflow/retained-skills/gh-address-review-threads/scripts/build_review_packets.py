@@ -475,9 +475,14 @@ def delta_request_anchor_evidence(
     *,
     diff_snippet: str | None,
 ) -> tuple[bool, list[str], list[str], list[str]]:
-    evidence_text = normalize_text_for_matching(diff_snippet)
-    if not evidence_text:
+    added_line_texts = [
+        normalize_text_for_matching(raw_line[1:])
+        for raw_line in str(diff_snippet).splitlines()
+        if raw_line[:1] == "+" and not raw_line.startswith("+++")
+    ]
+    if not added_line_texts:
         return False, [], [], []
+    evidence_text = "\n".join(added_line_texts)
 
     anchor_views = extract_exact_anchor_views(reviewer_body)
     if not anchor_views:
@@ -485,7 +490,7 @@ def delta_request_anchor_evidence(
 
     exact_anchors = [str(view["normalized_text"]) for view in anchor_views]
     matched_exact_anchors = [anchor for anchor in exact_anchors if anchor in evidence_text]
-    evidence_terms = set(match_terms(diff_snippet, canonical=True))
+    evidence_terms = set(match_terms(evidence_text, canonical=True))
     identifier_pairs = [
         pair
         for view in anchor_views
@@ -498,19 +503,14 @@ def delta_request_anchor_evidence(
         for raw_anchor, canonical_anchor in identifier_pairs
         if canonical_anchor in evidence_terms
     ]
-    changed_line_texts = [
-        normalize_text_for_matching(raw_line[1:])
-        for raw_line in str(diff_snippet).splitlines()
-        if raw_line[:1] in {"+", "-"} and not raw_line.startswith(("+++", "---"))
-    ]
     line_term_sets = [
         set(match_terms(raw_line[1:], canonical=True))
         for raw_line in str(diff_snippet).splitlines()
-        if raw_line[:1] in {"+", "-"} and not raw_line.startswith(("+++", "---"))
+        if raw_line[:1] == "+" and not raw_line.startswith("+++")
     ]
     # Keep diagnostics token-granular for existing consumers, but only treat an
     # identifier anchor as resolution evidence when every token from one quoted
-    # anchor is present within the same changed diff line.
+    # anchor is present within the same added diff line.
     strong_identifier_match = False
     for view in anchor_views:
         view_identifier_pairs = [
@@ -525,12 +525,12 @@ def delta_request_anchor_evidence(
         call_anchor = re.sub(r"\([^)]*\)", "(", normalized_anchor)
         structural_anchor = re.sub(r"\([^)]*\)", "", normalized_anchor).strip()
         if "(" in raw_anchor and ")" in raw_anchor:
-            if call_anchor and any(call_anchor in line_text for line_text in changed_line_texts):
+            if call_anchor and any(call_anchor in line_text for line_text in added_line_texts):
                 strong_identifier_match = True
                 break
             continue
         if any(separator in raw_anchor for separator in (".", "/", "::", "->")):
-            if structural_anchor and any(structural_anchor in line_text for line_text in changed_line_texts):
+            if structural_anchor and any(structural_anchor in line_text for line_text in added_line_texts):
                 strong_identifier_match = True
                 break
             continue

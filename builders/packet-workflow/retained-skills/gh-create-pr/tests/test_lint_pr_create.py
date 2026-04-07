@@ -241,6 +241,32 @@ class LintPrCreateTests(unittest.TestCase):
             findings["detected"]["unsupported_claims"],
         )
 
+    def test_candidate_findings_block_qualified_consumer_migration_claim(self) -> None:
+        findings = lint.collect_candidate_findings(
+            collected_context(),
+            "fix(pr-create): harden guarded flow",
+            "\n".join(
+                [
+                    "## Why",
+                    "Document the guarded create flow.",
+                    "## What changed",
+                    "- Tightened verifier comparisons.",
+                    "## How",
+                    "- Requires migration for all consumers.",
+                    "## Risk / Rollback",
+                    "- Revert the create flow changes.",
+                    "## Testing",
+                    "- Not run.",
+                    "Refs: #42",
+                ]
+            ),
+        )
+
+        self.assertIn(
+            "Consumer migration or compatibility claims require direct runtime/process evidence and are blocked by default.",
+            findings["detected"]["unsupported_claims"],
+        )
+
     def test_candidate_findings_block_consumer_compatibility_claim(self) -> None:
         findings = lint.collect_candidate_findings(
             collected_context(),

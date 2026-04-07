@@ -31,7 +31,8 @@ NO_BEHAVIOR_CHANGE_PATTERN = re.compile(r"\bno behavior change\b", re.IGNORECASE
 ROLLOUT_PATTERN = re.compile(r"\brollout\b", re.IGNORECASE)
 RESTART_PATTERN = re.compile(r"\b(restart|reload)\b", re.IGNORECASE)
 MIGRATION_AUDIENCE_PATTERN = (
-    r"(?:(?:existing|vendored)\s+)?(?:consumer|consumers|vendor|vendors|project|projects|repo|repos|installation|installations|deployment|deployments|users?)"
+    r"(?:(?:(?:all|any|every|most|many|some|new|existing|current|future|legacy|active|external|internal|vendored)\s+)+)?"
+    r"(?:consumer|consumers|vendor|vendors|project|projects|repo|repos|installation|installations|deployment|deployments|users?)"
 )
 MIGRATION_CLAIM_PATTERN = re.compile(
     r"\b(?:requires?|needs?|needed|includes?|included|adds?|added|documents?|documented|provides?|provided)\s+"
