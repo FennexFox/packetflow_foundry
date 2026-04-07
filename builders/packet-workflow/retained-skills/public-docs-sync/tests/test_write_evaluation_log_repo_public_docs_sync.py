@@ -37,9 +37,6 @@ class RepoPublicDocsSyncEvaluationLogTests(unittest.TestCase):
             "review_mode": "targeted-delegation",
             "packet_order": ["global_packet.json", "claims_packet.json"],
             "selected_packets": ["claims_packet.json"],
-            "recommended_worker_count": 1,
-            "recommended_workers": [{"agent_type": "large_diff_auditor"}],
-            "applied_override_signals": ["lint"],
         }
 
         payload = eval_log.skill_specific_data("public-docs-sync", context, orchestrator, lint_report)
@@ -49,7 +46,7 @@ class RepoPublicDocsSyncEvaluationLogTests(unittest.TestCase):
         self.assertEqual(payload["link_error_count"], 1)
         self.assertEqual(payload["stale_baseline_count"], 1)
         self.assertEqual(payload["auto_apply_candidate_count"], 1)
-        self.assertEqual(payload["worker_mix"], ["large_diff_auditor"])
+        self.assertEqual(payload["selected_packets"], ["claims_packet.json"])
 
     def test_build_phase_merges_packet_metrics_and_active_packet_counts(self) -> None:
         log = {

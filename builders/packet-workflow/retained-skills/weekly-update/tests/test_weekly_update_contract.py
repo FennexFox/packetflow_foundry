@@ -359,7 +359,7 @@ class WeeklyUpdateContractTests(unittest.TestCase):
             self.assertIsInstance(candidate["shipped_change_bullets"], list)
             self.assertIsInstance(candidate["review_followups"], list)
 
-    def test_orchestrator_exposes_packet_worker_map_and_optional_workers(self) -> None:
+    def test_orchestrator_keeps_routing_runtime_only(self) -> None:
         orchestrator = self.packets["orchestrator.json"]
         self.assertEqual(orchestrator["orchestrator_profile"], "standard")
         self.assertTrue(orchestrator["decision_ready_packets"])
@@ -369,11 +369,11 @@ class WeeklyUpdateContractTests(unittest.TestCase):
         self.assertIn("common_path_contract", orchestrator)
         self.assertNotIn("estimated_packet_tokens", orchestrator)
         self.assertNotIn("packet_size_bytes", orchestrator)
-        self.assertEqual(
-            [worker["agent_type"] for worker in orchestrator["recommended_workers"]],
-            ["repo_mapper", "large_diff_auditor", "log_triager", "evidence_summarizer"],
-        )
-        self.assertEqual(orchestrator["optional_workers"], ["docs_verifier"])
+        self.assertNotIn("review_mode_baseline", orchestrator)
+        self.assertNotIn("review_mode_adjustments", orchestrator)
+        self.assertNotIn("recommended_worker_count", orchestrator)
+        self.assertNotIn("recommended_workers", orchestrator)
+        self.assertNotIn("optional_workers", orchestrator)
         self.assertEqual(orchestrator["worker_selection_guidance"]["routing_authority"], "packet_worker_map")
 
     def test_build_artifacts_emit_eval_side_packet_metrics_and_result(self) -> None:
@@ -383,6 +383,12 @@ class WeeklyUpdateContractTests(unittest.TestCase):
         self.assertEqual(self.build_result["repo_profile_name"], "default")
         self.assertEqual(self.build_result["packet_metrics"]["packet_count"], self.packet_metrics["packet_count"])
         self.assertEqual(self.build_result["selected_packets"], ["mapping_packet", "changes_packet", "incidents_packet", "risks_packet"])
+        self.assertEqual(self.build_result["review_mode_baseline"], "targeted-delegation")
+        self.assertEqual(
+            [worker["agent_type"] for worker in self.build_result["recommended_workers"]],
+            ["repo_mapper", "large_diff_auditor", "log_triager", "evidence_summarizer"],
+        )
+        self.assertEqual(self.build_result["optional_workers"], ["docs_verifier"])
         self.assertIn("candidate_counts_by_proposed_classification", self.build_result)
         self.assertIn("raw_reread_reason_counts", self.build_result)
 

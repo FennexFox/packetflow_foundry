@@ -754,12 +754,20 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
         )
         if review_mode_adjustments:
             orchestration["review_mode_adjustments"] = review_mode_adjustments
+        override_signals = list_of_strings(result.get("override_signals"))
+        if override_signals:
+            orchestration["override_signals"] = override_signals
         worker_count = safe_int(result.get("recommended_worker_count"))
         if worker_count is not None:
             orchestration["worker_count"] = worker_count
+        worker_mix = worker_roles(result)
+        if worker_mix:
+            orchestration["worker_roles"] = worker_mix
         skill_name = ((log.get("skill") or {}).get("name") or "").strip()
         if skill_name == "draft-release-copy":
             skill_data = ((log.setdefault("skill_specific", {}).setdefault("data", {})))
+            if worker_mix:
+                skill_data["worker_mix"] = worker_mix
             packet_metrics = result.get("packet_metrics") if isinstance(result.get("packet_metrics"), dict) else {}
             packet_count = safe_int(packet_metrics.get("packet_count"))
             if packet_count is None:

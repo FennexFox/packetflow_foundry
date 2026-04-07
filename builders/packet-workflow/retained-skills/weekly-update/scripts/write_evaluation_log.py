@@ -786,6 +786,9 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
         if worker_count is not None:
             orchestration["worker_count"] = worker_count
             skill_specific["worker_count"] = worker_count
+        override_signals = list_of_strings(result.get("override_signals"))
+        if override_signals:
+            orchestration["override_signals"] = override_signals
         workers = result.get("recommended_workers")
         if isinstance(workers, list):
             roles = []

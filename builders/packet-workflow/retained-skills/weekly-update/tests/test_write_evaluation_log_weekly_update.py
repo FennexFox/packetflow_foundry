@@ -62,18 +62,12 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
         orchestrator = {
             "review_mode": "targeted-delegation",
             "selected_packets": ["mapping_packet", "changes_packet", "risks_packet"],
-            "recommended_worker_count": 2,
-            "recommended_workers": [
-                {"agent_type": "repo_mapper"},
-                {"agent_type": "large_diff_auditor"},
-            ],
         }
 
         payload = eval_log.skill_specific_data("weekly-update", context, orchestrator, None)
 
         self.assertEqual(payload["review_mode"], "targeted-delegation")
-        self.assertEqual(payload["worker_count"], 2)
-        self.assertEqual(payload["worker_mix"], ["repo_mapper", "large_diff_auditor"])
+        self.assertEqual(payload["selected_packets"], ["mapping_packet", "changes_packet", "risks_packet"])
         self.assertEqual(payload["candidate_counts_by_proposed_classification"]["actual_incident"], 1)
         self.assertEqual(payload["candidate_counts_by_proposed_classification"]["blocker_or_risk"], 1)
         self.assertEqual(payload["raw_reread_reason_counts"], {"conflicting_signals": 1})

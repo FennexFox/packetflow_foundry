@@ -78,9 +78,10 @@ class WeeklyUpdateFailurePathTests(unittest.TestCase):
         }
         lint = wl.lint_context(quiet_context)
         packets = wl.build_packets(quiet_context, lint)
+        artifacts = wl.build_packet_artifacts(quiet_context, lint)
         self.assertTrue(lint["can_proceed"])
         self.assertEqual(packets["orchestrator.json"]["review_mode"], "local-only")
-        self.assertEqual(packets["orchestrator.json"]["recommended_workers"], [])
+        self.assertEqual(artifacts["build_result"]["recommended_workers"], [])
         self.assertEqual(packets["changes_packet.json"]["candidate_ids"], [])
         self.assertEqual(packets["incidents_packet.json"]["candidate_ids"], [])
         self.assertEqual(packets["risks_packet.json"]["candidate_ids"], [])
@@ -114,11 +115,12 @@ class WeeklyUpdateFailurePathTests(unittest.TestCase):
         }
         lint = wl.lint_context(quiet_context)
         packets = wl.build_packets(quiet_context, lint)
+        artifacts = wl.build_packet_artifacts(quiet_context, lint)
         self.assertTrue(lint["can_proceed"])
-        self.assertEqual(packets["orchestrator.json"]["review_mode_baseline"], "local-only")
         self.assertEqual(packets["orchestrator.json"]["review_mode"], "targeted-delegation")
-        self.assertEqual(packets["orchestrator.json"]["review_mode_adjustments"], ["override_signal"])
-        self.assertGreater(len(packets["orchestrator.json"]["recommended_workers"]), 0)
+        self.assertEqual(artifacts["build_result"]["review_mode_baseline"], "local-only")
+        self.assertEqual(artifacts["build_result"]["review_mode_adjustments"], ["override_signal"])
+        self.assertGreater(len(artifacts["build_result"]["recommended_workers"]), 0)
 
     def test_non_mapping_analysis_ref_is_ignored_during_packet_builds(self) -> None:
         legacy_context = dict(self.context)

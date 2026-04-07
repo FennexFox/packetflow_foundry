@@ -520,6 +520,92 @@ def build_synthesis_packet(context: dict[str, Any], lint_report: dict[str, Any],
     return packet
 
 
+def review_override_signals(context: dict[str, Any]) -> list[str]:
+    changed_files = list(context.get("changed_files", []))
+    diff_totals = parse_diff_totals(context.get("diff_stat"))
+    generated_file_count = sum(1 for path in changed_files if is_generated_file(path))
+    generated_file_ratio = (generated_file_count / len(changed_files)) if changed_files else 0.0
+    core_areas_touched = {
+        area
+        for path in changed_files
+        if (area := core_area_for_path(path)) is not None
+    }
+
+    signals: list[str] = []
+    if (diff_totals or {}).get("churn", 0) >= contract.CHURN_OVERRIDE_LIMIT:
+        signals.append("diff_stat_threshold")
+    if len(core_areas_touched) >= 2:
+        signals.append("core_files_across_groups")
+    if generated_file_count and generated_file_ratio < 0.5:
+        signals.append("generated_files_not_majority")
+    return signals
+
+
+def recommended_worker_assignments(
+    context: dict[str, Any],
+    final_mode: str,
+    final_worker_count: int,
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+    recommended_workers: list[dict[str, Any]] = []
+    optional_workers: list[dict[str, Any]] = []
+    if final_mode == "targeted-delegation":
+        recommended_workers = [
+            {
+                "name": "rules",
+                "agent_type": "docs_verifier",
+                "packets": ["global_packet.json", "checklist_packet.json", "readme_packet.json"],
+                "responsibility": "Extract hard release checklist constraints, README wording constraints, and issue-creation policy.",
+                "reasoning_effort": "medium",
+            },
+            {
+                "name": "release-copy",
+                "agent_type": "large_diff_auditor",
+                "packets": ["global_packet.json", "publish_packet.json", "changes_packet.json"],
+                "responsibility": "Summarize release-copy drift and supported release bullets.",
+                "reasoning_effort": "medium",
+                "model": "gpt-5.4-mini",
+            },
+        ]
+    elif final_mode == "broad-delegation":
+        recommended_workers.extend(
+            [
+                {
+                    "name": "rules",
+                    "agent_type": "docs_verifier",
+                    "packets": ["global_packet.json", "checklist_packet.json", "readme_packet.json"],
+                    "responsibility": "Extract hard release checklist constraints, README wording constraints, and issue-creation policy.",
+                    "reasoning_effort": "medium",
+                },
+                {
+                    "name": "release-copy",
+                    "agent_type": "large_diff_auditor",
+                    "packets": ["global_packet.json", "publish_packet.json", "changes_packet.json"],
+                    "responsibility": "Summarize release-copy drift and supported release bullets.",
+                    "reasoning_effort": "medium",
+                    "model": "gpt-5.4-mini",
+                },
+                {
+                    "name": "mapping",
+                    "agent_type": "repo_mapper",
+                    "packets": ["global_packet.json", "checklist_packet.json", "changes_packet.json"],
+                    "responsibility": "Confirm authority order, packet membership, and release scope.",
+                    "reasoning_effort": "low",
+                },
+            ]
+        )
+        if context.get("evidence") and final_worker_count >= 4:
+            recommended_workers.append(
+                {
+                    "name": "evidence",
+                    "agent_type": "evidence_summarizer",
+                    "packets": ["global_packet.json", "evidence_packet.json"],
+                    "responsibility": "Summarize normalized release-gate evidence or validation inputs.",
+                    "reasoning_effort": "low",
+                }
+            )
+    return recommended_workers, optional_workers
+
+
 def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) -> dict[str, dict[str, Any]]:
     changed_files = list(context.get("changed_files", []))
     group_summary = context.get("changed_file_groups", {})
@@ -775,9 +861,6 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         "target_version": context.get("target_version"),
         "base_tag": context.get("base_tag"),
         "review_mode": mode,
-        "review_mode_baseline": review_mode_baseline,
-        "review_mode_adjustments": review_mode_adjustments,
-        "recommended_worker_count": len(recommended_workers),
         "worker_return_contract": contract.WORKER_RETURN_CONTRACT,
         "worker_output_shape": contract.WORKER_OUTPUT_SHAPE,
         "workflow_family": contract.WORKFLOW_FAMILY,
@@ -789,7 +872,6 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         "routing_contract": contract.runtime_field_roles(),
         "shared_packet": contract.SHARED_PACKET,
         "shared_local_packet": contract.SHARED_LOCAL_PACKET,
-        "review_overrides": overrides,
         "helper_status": (context.get("local_release_helper") or {}).get("status"),
         "raw_reread_allowed_reasons": contract.RAW_REREAD_ALLOWED_REASONS,
         "common_path_contract": {
@@ -809,24 +891,32 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
             "Do not execute the local release helper.",
         ],
         "packet_files": packet_files,
-        "recommended_workers": recommended_workers,
-        "optional_workers": optional_workers,
     }
     packet_payloads["packet_metrics.json"] = packet_metrics
     return packet_payloads
 
 
-def build_result_payload(output_dir: Path, packets: dict[str, dict[str, Any]]) -> dict[str, Any]:
+def build_result_payload(
+    output_dir: Path,
+    packets: dict[str, dict[str, Any]],
+    *,
+    review_mode_baseline: str,
+    review_mode_adjustments: list[str],
+    recommended_workers: list[dict[str, Any]],
+    optional_workers: list[dict[str, Any]],
+    override_signals: list[str],
+) -> dict[str, Any]:
     orchestrator = packets["orchestrator.json"]
     packet_metrics = packets["packet_metrics.json"]
     return {
         "output_dir": str(output_dir),
         "review_mode": orchestrator["review_mode"],
-        "review_mode_baseline": orchestrator.get("review_mode_baseline"),
-        "review_mode_adjustments": list(orchestrator.get("review_mode_adjustments") or []),
-        "recommended_worker_count": orchestrator["recommended_worker_count"],
-        "recommended_workers": list(orchestrator.get("recommended_workers") or []),
-        "optional_workers": list(orchestrator.get("optional_workers") or []),
+        "review_mode_baseline": review_mode_baseline,
+        "review_mode_adjustments": list(review_mode_adjustments),
+        "recommended_worker_count": len(recommended_workers),
+        "recommended_workers": list(recommended_workers),
+        "optional_workers": list(optional_workers),
+        "override_signals": list(override_signals),
         "packet_files": list(orchestrator["packet_files"]),
         "packet_metrics_file": str(output_dir / "packet_metrics.json"),
         "packet_metrics": packet_metrics,
@@ -869,7 +959,40 @@ def main() -> int:
     for file_name, payload in packets.items():
         contract.write_json(output_dir / file_name, payload)
 
-    result_payload = build_result_payload(output_dir, packets)
+    changed_files = list(context.get("changed_files", []))
+    active_group_names = active_groups(context.get("changed_file_groups", {}))
+    review_mode_baseline, worker_count = baseline_review_mode(
+        len(changed_files),
+        len(active_group_names),
+    )
+    override_signals = review_override_signals(context)
+    override_records = [{"reason": signal, "detail": signal} for signal in override_signals]
+    review_mode, worker_count, review_mode_adjustments = apply_override_adjustment(
+        review_mode_baseline,
+        worker_count,
+        len(active_group_names),
+        override_records,
+    )
+    review_mode, worker_count, review_mode_adjustments = maybe_apply_delegation_savings_floor(
+        review_mode,
+        worker_count,
+        packets["packet_metrics.json"],
+        review_mode_adjustments,
+    )
+    recommended_workers, optional_workers = recommended_worker_assignments(
+        context,
+        review_mode,
+        worker_count,
+    )
+    result_payload = build_result_payload(
+        output_dir,
+        packets,
+        review_mode_baseline=review_mode_baseline,
+        review_mode_adjustments=review_mode_adjustments,
+        recommended_workers=recommended_workers,
+        optional_workers=optional_workers,
+        override_signals=override_signals,
+    )
     if args.result_output:
         contract.write_json(Path(args.result_output).resolve(), result_payload)
     print(json.dumps(result_payload, indent=2, ensure_ascii=True))
