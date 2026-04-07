@@ -397,6 +397,7 @@ def validation_candidate_map(validation_candidates: list[dict[str, Any]]) -> dic
             continue
         payload = {
             "command": command,
+            "argv": [str(arg) for arg in item.get("argv", [])] if isinstance(item.get("argv"), list) else [],
             "reason": item.get("reason"),
             "confidence": item.get("confidence"),
         }

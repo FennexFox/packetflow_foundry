@@ -5,8 +5,6 @@ from __future__ import annotations
 
 import argparse
 import json
-import os
-import shlex
 import subprocess
 import tempfile
 from pathlib import Path
@@ -211,16 +209,32 @@ def ensure_targeted_checks_feasible(repo_root: Path, commands: list[str], *, dry
     )
 
 
-def run_targeted_checks(repo_root: Path, commands: list[str]) -> None:
+def validation_command_argv_map(worktree: dict[str, Any]) -> dict[str, list[str]]:
+    mapping: dict[str, list[str]] = {}
+    for entry in worktree.get("validation_candidates", []):
+        if not isinstance(entry, dict):
+            continue
+        command = str(entry.get("command", "")).strip()
+        argv = entry.get("argv")
+        if not command or not isinstance(argv, list):
+            continue
+        argv_list = [str(part) for part in argv if str(part).strip()]
+        if argv_list:
+            mapping[command] = argv_list
+    return mapping
+
+
+def run_targeted_checks(repo_root: Path, commands: list[str], command_argvs: dict[str, list[str]]) -> None:
     ensure_targeted_checks_feasible(repo_root, commands, dry_run=False)
     for command in commands:
-        argv = shlex.split(command, posix=os.name != "nt")
-        argv = [
-            item[1:-1]
-            if len(item) >= 2 and item[0] == item[-1] and item[0] in {"'", '"'}
-            else item
-            for item in argv
-        ]
+        argv = command_argvs.get(command)
+        if not argv:
+            raise make_hard_stop(
+                "targeted_check_unavailable",
+                f"targeted check `{command}` is missing argv payload in the collected worktree snapshot.",
+                dry_run=False,
+                commands=commands,
+            )
         result = subprocess.run(
             argv,
             cwd=repo_root,
@@ -514,8 +528,9 @@ def apply_validated_plan(worktree: dict[str, Any], validation_payload: dict[str,
         )
 
     pathspecs = list(worktree.get("pathspecs", []))
+    command_argvs = validation_command_argv_map(worktree)
     try:
-        run_targeted_checks(repo_root, commands)
+        run_targeted_checks(repo_root, commands, command_argvs)
         reset_index(repo_root, pathspecs)
         hunk_lookup = build_hunk_lookup(worktree)
     except ApplyHardStop:

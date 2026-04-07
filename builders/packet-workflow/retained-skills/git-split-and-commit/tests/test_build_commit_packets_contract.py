@@ -96,6 +96,7 @@ class BuildCommitPacketsContractTest(unittest.TestCase):
                     "label": "unit-tests",
                     "paths": ["src/app.py"],
                     "command": "python -m unittest",
+                    "argv": ["python", "-m", "unittest"],
                 }
             ],
             "files": [
@@ -226,7 +227,17 @@ class BuildCommitPacketsContractTest(unittest.TestCase):
         batch_packet = json.loads((output_dir / "candidate-batch-01.json").read_text(encoding="utf-8"))
         self.assertEqual(batch_packet["recommended_type"], "fix")
         self.assertTrue(batch_packet["body_needed"])
-        self.assertEqual(batch_packet["validation_candidates"], [{"label": "unit-tests", "paths": ["src/app.py"], "command": "python -m unittest"}])
+        self.assertEqual(
+            batch_packet["validation_candidates"],
+            [
+                {
+                    "label": "unit-tests",
+                    "paths": ["src/app.py"],
+                    "command": "python -m unittest",
+                    "argv": ["python", "-m", "unittest"],
+                }
+            ],
+        )
         self.assertIn("cohesion_basis", batch_packet)
         self.assertIn("boundary_risks", batch_packet)
         self.assertIn("whole_file_recommendation", batch_packet)

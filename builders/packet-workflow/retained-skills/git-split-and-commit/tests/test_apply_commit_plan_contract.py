@@ -159,12 +159,22 @@ class ApplyCommitPlanContractTests(unittest.TestCase):
             "detail": "command executable `missing-tool` is unavailable on PATH",
         }]):
             with self.assertRaises(apply_commit.ApplyHardStop) as caught:
-                apply_commit.run_targeted_checks(Path("C:/repo"), ["missing-tool --version"])
+                apply_commit.run_targeted_checks(Path("C:/repo"), ["missing-tool --version"], {})
 
         self.assertEqual(caught.exception.category, "targeted_check_unavailable")
 
     def test_run_targeted_checks_uses_argv_without_shell(self) -> None:
-        command = '"C:/Python 3.14/python.exe" -m unittest discover -s tests -p "test_app.py"'
+        argv = [
+            "C:\\Python 3.14\\python.exe",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests",
+            "-p",
+            "test_app.py",
+        ]
+        command = apply_commit.subprocess.list2cmdline(argv)
 
         with (
             patch.object(apply_commit, "command_feasibility_issues", return_value=[]),
@@ -174,13 +184,13 @@ class ApplyCommitPlanContractTests(unittest.TestCase):
                 return_value=CompletedProcess(["python"], 0, stdout="", stderr=""),
             ) as mocked_run,
         ):
-            apply_commit.run_targeted_checks(Path("C:/repo"), [command])
+            apply_commit.run_targeted_checks(Path("C:/repo"), [command], {command: argv})
 
         mocked_run.assert_called_once()
         self.assertEqual(
             mocked_run.call_args.args[0],
             [
-                "C:/Python 3.14/python.exe",
+                "C:\\Python 3.14\\python.exe",
                 "-m",
                 "unittest",
                 "discover",

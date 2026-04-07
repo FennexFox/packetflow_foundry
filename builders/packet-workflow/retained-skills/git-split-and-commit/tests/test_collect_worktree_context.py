@@ -66,6 +66,10 @@ class CollectWorktreeContextTests(unittest.TestCase):
                 ],
             )
 
+            argv = worktree_context.unittest_discover_argv(
+                "builders/packet-workflow/retained-skills/gh-address-review-threads/tests",
+                "test_build_review_packets.py",
+            )
             self.assertEqual(
                 candidates,
                 [
@@ -74,6 +78,7 @@ class CollectWorktreeContextTests(unittest.TestCase):
                             "builders/packet-workflow/retained-skills/gh-address-review-threads/tests",
                             "test_build_review_packets.py",
                         ),
+                        "argv": argv,
                         "reason": (
                             "Changed test file "
                             "builders/packet-workflow/retained-skills/gh-address-review-threads/tests/"
@@ -122,6 +127,10 @@ class CollectWorktreeContextTests(unittest.TestCase):
                 ],
             )
 
+            argv = worktree_context.unittest_discover_argv(
+                ".github/scripts/tests",
+                "test_*.py",
+            )
             self.assertEqual(
                 candidates,
                 [
@@ -130,6 +139,7 @@ class CollectWorktreeContextTests(unittest.TestCase):
                             ".github/scripts/tests",
                             "test_*.py",
                         ),
+                        "argv": argv,
                         "reason": "Changed Python code without a complete one-to-one test mapping in the sibling tests directory.",
                         "paths": [
                             ".github/scripts/subdir/task.py",
@@ -152,14 +162,17 @@ class CollectWorktreeContextTests(unittest.TestCase):
                 ],
             )
 
+            script_argv = worktree_context.unittest_discover_argv(
+                ".github/scripts/tests",
+                "test_*.py",
+            )
+            test_argv = worktree_context.unittest_discover_argv("tests", "test_unrelated.py")
             self.assertEqual(
                 candidates,
                 [
                     {
-                        "command": worktree_context.unittest_discover_command(
-                            "tests",
-                            "test_unrelated.py",
-                        ),
+                        "command": worktree_context.unittest_discover_command("tests", "test_unrelated.py"),
+                        "argv": test_argv,
                         "reason": "Changed test file tests/test_unrelated.py.",
                         "paths": ["tests/test_unrelated.py"],
                     },
@@ -168,6 +181,7 @@ class CollectWorktreeContextTests(unittest.TestCase):
                             ".github/scripts/tests",
                             "test_*.py",
                         ),
+                        "argv": script_argv,
                         "reason": "Changed Python code without a complete one-to-one test mapping in the sibling tests directory.",
                         "paths": [".github/scripts/subdir/task.py"],
                     },
@@ -196,6 +210,10 @@ class CollectWorktreeContextTests(unittest.TestCase):
                 ],
             )
 
+            argv = worktree_context.unittest_discover_argv(
+                "builders/packet-workflow/retained-skills/gh-address-review-threads/tests",
+                "test_shared_builder.py",
+            )
             self.assertEqual(
                 candidates,
                 [
@@ -204,6 +222,7 @@ class CollectWorktreeContextTests(unittest.TestCase):
                             "builders/packet-workflow/retained-skills/gh-address-review-threads/tests",
                             "test_shared_builder.py",
                         ),
+                        "argv": argv,
                         "reason": (
                             "Changed script "
                             "builders/packet-workflow/retained-skills/gh-address-review-threads/scripts/subdir-a/shared_builder.py "
