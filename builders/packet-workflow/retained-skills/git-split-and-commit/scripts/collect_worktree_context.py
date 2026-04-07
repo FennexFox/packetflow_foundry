@@ -528,14 +528,15 @@ def diff_header_text(patch_text: str) -> str:
 
 
 def tracked_test_for_script(repo_root: Path, path: str) -> str | None:
+    script_root = python_script_root(path)
+    if script_root is None:
+        return None
     normalized = normalize_path(path)
     path_obj = Path(normalized)
-    if path_obj.suffix != ".py" or path_obj.parent.name != "scripts":
-        return None
     if normalized.startswith(".github/scripts/") and not normalized.startswith(".github/scripts/tests/"):
         candidate = Path(".github/scripts/tests") / f"test_{path_obj.stem}.py"
     else:
-        candidate = path_obj.parent.parent / "tests" / f"test_{path_obj.stem}.py"
+        candidate = script_root.parent / "tests" / f"test_{path_obj.stem}.py"
     absolute_candidate = repo_root / candidate
     return normalize_path(str(candidate)) if absolute_candidate.is_file() else None
 
@@ -549,6 +550,19 @@ def tracked_python_test_path(repo_root: Path, path: str) -> str | None:
     return normalized if absolute_path.is_file() else None
 
 
+def python_script_root(path: str) -> Path | None:
+    normalized = normalize_path(path)
+    path_obj = Path(normalized)
+    if path_obj.suffix != ".py" or normalized.startswith(".github/scripts/tests/"):
+        return None
+    for parent in path_obj.parents:
+        if parent.name == "tests":
+            return None
+        if parent.name == "scripts":
+            return Path(".github/scripts") if normalized.startswith(".github/scripts/") else parent
+    return None
+
+
 def sibling_tests_dir(repo_root: Path, path: str) -> str | None:
     normalized = normalize_path(path)
     path_obj = Path(normalized)
@@ -556,14 +570,13 @@ def sibling_tests_dir(repo_root: Path, path: str) -> str | None:
         return None
     if normalized.startswith(".github/scripts/tests/"):
         candidate = Path(".github/scripts/tests")
-    elif normalized.startswith(".github/scripts/") and path_obj.parent.name == "scripts":
-        candidate = Path(".github/scripts/tests")
     elif path_obj.parent.name == "tests":
         candidate = path_obj.parent
-    elif path_obj.parent.name == "scripts":
-        candidate = path_obj.parent.parent / "tests"
     else:
-        return None
+        script_root = python_script_root(path)
+        if script_root is None:
+            return None
+        candidate = Path(".github/scripts/tests") if normalized.startswith(".github/scripts/") else script_root.parent / "tests"
     absolute_candidate = repo_root / candidate
     return normalize_path(str(candidate)) if absolute_candidate.is_dir() else None
 
@@ -585,7 +598,7 @@ def targeted_validation_candidates(repo_root: Path, changed_paths: list[str]) ->
         {
             path
             for path in normalized_paths
-            if Path(path).suffix == ".py" and Path(path).parent.name == "scripts"
+            if python_script_root(path) is not None
         }
     )
     docs_only = all(

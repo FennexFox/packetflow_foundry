@@ -30,14 +30,17 @@ CLOSING_REF_PATTERN = re.compile(r"\b(?:fixes|closes)\s+#(?P<number>\d+)", re.IG
 NO_BEHAVIOR_CHANGE_PATTERN = re.compile(r"\bno behavior change\b", re.IGNORECASE)
 ROLLOUT_PATTERN = re.compile(r"\brollout\b", re.IGNORECASE)
 RESTART_PATTERN = re.compile(r"\b(restart|reload)\b", re.IGNORECASE)
+MIGRATION_AUDIENCE_PATTERN = (
+    r"(?:existing\s+)?(?:consumer|consumers|vendor|vendors|project|projects|repo|repos|installation|installations|deployment|deployments|users?)"
+)
 MIGRATION_CLAIM_PATTERN = re.compile(
     r"\b(?:requires?|needs?|needed|includes?|included|adds?|added|documents?|documented|provides?|provided)\s+"
     r"(?:an?\s+)?migration (?:guide|guidance|note|notes|step|steps|plan|plans|path|paths|work|works)\b"
-    r"|(?:\brequires?|\bneeds?|\bneeded)\s+(?:an?\s+)?migration(?:\s+for\s+"
-    r"(?:existing|consumer|consumers|vendor|vendors|project|projects|repo|repos|installation|installations|deployment|deployments|users?))?(?=$|[.!,;:])"
+    rf"|(?:\brequires?|\bneeds?|\bneeded)\s+(?:an?\s+)?migration(?:\s+for\s+{MIGRATION_AUDIENCE_PATTERN})?(?=$|[.!,;:])"
     r"|\bmigration (?:guide|guidance|note|notes|step|steps|plan|plans|path|paths|required|requires?|needed|impact|impacts)\b"
-    r"|\bmigration for\s+(?:existing|consumer|consumers|vendor|vendors|project|projects|repo|repos|installation|installations|deployment|deployments|users?)\b"
-    r"|\bmigrat(?:e|es|ed|ing)\s+(?:existing|consumer|consumers|vendor|vendors|project|projects|repo|repos|installation|installations|deployment|deployments|users?)\b",
+    rf"|\bmigration for\s+{MIGRATION_AUDIENCE_PATTERN}\b"
+    rf"|\bmigrat(?:e|es|ed|ing)\s+{MIGRATION_AUDIENCE_PATTERN}\b"
+    rf"|\b{MIGRATION_AUDIENCE_PATTERN}\s+(?:need|needs|needed|must)\s+(?:to\s+)?migrat(?:e|es|ed|ing)\b",
     re.IGNORECASE,
 )
 COMPATIBILITY_CLAIM_PATTERN = re.compile(
