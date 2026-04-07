@@ -84,6 +84,16 @@ DELEGATION_SAVINGS_FLOOR = 250
 XHIGH_REREAD_POLICY = (
     "Packet-first local adjudication is required on the common path; raw rereads are only allowed for explicit exception reasons."
 )
+DELEGATION_NON_USE_CASES = {
+    "runtime_routing_authority": "packet_worker_map",
+    "record_only": [
+        "review_mode_local_only",
+        "rules_packet_kept_local_authority",
+        "no_additional_packet_needed",
+        "optional_cross_check_not_requested",
+    ],
+    "fatal": [],
+}
 RUNTIME_STATUS_IGNORE_PREFIXES = (".codex/tmp/",)
 
 

@@ -11,6 +11,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 sys.modules.pop("write_evaluation_log", None)
 import write_evaluation_log as eval_log  # type: ignore  # noqa: E402
+import reword_plan_contract as contract  # type: ignore  # noqa: E402
 
 
 class WriteEvaluationLogRewordTests(unittest.TestCase):
@@ -51,6 +52,7 @@ class WriteEvaluationLogRewordTests(unittest.TestCase):
             "commit_packet_count": 2,
             "active_packet_count": 3,
             "applied_override_signals": ["aggregate_churn_threshold"],
+            "delegation_non_use_cases": contract.DELEGATION_NON_USE_CASES,
             "common_path_sufficient": True,
             "raw_reread_count": 0,
             "raw_reread_reasons": [],
@@ -71,6 +73,7 @@ class WriteEvaluationLogRewordTests(unittest.TestCase):
         self.assertFalse(log["orchestration"]["raw_reread_required"])
         self.assertEqual(log["input_size"]["active_areas"], 3)
         self.assertEqual(log["input_size"]["candidate_batches"], 2)
+        self.assertEqual(log["skill_specific"]["data"]["delegation_non_use_cases"], contract.DELEGATION_NON_USE_CASES)
         self.assertEqual(log["skill_specific"]["data"]["packet_count"], 4)
         self.assertEqual(log["skill_specific"]["data"]["estimated_packet_tokens"], 240)
         self.assertEqual(log["skill_specific"]["data"]["estimated_delegation_savings"], 260)

@@ -25,6 +25,7 @@ Keep these values in `skill_specific.data` when they are available:
 - `common_path_sufficient`
 - `raw_reread_count`
 - `raw_reread_reasons`
+- `delegation_non_use_cases`
 - `packet_count`
 - `estimated_packet_tokens`
 - `estimated_delegation_savings`
@@ -44,6 +45,6 @@ Keep these values in `skill_specific.data` when they are available:
 - `init`
   - capture the collected worktree and packet orchestration snapshot
 - `phase`
-  - record build-phase packet metrics and common-path sufficiency, then validation or apply-stage results
+  - record build-phase packet metrics, common-path sufficiency, and record-only/fatal delegation non-use metadata, then validation or apply-stage results
 - `finalize`
   - record the created commit hashes and any remaining apply caveat

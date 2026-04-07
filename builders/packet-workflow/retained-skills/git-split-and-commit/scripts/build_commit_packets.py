@@ -12,6 +12,7 @@ from typing import Any
 from commit_packet_contract import (
     COMMON_PATH_CONTRACT,
     DECISION_READY_PACKETS,
+    DELEGATION_NON_USE_CASES,
     ORCHESTRATOR_PROFILE,
     PACKET_NAMES,
     PREFERRED_WORKER_FAMILIES,
@@ -684,6 +685,7 @@ def build_result_payload(
         "candidate_batch_count": candidate_batch_count,
         "split_file_count": split_file_count,
         "applied_override_signals": applied_override_signals,
+        "delegation_non_use_cases": DELEGATION_NON_USE_CASES,
         "common_path_sufficient": common_path_sufficient,
         "raw_reread_count": len(raw_reread_reasons),
         "raw_reread_reasons": raw_reread_reasons,

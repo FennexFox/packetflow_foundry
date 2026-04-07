@@ -259,6 +259,7 @@ class BuildCommitPacketsContractTest(unittest.TestCase):
         self.assertTrue(result["common_path_sufficient"])
         self.assertEqual(result["raw_reread_count"], 0)
         self.assertEqual(result["active_packets"], ["rules_packet.json", "worktree_packet.json", "candidate-batch-01.json", "split-file-01.json"])
+        self.assertEqual(result["delegation_non_use_cases"], build_commit_packets.DELEGATION_NON_USE_CASES)
         self.assertIn("packet_metrics", result)
         self.assertEqual(result["review_mode_baseline"], "targeted-delegation")
         self.assertEqual(result["review_mode_adjustments"], [])

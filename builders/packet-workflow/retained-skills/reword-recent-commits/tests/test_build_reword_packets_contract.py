@@ -14,6 +14,7 @@ from reword_test_support import commit_file, make_repo, write_json
 import build_reword_packets  # type: ignore  # noqa: E402
 from reword_plan_contract import (  # noqa: E402
     COMMON_PATH_CONTRACT,
+    DELEGATION_NON_USE_CASES,
     DELEGATION_SAVINGS_FLOOR,
     RAW_REREAD_ALLOWED_REASONS,
     build_context_fingerprint,
@@ -182,6 +183,7 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
         self.assertEqual(packet_metrics, expected_metrics)
         self.assertEqual(result["packet_metrics"], packet_metrics)
         self.assertEqual(packet_metrics["packet_count"], len(orchestrator["packet_files"]))
+        self.assertEqual(result["delegation_non_use_cases"], DELEGATION_NON_USE_CASES)
         self.assertTrue(result["common_path_sufficient"])
         self.assertEqual(result["raw_reread_reasons"], [])
         self.assertEqual(

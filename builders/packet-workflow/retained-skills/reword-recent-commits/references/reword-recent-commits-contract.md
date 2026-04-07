@@ -90,6 +90,7 @@ Each item in `commits` must include:
 - `active_packet_count`
 - `commit_packet_count`
 - `applied_override_signals`
+- `delegation_non_use_cases`
 - `common_path_sufficient`
 - `raw_reread_count`
 - `raw_reread_reasons`

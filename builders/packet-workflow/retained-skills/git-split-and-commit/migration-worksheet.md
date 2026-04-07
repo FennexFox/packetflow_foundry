@@ -63,7 +63,7 @@
   - apply-stage targeted checks now reuse argv-shaped command execution without `shell=True`, with explicit no-input stdio handling for Windows stability
   - targeted unittest commands now reuse the same concrete Python interpreter path that launched the workflow helper
 - Runtime to eval-only moves:
-  - moved from `orchestrator.json` into build-result/eval-side artifacts: `review_mode_baseline`, `review_mode_adjustments`, worker recommendations, and override-signal summaries
+  - moved from `orchestrator.json` into build-result/eval-side artifacts: `review_mode_baseline`, `review_mode_adjustments`, worker recommendations, delegation non-use metadata, and override-signal summaries
   - kept in runtime: final `review_mode`, `packet_worker_map`, common-path/reread gates, and split/worktree blocker context
 - Retained `SKILL.md` reduction:
   - reduced to the minimum operator-facing contract with execution roots, entry flow, continue gates, stop gates, final response requirements, and references

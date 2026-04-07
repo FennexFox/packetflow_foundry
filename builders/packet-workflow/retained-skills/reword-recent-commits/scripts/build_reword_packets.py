@@ -13,6 +13,7 @@ from typing import Any
 from reword_plan_contract import (
     COMMON_PATH_CONTRACT,
     DECISION_READY_PACKETS,
+    DELEGATION_NON_USE_CASES,
     DELEGATION_SAVINGS_FLOOR,
     PACKET_METRIC_FIELDS,
     RAW_REREAD_ALLOWED_REASONS,
@@ -336,6 +337,7 @@ def build_result_payload(
         "active_packet_count": len(active_packets),
         "commit_packet_count": commit_packet_count,
         "applied_override_signals": applied_override_signals,
+        "delegation_non_use_cases": DELEGATION_NON_USE_CASES,
         "common_path_sufficient": common_path_sufficient,
         "raw_reread_count": len(raw_reread_reasons),
         "raw_reread_reasons": raw_reread_reasons,

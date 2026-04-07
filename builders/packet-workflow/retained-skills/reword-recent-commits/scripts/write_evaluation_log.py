@@ -751,6 +751,10 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
             orchestration["worker_count"] = worker_count
         if isinstance(result.get("recommended_workers"), list):
             orchestration["worker_roles"] = worker_roles({"recommended_workers": result.get("recommended_workers")})
+        skill_specific = log.setdefault("skill_specific", {}).setdefault("data", {})
+        delegation_non_use_cases = result.get("delegation_non_use_cases")
+        if isinstance(delegation_non_use_cases, dict):
+            skill_specific["delegation_non_use_cases"] = delegation_non_use_cases
         override_signals = result.get("applied_override_signals")
         if isinstance(override_signals, list):
             orchestration["override_signals"] = list_of_strings(override_signals)
@@ -760,18 +764,17 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
         commit_packet_count = safe_int(result.get("commit_packet_count"))
         if commit_packet_count is not None:
             log.setdefault("input_size", {})["candidate_batches"] = commit_packet_count
-            log.setdefault("skill_specific", {}).setdefault("data", {})["commit_packet_count"] = commit_packet_count
+            skill_specific["commit_packet_count"] = commit_packet_count
         common_path_sufficient = to_bool(result.get("common_path_sufficient"))
         if common_path_sufficient is not None:
-            log.setdefault("skill_specific", {}).setdefault("data", {})["common_path_sufficient"] = common_path_sufficient
+            skill_specific["common_path_sufficient"] = common_path_sufficient
         raw_reread_reasons = list_of_strings(result.get("raw_reread_reasons"))
         orchestration["raw_reread_required"] = bool(raw_reread_reasons)
         orchestration["raw_reread_reason"] = raw_reread_reasons[0] if raw_reread_reasons else None
-        log.setdefault("skill_specific", {}).setdefault("data", {})["raw_reread_count"] = safe_int(result.get("raw_reread_count")) or len(raw_reread_reasons)
-        log.setdefault("skill_specific", {}).setdefault("data", {})["raw_reread_reasons"] = raw_reread_reasons
+        skill_specific["raw_reread_count"] = safe_int(result.get("raw_reread_count")) or len(raw_reread_reasons)
+        skill_specific["raw_reread_reasons"] = raw_reread_reasons
         packet_metrics = result.get("packet_metrics")
         if isinstance(packet_metrics, dict):
-            skill_specific = log.setdefault("skill_specific", {}).setdefault("data", {})
             skill_specific["packet_count"] = safe_int(packet_metrics.get("packet_count"))
             skill_specific["estimated_packet_tokens"] = safe_int(packet_metrics.get("estimated_packet_tokens"))
             skill_specific["estimated_delegation_savings"] = safe_int(packet_metrics.get("estimated_delegation_savings"))

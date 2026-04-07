@@ -35,6 +35,17 @@ WORKER_SELECTION_GUIDANCE = {
     },
 }
 
+DELEGATION_NON_USE_CASES = {
+    "runtime_routing_authority": "packet_worker_map",
+    "record_only": [
+        "review_mode_local_only",
+        "rules_packet_kept_local_authority",
+        "no_additional_packet_needed",
+        "optional_cross_check_not_requested",
+    ],
+    "fatal": [],
+}
+
 RAW_REREAD_ALLOWED_REASONS = [
     "conflicting_signals",
     "missing_required_evidence",
