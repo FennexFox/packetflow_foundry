@@ -7,12 +7,12 @@ import argparse
 import hashlib
 import json
 import os
-import re
 import shutil
 import sys
 from pathlib import Path
 from typing import Any
 
+from command_argv import parse_command_argv, shell_control_tokens
 from collect_worktree_context import build_worktree_context
 
 
@@ -305,26 +305,24 @@ def dedupe_preserve(values: list[str]) -> list[str]:
 
 
 def command_head_token(command: str) -> str | None:
-    match = re.match(r'\s*(?:"([^"]+)"|\'([^\']+)\'|([^\s]+))', command or "")
-    if not match:
+    argv = parse_command_argv(command)
+    if not argv:
         return None
-    for group in match.groups():
-        if group:
-            return group
-    return None
+    return argv[0]
 
 
 def builtin_command_names() -> set[str]:
     return WINDOWS_SHELL_BUILTINS if os.name == "nt" else POSIX_SHELL_BUILTINS
 
 
+def is_shell_builtin(token: str) -> bool:
+    return str(token).strip().lower() in builtin_command_names()
+
+
 def resolve_command_executable(repo_root: Path, token: str) -> str | None:
     candidate = str(token).strip()
     if not candidate:
         return None
-    lowered = candidate.lower()
-    if lowered in builtin_command_names():
-        return candidate
 
     path_candidate = Path(candidate)
     if path_candidate.is_absolute() or any(separator in candidate for separator in ("/", "\\")):
@@ -357,12 +355,35 @@ def resolve_command_executable(repo_root: Path, token: str) -> str | None:
 def command_feasibility_issues(repo_root: Path, commands: list[str]) -> list[dict[str, str]]:
     issues: list[dict[str, str]] = []
     for command in dedupe_preserve(commands):
+        shell_tokens = shell_control_tokens(command)
+        if shell_tokens:
+            issues.append(
+                {
+                    "command": command,
+                    "detail": (
+                        "command uses shell-control syntax "
+                        f"({', '.join(shell_tokens)}) that is not supported with shell=False targeted checks"
+                    ),
+                }
+            )
+            continue
         token = command_head_token(command)
         if token is None:
             issues.append(
                 {
                     "command": command,
                     "detail": "command is empty or does not expose a launch token",
+                }
+            )
+            continue
+        if is_shell_builtin(token):
+            issues.append(
+                {
+                    "command": command,
+                    "detail": (
+                        f"command head token `{token}` is a shell builtin and is not executable "
+                        "with shell=False targeted checks"
+                    ),
                 }
             )
             continue

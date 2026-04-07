@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import shlex
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest.mock import patch
 
 
 TEST_DIR = Path(__file__).resolve().parent
@@ -66,15 +68,19 @@ class CollectWorktreeContextTests(unittest.TestCase):
                 ],
             )
 
+            argv = worktree_context.unittest_discover_argv(
+                "builders/packet-workflow/retained-skills/gh-address-review-threads/tests",
+                "test_build_review_packets.py",
+            )
             self.assertEqual(
                 candidates,
                 [
                     {
-                        "command": (
-                            'python -m unittest discover -s '
-                            'builders/packet-workflow/retained-skills/gh-address-review-threads/tests '
-                            '-p "test_build_review_packets.py"'
+                        "command": worktree_context.unittest_discover_command(
+                            "builders/packet-workflow/retained-skills/gh-address-review-threads/tests",
+                            "test_build_review_packets.py",
                         ),
+                        "argv": argv,
                         "reason": (
                             "Changed test file "
                             "builders/packet-workflow/retained-skills/gh-address-review-threads/tests/"
@@ -123,11 +129,19 @@ class CollectWorktreeContextTests(unittest.TestCase):
                 ],
             )
 
+            argv = worktree_context.unittest_discover_argv(
+                ".github/scripts/tests",
+                "test_*.py",
+            )
             self.assertEqual(
                 candidates,
                 [
                     {
-                        "command": 'python -m unittest discover -s .github/scripts/tests -p "test_*.py"',
+                        "command": worktree_context.unittest_discover_command(
+                            ".github/scripts/tests",
+                            "test_*.py",
+                        ),
+                        "argv": argv,
                         "reason": "Changed Python code without a complete one-to-one test mapping in the sibling tests directory.",
                         "paths": [
                             ".github/scripts/subdir/task.py",
@@ -150,19 +164,60 @@ class CollectWorktreeContextTests(unittest.TestCase):
                 ],
             )
 
+            script_argv = worktree_context.unittest_discover_argv(
+                ".github/scripts/tests",
+                "test_*.py",
+            )
+            test_argv = worktree_context.unittest_discover_argv("tests", "test_unrelated.py")
             self.assertEqual(
                 candidates,
                 [
                     {
-                        "command": 'python -m unittest discover -s tests -p "test_unrelated.py"',
+                        "command": worktree_context.unittest_discover_command("tests", "test_unrelated.py"),
+                        "argv": test_argv,
                         "reason": "Changed test file tests/test_unrelated.py.",
                         "paths": ["tests/test_unrelated.py"],
                     },
                     {
-                        "command": 'python -m unittest discover -s .github/scripts/tests -p "test_*.py"',
+                        "command": worktree_context.unittest_discover_command(
+                            ".github/scripts/tests",
+                            "test_*.py",
+                        ),
+                        "argv": script_argv,
                         "reason": "Changed Python code without a complete one-to-one test mapping in the sibling tests directory.",
                         "paths": [".github/scripts/subdir/task.py"],
                     },
+                ],
+            )
+
+    def test_targeted_validation_candidates_include_workflow_fallback_argv(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo = Path(tmp_dir)
+            write_text(repo / ".github" / "scripts" / "tests" / "test_workflows.py", "import unittest\n")
+
+            candidates = worktree_context.targeted_validation_candidates(
+                repo,
+                [
+                    ".github/workflows/ci.yml",
+                ],
+            )
+
+            argv = worktree_context.unittest_discover_argv(
+                ".github/scripts/tests",
+                "test_*.py",
+            )
+            self.assertEqual(
+                candidates,
+                [
+                    {
+                        "command": worktree_context.unittest_discover_command(
+                            ".github/scripts/tests",
+                            "test_*.py",
+                        ),
+                        "argv": argv,
+                        "reason": "Changed GitHub workflow files that orchestrate automation tests.",
+                        "paths": [".github/workflows/ci.yml"],
+                    }
                 ],
             )
 
@@ -188,15 +243,19 @@ class CollectWorktreeContextTests(unittest.TestCase):
                 ],
             )
 
+            argv = worktree_context.unittest_discover_argv(
+                "builders/packet-workflow/retained-skills/gh-address-review-threads/tests",
+                "test_shared_builder.py",
+            )
             self.assertEqual(
                 candidates,
                 [
                     {
-                        "command": (
-                            'python -m unittest discover -s '
-                            'builders/packet-workflow/retained-skills/gh-address-review-threads/tests '
-                            '-p "test_shared_builder.py"'
+                        "command": worktree_context.unittest_discover_command(
+                            "builders/packet-workflow/retained-skills/gh-address-review-threads/tests",
+                            "test_shared_builder.py",
                         ),
+                        "argv": argv,
                         "reason": (
                             "Changed script "
                             "builders/packet-workflow/retained-skills/gh-address-review-threads/scripts/subdir-a/shared_builder.py "
@@ -210,6 +269,24 @@ class CollectWorktreeContextTests(unittest.TestCase):
                     }
                 ],
             )
+
+    def test_command_string_round_trips_posix_executable_with_apostrophe(self) -> None:
+        argv = [
+            "/home/o'connor/.venv/bin/python",
+            "-m",
+            "unittest",
+            "discover",
+            "-s",
+            "tests",
+            "-p",
+            "test_*.py",
+        ]
+
+        with patch.object(worktree_context.os, "name", "posix"):
+            command = worktree_context.command_string(argv)
+
+        self.assertTrue(command.startswith("\"/home/o'connor/.venv/bin/python\""))
+        self.assertEqual(shlex.split(command), argv)
 
 
 if __name__ == "__main__":

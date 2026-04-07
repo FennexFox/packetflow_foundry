@@ -32,6 +32,12 @@ class BuildCommitPacketsContractTest(unittest.TestCase):
             ),
             "builders/packet-workflow/retained-skills/gh-address-review-threads/scripts/build_review_packets.py",
         )
+        self.assertEqual(
+            build_commit_packets.source_test_partner(
+                "builders/packet-workflow/retained-skills/gh-address-review-threads/scripts/subdir/packet_builder.py"
+            ),
+            "builders/packet-workflow/retained-skills/gh-address-review-threads/tests/test_packet_builder.py",
+        )
 
     def run_script(self, rules: dict, worktree: dict) -> tuple[int, Path, dict, dict]:
         tmpdir = tempfile.TemporaryDirectory()
@@ -90,6 +96,7 @@ class BuildCommitPacketsContractTest(unittest.TestCase):
                     "label": "unit-tests",
                     "paths": ["src/app.py"],
                     "command": "python -m unittest",
+                    "argv": ["python", "-m", "unittest"],
                 }
             ],
             "files": [
@@ -153,6 +160,12 @@ class BuildCommitPacketsContractTest(unittest.TestCase):
             orchestrator["packet_order"],
             ["global_packet.json", "rules_packet.json", "worktree_packet.json", "candidate-batch-01.json", "split-file-01.json"],
         )
+        self.assertNotIn("review_mode_baseline", orchestrator)
+        self.assertNotIn("review_mode_adjustments", orchestrator)
+        self.assertNotIn("review_overrides", orchestrator)
+        self.assertNotIn("applied_override_signals", orchestrator)
+        self.assertNotIn("recommended_workers", orchestrator)
+        self.assertNotIn("optional_workers", orchestrator)
         self.assertEqual(orchestrator["candidate_batch_map"], {"candidate-batch-01": ["src/app.py"]})
         self.assertEqual(orchestrator["split_candidate_paths"], ["src/app.py"])
         self.assertEqual(
@@ -214,7 +227,17 @@ class BuildCommitPacketsContractTest(unittest.TestCase):
         batch_packet = json.loads((output_dir / "candidate-batch-01.json").read_text(encoding="utf-8"))
         self.assertEqual(batch_packet["recommended_type"], "fix")
         self.assertTrue(batch_packet["body_needed"])
-        self.assertEqual(batch_packet["validation_candidates"], [{"label": "unit-tests", "paths": ["src/app.py"], "command": "python -m unittest"}])
+        self.assertEqual(
+            batch_packet["validation_candidates"],
+            [
+                {
+                    "label": "unit-tests",
+                    "paths": ["src/app.py"],
+                    "command": "python -m unittest",
+                    "argv": ["python", "-m", "unittest"],
+                }
+            ],
+        )
         self.assertIn("cohesion_basis", batch_packet)
         self.assertIn("boundary_risks", batch_packet)
         self.assertIn("whole_file_recommendation", batch_packet)
@@ -236,7 +259,12 @@ class BuildCommitPacketsContractTest(unittest.TestCase):
         self.assertTrue(result["common_path_sufficient"])
         self.assertEqual(result["raw_reread_count"], 0)
         self.assertEqual(result["active_packets"], ["rules_packet.json", "worktree_packet.json", "candidate-batch-01.json", "split-file-01.json"])
+        self.assertEqual(result["delegation_non_use_cases"], build_commit_packets.DELEGATION_NON_USE_CASES)
         self.assertIn("packet_metrics", result)
+        self.assertEqual(result["review_mode_baseline"], "targeted-delegation")
+        self.assertEqual(result["review_mode_adjustments"], [])
+        self.assertEqual(result["recommended_worker_count"], 2)
+        self.assertEqual(len(result["recommended_workers"]), 2)
 
     def test_edge_case_build_result_uses_explicit_reread_reason(self) -> None:
         rules = {

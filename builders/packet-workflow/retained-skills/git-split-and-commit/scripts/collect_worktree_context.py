@@ -8,6 +8,7 @@ import hashlib
 import json
 import os
 import re
+import shlex
 import subprocess
 import sys
 from pathlib import Path
@@ -581,8 +582,47 @@ def sibling_tests_dir(repo_root: Path, path: str) -> str | None:
     return normalize_path(str(candidate)) if absolute_candidate.is_dir() else None
 
 
+def posix_command_token(value: str) -> str:
+    text = str(value)
+    if not text:
+        return "''"
+    if "'" not in text:
+        return shlex.quote(text)
+
+    escaped: list[str] = []
+    for index, char in enumerate(text):
+        if char in {'"', "$", "`"}:
+            escaped.append("\\" + char)
+            continue
+        if char == "\\":
+            next_char = text[index + 1] if index + 1 < len(text) else ""
+            escaped.append("\\\\" if next_char in {'"', "$", "`", "\\"} else "\\")
+            continue
+        escaped.append(char)
+    return '"' + "".join(escaped) + '"'
+
+
+def command_string(argv: list[str]) -> str:
+    if os.name == "nt":
+        return subprocess.list2cmdline(argv)
+    return " ".join(posix_command_token(part) for part in argv)
+
+
+def unittest_discover_argv(test_dir: str, pattern: str) -> list[str]:
+    return [
+        sys.executable,
+        "-m",
+        "unittest",
+        "discover",
+        "-s",
+        test_dir,
+        "-p",
+        pattern,
+    ]
+
+
 def unittest_discover_command(test_dir: str, pattern: str) -> str:
-    return f'python -m unittest discover -s {test_dir} -p "{pattern}"'
+    return command_string(unittest_discover_argv(test_dir, pattern))
 
 
 def targeted_validation_candidates(repo_root: Path, changed_paths: list[str]) -> list[dict[str, Any]]:
@@ -613,11 +653,13 @@ def targeted_validation_candidates(repo_root: Path, changed_paths: list[str]) ->
     candidates: list[dict[str, Any]] = []
     seen_commands: set[str] = set()
     for test_path in changed_tests:
-        command = unittest_discover_command(normalize_path(str(Path(test_path).parent)), Path(test_path).name)
+        argv = unittest_discover_argv(normalize_path(str(Path(test_path).parent)), Path(test_path).name)
+        command = command_string(argv)
         if command not in seen_commands:
             candidates.append(
                 {
                     "command": command,
+                    "argv": argv,
                     "reason": f"Changed test file {test_path}.",
                     "paths": [test_path],
                 }
@@ -629,12 +671,14 @@ def targeted_validation_candidates(repo_root: Path, changed_paths: list[str]) ->
         for script_path, test_path in mapped_tests.items():
             if not test_path:
                 continue
-            command = unittest_discover_command(normalize_path(str(Path(test_path).parent)), Path(test_path).name)
+            argv = unittest_discover_argv(normalize_path(str(Path(test_path).parent)), Path(test_path).name)
+            command = command_string(argv)
             if command in seen_commands:
                 continue
             candidates.append(
                 {
                     "command": command,
+                    "argv": argv,
                     "reason": f"Changed script {script_path} with matching test {test_path}.",
                     "paths": [script_path, test_path],
                 }
@@ -650,12 +694,14 @@ def targeted_validation_candidates(repo_root: Path, changed_paths: list[str]) ->
                 unmatched_by_tests_dir.setdefault(tests_dir, []).append(script_path)
 
         for tests_dir, script_paths in sorted(unmatched_by_tests_dir.items()):
-            command = unittest_discover_command(tests_dir, "test_*.py")
+            argv = unittest_discover_argv(tests_dir, "test_*.py")
+            command = command_string(argv)
             if command in seen_commands:
                 continue
             candidates.append(
                 {
                     "command": command,
+                    "argv": argv,
                     "reason": "Changed Python code without a complete one-to-one test mapping in the sibling tests directory.",
                     "paths": sorted(script_paths),
                 }
@@ -665,10 +711,12 @@ def targeted_validation_candidates(repo_root: Path, changed_paths: list[str]) ->
     if not candidates and any(path.startswith(".github/workflows/") for path in normalized_paths):
         tests_dir = normalize_path(".github/scripts/tests") if (repo_root / ".github/scripts/tests").is_dir() else None
         if tests_dir:
-            command = unittest_discover_command(tests_dir, "test_*.py")
+            argv = unittest_discover_argv(tests_dir, "test_*.py")
+            command = command_string(argv)
             candidates.append(
                 {
                     "command": command,
+                    "argv": argv,
                     "reason": "Changed GitHub workflow files that orchestrate automation tests.",
                     "paths": [path for path in normalized_paths if path.startswith(".github/workflows/")],
                 }
@@ -775,6 +823,7 @@ def build_worktree_context(repo: Path, pathspecs: list[str] | None = None) -> di
     validation_commands = [
         {
             "command": item["command"],
+            "argv": list(item.get("argv", [])),
             "reason": item["reason"],
             "paths": item.get("paths", []),
             "confidence": "high",

@@ -10,6 +10,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from command_argv import parse_command_argv
 from collect_worktree_context import detect_operation, parse_patch_hunks, raw_diff_against_head
 from validate_commit_plan import (
     command_feasibility_issues,
@@ -209,19 +210,65 @@ def ensure_targeted_checks_feasible(repo_root: Path, commands: list[str], *, dry
     )
 
 
-def run_targeted_checks(repo_root: Path, commands: list[str]) -> None:
+def validation_command_argv_map(worktree: dict[str, Any]) -> dict[str, list[str]]:
+    mapping: dict[str, list[str]] = {}
+    for entry in worktree.get("validation_candidates", []):
+        if not isinstance(entry, dict):
+            continue
+        command = str(entry.get("command", "")).strip()
+        argv = entry.get("argv")
+        if not command or not isinstance(argv, list):
+            continue
+        argv_list = [str(part) for part in argv if str(part).strip()]
+        if argv_list:
+            mapping[command] = argv_list
+    return mapping
+
+
+def resolve_validation_command_argv(command: str, command_argvs: dict[str, list[str]]) -> list[str] | None:
+    argv = command_argvs.get(command)
+    if argv:
+        return argv
+    parsed = parse_command_argv(command)
+    if not parsed:
+        return None
+    parsed_signature = tuple(parsed)
+    for candidate_argv in command_argvs.values():
+        if tuple(candidate_argv) == parsed_signature:
+            return candidate_argv
+    return parsed
+
+
+def run_targeted_checks(repo_root: Path, commands: list[str], command_argvs: dict[str, list[str]]) -> None:
     ensure_targeted_checks_feasible(repo_root, commands, dry_run=False)
     for command in commands:
-        result = subprocess.run(
-            command,
-            cwd=repo_root,
-            shell=True,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            capture_output=True,
-            check=False,
-        )
+        argv = resolve_validation_command_argv(command, command_argvs)
+        if not argv:
+            raise make_hard_stop(
+                "targeted_check_unavailable",
+                f"targeted check `{command}` is missing argv payload or an equivalent collected candidate in the worktree snapshot.",
+                dry_run=False,
+                commands=commands,
+            )
+        try:
+            result = subprocess.run(
+                argv,
+                cwd=repo_root,
+                shell=False,
+                text=True,
+                encoding="utf-8",
+                errors="replace",
+                stdin=subprocess.DEVNULL,
+                capture_output=True,
+                check=False,
+            )
+        except OSError as exc:
+            raise make_hard_stop(
+                "targeted_check_failed",
+                f"targeted check failed to launch: {command}: {exc}",
+                dry_run=False,
+                commands=commands,
+            ) from exc
         if result.returncode != 0:
             detail = result.stderr.strip() or result.stdout.strip() or "targeted check failed"
             raise make_hard_stop(
@@ -504,8 +551,9 @@ def apply_validated_plan(worktree: dict[str, Any], validation_payload: dict[str,
         )
 
     pathspecs = list(worktree.get("pathspecs", []))
+    command_argvs = validation_command_argv_map(worktree)
     try:
-        run_targeted_checks(repo_root, commands)
+        run_targeted_checks(repo_root, commands, command_argvs)
         reset_index(repo_root, pathspecs)
         hunk_lookup = build_hunk_lookup(worktree)
     except ApplyHardStop:

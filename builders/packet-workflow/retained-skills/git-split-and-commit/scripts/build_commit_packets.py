@@ -12,6 +12,7 @@ from typing import Any
 from commit_packet_contract import (
     COMMON_PATH_CONTRACT,
     DECISION_READY_PACKETS,
+    DELEGATION_NON_USE_CASES,
     ORCHESTRATOR_PROFILE,
     PACKET_NAMES,
     PREFERRED_WORKER_FAMILIES,
@@ -116,8 +117,11 @@ def source_test_partner(path: str) -> str | None:
         return None
     if path_obj.parent.name == "tests" and path_obj.name.startswith("test_"):
         return normalize_path(str(path_obj.parent.parent / "scripts" / path_obj.name.removeprefix("test_")))
-    if path_obj.parent.name == "scripts":
-        return normalize_path(str(path_obj.parent.parent / "tests" / f"test_{path_obj.name}"))
+    for parent in path_obj.parents:
+        if parent.name == "tests":
+            return None
+        if parent.name == "scripts":
+            return normalize_path(str(parent.parent / "tests" / f"test_{path_obj.name}"))
     return None
 
 
@@ -394,6 +398,7 @@ def validation_candidate_map(validation_candidates: list[dict[str, Any]]) -> dic
             continue
         payload = {
             "command": command,
+            "argv": [str(arg) for arg in item.get("argv", [])] if isinstance(item.get("argv"), list) else [],
             "reason": item.get("reason"),
             "confidence": item.get("confidence"),
         }
@@ -680,6 +685,7 @@ def build_result_payload(
         "candidate_batch_count": candidate_batch_count,
         "split_file_count": split_file_count,
         "applied_override_signals": applied_override_signals,
+        "delegation_non_use_cases": DELEGATION_NON_USE_CASES,
         "common_path_sufficient": common_path_sufficient,
         "raw_reread_count": len(raw_reread_reasons),
         "raw_reread_reasons": raw_reread_reasons,
@@ -761,6 +767,11 @@ def main() -> int:
         "overall_confidence",
         "coverage_gaps",
         "overall_risk",
+    ]
+    applied_override_signals = [
+        str(item.get("reason"))
+        for item in overrides
+        if str(item.get("reason") or "").strip()
     ]
     domain_overlay = {
         "proposal_enum_values": ["commit_bucket", "split_file", "reference_only", "ignore"],
@@ -1068,10 +1079,6 @@ def main() -> int:
         "repo_profile_path": worktree.get("repo_profile_path"),
         "repo_profile_summary": worktree.get("repo_profile_summary"),
         "review_mode": review_mode,
-        "review_mode_baseline": review_mode_baseline,
-        "review_mode_adjustments": review_mode_adjustments,
-        "worker_budget": len(recommended_workers),
-        "recommended_worker_count": len(recommended_workers),
         "shared_packet": "global_packet.json",
         "shared_packet_name": "global_packet.json",
         "decision_ready_packets": DECISION_READY_PACKETS,
@@ -1088,8 +1095,6 @@ def main() -> int:
         "xhigh_reread_policy": XHIGH_REREAD_POLICY,
         "candidate_batch_map": batch_map,
         "split_candidate_paths": [packet["path"] for packet in split_packets],
-        "review_overrides": overrides,
-        "applied_override_signals": [str(item.get("reason")) for item in overrides if str(item.get("reason") or "").strip()],
         "local_responsibilities": [
             "Read rules_packet.json and worktree_packet.json locally before drafting commit-plan.json.",
             "Keep the current staged state as a hint, not a contract.",
@@ -1099,8 +1104,6 @@ def main() -> int:
             "Validate commit-plan.json before running apply_commit_plan.py.",
         ],
         "packet_order": packet_order,
-        "recommended_workers": recommended_workers,
-        "optional_workers": optional_workers,
         "common_path_sufficient": common_path_sufficient,
         "raw_reread_reasons": raw_reread_reasons,
     }
@@ -1238,12 +1241,6 @@ def main() -> int:
                 }
             )
         orchestrator["review_mode"] = review_mode
-        orchestrator["review_mode_baseline"] = review_mode_baseline
-        orchestrator["review_mode_adjustments"] = review_mode_adjustments
-        orchestrator["worker_budget"] = len(recommended_workers)
-        orchestrator["recommended_worker_count"] = len(recommended_workers)
-        orchestrator["recommended_workers"] = recommended_workers
-        orchestrator["optional_workers"] = optional_workers
         packet_payloads["orchestrator.json"] = orchestrator
         packet_metrics = compute_packet_metrics(
             packet_payloads,
@@ -1261,7 +1258,7 @@ def main() -> int:
         recommended_workers=recommended_workers,
         packet_order=packet_order,
         active_packets=active_packets,
-        applied_override_signals=orchestrator["applied_override_signals"],
+        applied_override_signals=applied_override_signals,
         candidate_batch_count=len(candidate_batch_names),
         split_file_count=len(split_packet_names),
         packet_metrics=packet_metrics,

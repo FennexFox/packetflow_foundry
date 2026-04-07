@@ -12,6 +12,7 @@ sys.path.insert(0, str(SCRIPT_DIR))
 
 sys.modules.pop("write_evaluation_log", None)
 import write_evaluation_log as eval_log  # noqa: E402
+import commit_packet_contract as contract  # noqa: E402
 
 
 class GitSplitAndCommitEvaluationLogTests(unittest.TestCase):
@@ -63,6 +64,7 @@ class GitSplitAndCommitEvaluationLogTests(unittest.TestCase):
             "candidate_batch_count": 1,
             "split_file_count": 0,
             "applied_override_signals": ["diff_stat_threshold"],
+            "delegation_non_use_cases": contract.DELEGATION_NON_USE_CASES,
             "common_path_sufficient": True,
             "raw_reread_count": 0,
             "raw_reread_reasons": [],
@@ -84,6 +86,7 @@ class GitSplitAndCommitEvaluationLogTests(unittest.TestCase):
         self.assertEqual(log["orchestration"]["override_signals"], ["diff_stat_threshold"])
         self.assertEqual(log["input_size"]["active_areas"], 3)
         self.assertEqual(log["input_size"]["candidate_batches"], 1)
+        self.assertEqual(log["skill_specific"]["data"]["delegation_non_use_cases"], contract.DELEGATION_NON_USE_CASES)
         self.assertEqual(log["skill_specific"]["data"]["packet_count"], 5)
         self.assertEqual(log["skill_specific"]["data"]["estimated_packet_tokens"], 250)
         self.assertEqual(log["skill_specific"]["data"]["estimated_delegation_savings"], 250)

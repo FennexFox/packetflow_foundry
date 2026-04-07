@@ -208,6 +208,48 @@ class ValidateCommitPlanContractTests(unittest.TestCase):
         self.assertIn(validator.VALIDATION_ERROR_CODES["targeted_check_unavailable"], error_codes)
         self.assertIn("targeted_check_unavailable", payload["stop_categories"])
 
+    def test_command_feasibility_handles_posix_shell_quoted_apostrophe_path(self) -> None:
+        command = "'/home/o'\"'\"'connor/.venv/bin/python' -m unittest discover -s tests -p 'test_*.py'"
+        seen_tokens: list[str] = []
+
+        def fake_resolve(repo_root: Path, token: str) -> str | None:
+            seen_tokens.append(token)
+            return token
+
+        with (
+            patch.object(validator.os, "name", "posix"),
+            patch.object(validator, "resolve_command_executable", side_effect=fake_resolve),
+        ):
+            issues = validator.command_feasibility_issues(Path("/repo"), [command])
+
+        self.assertEqual(issues, [])
+        self.assertEqual(seen_tokens, ["/home/o'connor/.venv/bin/python"])
+
+    def test_command_feasibility_rejects_shell_control_syntax(self) -> None:
+        with patch.object(validator, "resolve_command_executable", return_value="python"):
+            issues = validator.command_feasibility_issues(Path("/repo"), ["python -m unittest && echo done"])
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("shell-control syntax", issues[0]["detail"])
+        self.assertIn("&&", issues[0]["detail"])
+
+    def test_command_feasibility_rejects_newline_command_separator(self) -> None:
+        command = 'python -c "import sys; sys.exit(0)"\npython -c "import sys; sys.exit(1)"'
+
+        with patch.object(validator, "resolve_command_executable", return_value="python"):
+            issues = validator.command_feasibility_issues(Path("/repo"), [command])
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("shell-control syntax", issues[0]["detail"])
+        self.assertIn("newline", issues[0]["detail"])
+
+    def test_command_feasibility_rejects_shell_builtin_for_shell_false_checks(self) -> None:
+        issues = validator.command_feasibility_issues(Path("/repo"), ["cd ."])
+
+        self.assertEqual(len(issues), 1)
+        self.assertIn("shell builtin", issues[0]["detail"])
+        self.assertIn("shell=False", issues[0]["detail"])
+
     def test_validator_allows_supporting_paths_to_overlap_owned_paths(self) -> None:
         worktree = sample_worktree()
         plan = sample_plan()
