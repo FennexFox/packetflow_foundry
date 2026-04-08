@@ -354,6 +354,20 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
             packet_metrics["synthesis_packet_sufficient_for_common_path"],
         )
 
+    def test_build_packet_payloads_skip_eval_only_worker_assignment_derivation(self) -> None:
+        context = self.build_context()
+        lint = self.build_lint()
+
+        with mock.patch.object(
+            packets,
+            "recommended_worker_assignments",
+            side_effect=AssertionError("runtime packet build should not derive worker assignments"),
+        ):
+            payloads = packets.build_packet_payloads(context, lint)
+
+        self.assertIn("orchestrator.json", payloads)
+        self.assertIn("packet_metrics.json", payloads)
+
     def test_packet_emission_and_common_path_sufficiency(self) -> None:
         context = self.build_context()
         lint = self.build_lint()

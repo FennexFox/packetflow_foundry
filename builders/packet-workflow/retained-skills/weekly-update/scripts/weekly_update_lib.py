@@ -1815,7 +1815,7 @@ def maybe_apply_delegation_savings_floor(
     return review_mode, adjustments
 
 
-def _build_packet_artifacts(context: dict[str, Any], lint_report: dict[str, Any]) -> dict[str, Any]:
+def _build_runtime_packet_state(context: dict[str, Any], lint_report: dict[str, Any]) -> dict[str, Any]:
     review_mode_baseline = baseline_review_mode(context)
     review_mode, review_mode_adjustments = apply_override_adjustment(
         review_mode_baseline,
@@ -1985,31 +1985,20 @@ def _build_packet_artifacts(context: dict[str, Any], lint_report: dict[str, Any]
     )
     if packets["orchestrator.json"]["review_mode"] != review_mode:
         packets, orchestration_meta = render_packets(review_mode, review_mode_adjustments)
+        packet_metrics = compute_packet_metrics(
+            packets,
+            raw_local_sources={"context": context, "lint": lint_report},
+        )
 
-    candidates = list(context.get("candidate_inventory") or [])
-    raw_reread_reason_counts = count_raw_reread_reasons(candidates)
-    build_result = {
-        "repo_profile_name": context.get("repo_profile_name"),
-        "repo_profile_path": context.get("repo_profile_path"),
-        "analysis_ref_policy": analysis_ref.get("policy"),
-        "analysis_ref_selected_branch": analysis_ref.get("selected_branch"),
-        "analysis_ref_selected_sha": analysis_ref.get("selected_sha"),
-        "review_mode": packets["orchestrator.json"].get("review_mode"),
+    return {
+        "packets": packets,
+        "packet_metrics": packet_metrics,
+        "analysis_ref": analysis_ref,
         "review_mode_baseline": review_mode_baseline,
         "review_mode_adjustments": list(review_mode_adjustments),
-        "selected_packets": list(packets["orchestrator.json"].get("selected_packets") or []),
-        "recommended_worker_count": orchestration_meta["recommended_worker_count"],
-        "recommended_workers": list(orchestration_meta["recommended_workers"]),
-        "optional_workers": list(orchestration_meta["optional_workers"]),
-        "override_signals": override_signals,
-        "packet_metrics": packet_metrics,
-        "candidate_counts_by_proposed_classification": count_candidates_by_proposed_classification(candidates),
-        "raw_reread_reason_counts": raw_reread_reason_counts,
-        "coverage_gap_count": len(context.get("source_gaps") or []),
-        "common_path_sufficient": not raw_reread_reason_counts,
-        "raw_reread_count": sum(raw_reread_reason_counts.values()),
+        "override_signals": list(override_signals),
+        "orchestration_meta": orchestration_meta,
     }
-    return {"packets": packets, "packet_metrics": packet_metrics, "build_result": build_result}
 
 
 def count_candidates_by_proposed_classification(candidates: Iterable[dict[str, Any]]) -> dict[str, int]:
@@ -2052,11 +2041,43 @@ def compute_packet_metrics(packet_payloads: dict[str, Any], *, raw_local_sources
 
 
 def build_packet_artifacts(context: dict[str, Any], lint_report: dict[str, Any]) -> dict[str, Any]:
-    return _build_packet_artifacts(context, lint_report)
+    runtime_state = _build_runtime_packet_state(context, lint_report)
+    packets = runtime_state["packets"]
+    packet_metrics = runtime_state["packet_metrics"]
+    analysis_ref = runtime_state["analysis_ref"]
+    review_mode_baseline = runtime_state["review_mode_baseline"]
+    review_mode_adjustments = runtime_state["review_mode_adjustments"]
+    override_signals = runtime_state["override_signals"]
+    orchestration_meta = runtime_state["orchestration_meta"]
+
+    candidates = list(context.get("candidate_inventory") or [])
+    raw_reread_reason_counts = count_raw_reread_reasons(candidates)
+    build_result = {
+        "repo_profile_name": context.get("repo_profile_name"),
+        "repo_profile_path": context.get("repo_profile_path"),
+        "analysis_ref_policy": analysis_ref.get("policy"),
+        "analysis_ref_selected_branch": analysis_ref.get("selected_branch"),
+        "analysis_ref_selected_sha": analysis_ref.get("selected_sha"),
+        "review_mode": packets["orchestrator.json"].get("review_mode"),
+        "review_mode_baseline": review_mode_baseline,
+        "review_mode_adjustments": list(review_mode_adjustments),
+        "selected_packets": list(packets["orchestrator.json"].get("selected_packets") or []),
+        "recommended_worker_count": orchestration_meta["recommended_worker_count"],
+        "recommended_workers": list(orchestration_meta["recommended_workers"]),
+        "optional_workers": list(orchestration_meta["optional_workers"]),
+        "override_signals": override_signals,
+        "packet_metrics": packet_metrics,
+        "candidate_counts_by_proposed_classification": count_candidates_by_proposed_classification(candidates),
+        "raw_reread_reason_counts": raw_reread_reason_counts,
+        "coverage_gap_count": len(context.get("source_gaps") or []),
+        "common_path_sufficient": not raw_reread_reason_counts,
+        "raw_reread_count": sum(raw_reread_reason_counts.values()),
+    }
+    return {"packets": packets, "packet_metrics": packet_metrics, "build_result": build_result}
 
 
 def build_packets(context: dict[str, Any], lint_report: dict[str, Any]) -> dict[str, dict[str, Any]]:
-    return _build_packet_artifacts(context, lint_report)["packets"]
+    return _build_runtime_packet_state(context, lint_report)["packets"]
 
 
 def aggregate_plan_confidence(plan: dict[str, Any], context: dict[str, Any]) -> str:

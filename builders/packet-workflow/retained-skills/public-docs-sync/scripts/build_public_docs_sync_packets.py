@@ -411,8 +411,6 @@ def main() -> int:
 
     def build_orchestrator_payload(
         final_review_mode: str,
-        final_recommended: list[dict[str, str]],
-        final_adjustments: list[str],
     ) -> dict[str, Any]:
         return {
             "skill_name": context.get("skill_name"),
@@ -441,11 +439,7 @@ def main() -> int:
             "raw_reread_allowed_reasons": RAW_REREAD_ALLOWED_REASONS,
         }
 
-    orchestrator = build_orchestrator_payload(
-        review_mode,
-        recommended,
-        review_mode_adjustments,
-    )
+    orchestrator = build_orchestrator_payload(review_mode)
 
     global_packet = {
         "skill_name": context.get("skill_name"),
@@ -522,11 +516,7 @@ def main() -> int:
             review_mode,
             review_mode_adjustments,
         )
-        orchestrator = build_orchestrator_payload(
-            review_mode,
-            recommended,
-            review_mode_adjustments,
-        )
+        orchestrator = build_orchestrator_payload(review_mode)
         packet_payloads["orchestrator.json"] = orchestrator
         packet_metrics = compute_packet_metrics(
             packet_payloads,
