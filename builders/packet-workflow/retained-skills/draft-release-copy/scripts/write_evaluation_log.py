@@ -766,6 +766,8 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
         skill_name = ((log.get("skill") or {}).get("name") or "").strip()
         if skill_name == "draft-release-copy":
             skill_data = ((log.setdefault("skill_specific", {}).setdefault("data", {})))
+            if worker_count is not None:
+                skill_data["worker_count"] = worker_count
             if worker_mix:
                 skill_data["worker_mix"] = worker_mix
             packet_metrics = result.get("packet_metrics") if isinstance(result.get("packet_metrics"), dict) else {}

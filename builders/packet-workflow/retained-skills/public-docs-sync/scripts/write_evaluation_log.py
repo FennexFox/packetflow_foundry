@@ -779,6 +779,7 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
         worker_count = safe_int(result.get("recommended_worker_count"))
         if worker_count is not None:
             orchestration["worker_count"] = worker_count
+            skill_data["worker_count"] = worker_count
         worker_mix = worker_roles(result)
         if worker_mix:
             orchestration["worker_roles"] = worker_mix

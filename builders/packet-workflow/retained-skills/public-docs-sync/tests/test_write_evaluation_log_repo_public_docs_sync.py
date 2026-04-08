@@ -54,7 +54,7 @@ class RepoPublicDocsSyncEvaluationLogTests(unittest.TestCase):
             "baseline": {},
             "orchestration": {},
             "input_size": {},
-            "skill_specific": {"data": {}},
+            "skill_specific": {"data": {"worker_count": 0}},
         }
         result = {
             "review_mode": "targeted-delegation",
@@ -80,6 +80,7 @@ class RepoPublicDocsSyncEvaluationLogTests(unittest.TestCase):
 
         self.assertEqual(log["orchestration"]["review_mode"], "targeted-delegation")
         self.assertEqual(log["orchestration"]["worker_count"], 2)
+        self.assertEqual(log["skill_specific"]["data"]["worker_count"], 2)
         self.assertEqual(log["orchestration"]["override_signals"], ["high_churn"])
         self.assertEqual(log["input_size"]["active_areas"], 2)
         self.assertEqual(log["skill_specific"]["data"]["packet_count"], 4)

@@ -26,7 +26,7 @@ class WriteEvaluationLogReleaseCopyTests(unittest.TestCase):
             "orchestration": {},
             "baseline": {},
             "measurement": {"token_source": "unavailable"},
-            "skill_specific": {"data": {}},
+            "skill_specific": {"data": {"worker_count": 0}},
         }
         result = {
             "review_mode": "targeted-delegation",
@@ -46,6 +46,7 @@ class WriteEvaluationLogReleaseCopyTests(unittest.TestCase):
 
         self.assertEqual(log["orchestration"]["review_mode"], "targeted-delegation")
         self.assertEqual(log["orchestration"]["worker_count"], 2)
+        self.assertEqual(log["skill_specific"]["data"]["worker_count"], 2)
         self.assertEqual(log["skill_specific"]["data"]["packet_count"], 8)
         self.assertEqual(log["skill_specific"]["data"]["estimated_packet_tokens"], 950)
         self.assertEqual(log["skill_specific"]["data"]["estimated_delegation_savings"], 850)
