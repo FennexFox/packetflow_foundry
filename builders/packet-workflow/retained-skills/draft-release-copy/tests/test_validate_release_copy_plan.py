@@ -95,10 +95,27 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
             },
         }
 
-    def base_plan(self, context: dict, *, evidence_status: str = "not-applicable", issue_action: dict | None = None) -> dict:
+    def base_build(self, context: dict, *, review_mode: str = "targeted-delegation") -> dict:
         return {
             "context_fingerprint": context["context_fingerprint"],
             "freshness_tuple": context["freshness_tuple"],
+            "review_mode": review_mode,
+            "common_path_sufficient": True,
+        }
+
+    def base_plan(
+        self,
+        context: dict,
+        *,
+        evidence_status: str = "not-applicable",
+        issue_action: dict | None = None,
+        review_mode: str = "targeted-delegation",
+        qa_clear: bool = False,
+    ) -> dict:
+        return {
+            "context_fingerprint": context["context_fingerprint"],
+            "freshness_tuple": context["freshness_tuple"],
+            "review_mode": review_mode,
             "overall_confidence": "high",
             "stop_reasons": [],
             "evidence_status": evidence_status,
@@ -110,20 +127,23 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
                 "compensatory_reread_detected": False,
                 "synthesis_packet_fingerprint": "sha256:synthesis",
             },
+            "qa_gate": {"qa_clear": qa_clear},
             "publish_update": {"mode": "noop"},
             "readme_update": {"mode": "noop"},
             "issue_action": issue_action or {"mode": "noop"},
         }
 
-    def run_validator(self, context: dict, lint: dict, plan: dict, **patches: object) -> dict:
+    def run_validator(self, context: dict, lint: dict, build: dict, plan: dict, **patches: object) -> dict:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             context_path = tmp / "context.json"
             lint_path = tmp / "lint.json"
+            build_path = tmp / "build.json"
             plan_path = tmp / "plan.json"
             output_path = tmp / "validation.json"
             self.write_json(context_path, context)
             self.write_json(lint_path, lint)
+            self.write_json(build_path, build)
             self.write_json(plan_path, plan)
 
             patchers = [
@@ -145,6 +165,8 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
                             str(context_path),
                             "--lint",
                             str(lint_path),
+                            "--build",
+                            str(build_path),
                             "--plan",
                             str(plan_path),
                             "--output",
@@ -164,6 +186,7 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
                 evidence_complete=False,
                 tracks={"software_gate": True, "telemetry_validation": False},
             )
+            build = self.base_build(context)
             plan = self.base_plan(
                 context,
                 evidence_status="complete",
@@ -178,6 +201,7 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
             payload = self.run_validator(
                 context,
                 lint,
+                build,
                 plan,
                 **{
                     "validate_release_copy.issue_tools.run_command": mock.Mock(
@@ -195,6 +219,7 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
             tmp = Path(tmpdir)
             context = self.build_context(tmp)
             lint = self.base_lint(evidence_complete=True)
+            build = self.base_build(context)
             plan = self.base_plan(context)
             plan["extra_top_level"] = "ignore me"
             plan["publish_update"] = {
@@ -203,7 +228,7 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
                 "extra_publish_field": "ignore me too",
             }
 
-            payload = self.run_validator(context, lint, plan)
+            payload = self.run_validator(context, lint, build, plan)
 
             self.assertTrue(payload["valid"])
             warning_codes = {item["code"] for item in payload["warning_details"]}
@@ -216,12 +241,13 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
             tmp = Path(tmpdir)
             context = self.build_context(tmp)
             lint = self.base_lint(evidence_complete=True)
+            build = self.base_build(context)
             plan = self.base_plan(context)
             plan["draft_basis"]["raw_reread_count"] = 1
             plan["draft_basis"]["reread_reasons"] = ["unsupported_layout"]
             plan["draft_basis"]["compensatory_reread_detected"] = True
 
-            payload = self.run_validator(context, lint, plan)
+            payload = self.run_validator(context, lint, build, plan)
 
             self.assertFalse(payload["valid"])
             self.assertIn("synthesis_packet_insufficient", payload["stop_reasons"])
@@ -231,11 +257,12 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
             tmp = Path(tmpdir)
             context = self.build_context(tmp)
             lint = self.base_lint(evidence_complete=True)
+            build = self.base_build(context)
             plan = self.base_plan(context)
             plan["draft_basis"]["raw_reread_count"] = 1
             plan["draft_basis"]["reread_reasons"] = ["packet_insufficiency"]
 
-            payload = self.run_validator(context, lint, plan)
+            payload = self.run_validator(context, lint, build, plan)
 
             self.assertFalse(payload["valid"])
             self.assertIn("synthesis_packet_insufficient", payload["stop_reasons"])
@@ -254,6 +281,7 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
                 },
             )
             lint = self.base_lint(evidence_complete=True)
+            build = self.base_build(context)
             plan = self.base_plan(
                 context,
                 issue_action={
@@ -283,16 +311,140 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
                 "current_head_commit",
                 return_value=context["head_commit"],
             ):
-                payload = validate_release_copy_plan.validate_plan_contract(context, lint, plan)
+                payload = validate_release_copy_plan.validate_plan_contract(context, lint, build, plan)
 
             self.assertFalse(payload["valid"])
             self.assertIn("stale_issue_snapshot", payload["stop_reasons"])
+
+    def test_validator_requires_qa_clear_for_broad_multi_surface_mutation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            context = self.build_context(tmp)
+            lint = self.base_lint(evidence_complete=True)
+            build = self.base_build(context, review_mode="broad-delegation")
+            plan = self.base_plan(
+                context,
+                review_mode="broad-delegation",
+                issue_action={
+                    "mode": "create",
+                    "title": "[Release] v1.2.3",
+                    "body_markdown": "Checklist body",
+                    "project_mode": "auto-add-first",
+                },
+            )
+            plan["publish_update"] = {
+                "mode": "replace-fields",
+                "short_description": "Updated short description",
+            }
+            plan["readme_update"] = {
+                "mode": "replace-sections",
+                "sections": {"Current Release": "Updated release block."},
+            }
+
+            payload = self.run_validator(context, lint, build, plan)
+
+            self.assertFalse(payload["valid"])
+            self.assertTrue(payload["qa_required"])
+            self.assertFalse(payload["qa_clear"])
+            self.assertIn("qa_required", payload["stop_reasons"])
+
+    def test_validator_accepts_broad_multi_surface_mutation_after_qa_clear(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            context = self.build_context(tmp)
+            lint = self.base_lint(evidence_complete=True)
+            build = self.base_build(context, review_mode="broad-delegation")
+            plan = self.base_plan(
+                context,
+                review_mode="broad-delegation",
+                qa_clear=True,
+                issue_action={
+                    "mode": "create",
+                    "title": "[Release] v1.2.3",
+                    "body_markdown": "Checklist body",
+                    "project_mode": "auto-add-first",
+                },
+            )
+            plan["publish_update"] = {
+                "mode": "replace-fields",
+                "short_description": "Updated short description",
+            }
+            plan["readme_update"] = {
+                "mode": "replace-sections",
+                "sections": {"Current Release": "Updated release block."},
+            }
+
+            payload = self.run_validator(
+                context,
+                lint,
+                build,
+                plan,
+                **{"validate_release_copy.issue_tools.run_command": mock.Mock(return_value="Logged in with project scope.")}
+            )
+
+            self.assertTrue(payload["valid"])
+            self.assertTrue(payload["qa_required"])
+            self.assertTrue(payload["qa_clear"])
+            self.assertEqual(payload["normalized_plan"]["qa_gate"]["reason"], payload["qa_reason"])
+
+    def test_validator_treats_unrecognized_qa_clear_literal_as_false(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            context = self.build_context(tmp)
+            lint = self.base_lint(evidence_complete=True)
+            build = self.base_build(context, review_mode="broad-delegation")
+            plan = self.base_plan(
+                context,
+                review_mode="broad-delegation",
+                issue_action={
+                    "mode": "create",
+                    "title": "[Release] v1.2.3",
+                    "body_markdown": "Checklist body",
+                    "project_mode": "auto-add-first",
+                },
+            )
+            plan["qa_gate"] = {"qa_clear": "maybe"}
+            plan["publish_update"] = {
+                "mode": "replace-fields",
+                "short_description": "Updated short description",
+            }
+            plan["readme_update"] = {
+                "mode": "replace-sections",
+                "sections": {"Current Release": "Updated release block."},
+            }
+
+            payload = self.run_validator(context, lint, build, plan)
+
+            self.assertFalse(payload["valid"])
+            self.assertTrue(payload["qa_required"])
+            self.assertFalse(payload["qa_clear"])
+            self.assertIn("qa_required", payload["stop_reasons"])
+            warning_codes = {item["code"] for item in payload["warning_details"]}
+            self.assertIn("W_RELEASE_PLAN_INVALID_BOOL_LITERAL", warning_codes)
+
+    def test_validator_rejects_build_metadata_from_a_different_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            context = self.build_context(tmp)
+            lint = self.base_lint(evidence_complete=True)
+            build = self.base_build(context, review_mode="local-only")
+            build["context_fingerprint"] = "sha256:stale-build"
+            build["freshness_tuple"] = {"head_commit": "deadbeef"}
+            plan = self.base_plan(context, review_mode="local-only")
+
+            payload = self.run_validator(context, lint, build, plan)
+
+            self.assertFalse(payload["valid"])
+            fields = {item.get("field") for item in payload["error_details"]}
+            self.assertIn("build.context_fingerprint", fields)
+            self.assertIn("build.freshness_tuple", fields)
 
     def test_validator_emits_apply_safe_normalized_plan(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             context = self.build_context(tmp)
             lint = self.base_lint(evidence_complete=True)
+            build = self.base_build(context)
             plan = self.base_plan(context)
             plan["publish_update"] = {
                 "mode": "replace-fields",
@@ -307,7 +459,7 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
                 },
             }
 
-            payload = self.run_validator(context, lint, plan)
+            payload = self.run_validator(context, lint, build, plan)
 
             self.assertTrue(payload["valid"])
             self.assertTrue(payload["can_apply"])

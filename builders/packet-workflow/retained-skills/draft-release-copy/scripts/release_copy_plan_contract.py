@@ -16,6 +16,7 @@ ARCHETYPE = "audit-and-apply"
 ORCHESTRATOR_PROFILE = "packet-heavy-orchestrator"
 WORKER_RETURN_CONTRACT = "generic"
 WORKER_OUTPUT_SHAPE = "flat"
+REVIEW_MODES = ["local-only", "targeted-delegation", "broad-delegation"]
 
 SHARED_PACKET = "global_packet.json"
 SHARED_LOCAL_PACKET = "synthesis_packet.json"
@@ -75,6 +76,7 @@ LOCAL_STOP_CATEGORIES = [
     "rewrite_block_unsupported",
     "project_scope_required",
     "synthesis_packet_insufficient",
+    "qa_required",
 ]
 
 RAW_REREAD_ALLOWED_REASONS = [
@@ -91,10 +93,12 @@ PLAN_PHASE_FIELDS = {
         "required": [
             "context_fingerprint",
             "freshness_tuple",
+            "review_mode",
             "overall_confidence",
             "stop_reasons",
             "evidence_status",
             "draft_basis",
+            "qa_gate",
             "publish_update",
             "readme_update",
             "issue_action",
@@ -102,10 +106,12 @@ PLAN_PHASE_FIELDS = {
         "allowed": [
             "context_fingerprint",
             "freshness_tuple",
+            "review_mode",
             "overall_confidence",
             "stop_reasons",
             "evidence_status",
             "draft_basis",
+            "qa_gate",
             "publish_update",
             "readme_update",
             "issue_action",
@@ -135,6 +141,11 @@ PLAN_PHASE_FIELDS = {
         "allowed": ["mode", "short_description", "long_description", "change_log", "mod_version"],
         "ignored": [],
     },
+    "qa_gate": {
+        "required": ["qa_clear"],
+        "allowed": ["qa_clear"],
+        "ignored": [],
+    },
     "readme_update": {
         "required": ["mode"],
         "allowed": ["mode", "intro_text", "sections"],
@@ -161,10 +172,12 @@ VALIDATION_ERROR_CODES = {
     "unsupported_layout": "E_RELEASE_PLAN_UNSUPPORTED_LAYOUT",
     "project_scope_required": "E_RELEASE_PLAN_PROJECT_SCOPE_REQUIRED",
     "packet_insufficient": "E_RELEASE_PLAN_PACKET_INSUFFICIENT",
+    "qa_clear_required": "E_RELEASE_PLAN_QA_CLEAR_REQUIRED",
 }
 
 VALIDATION_WARNING_CODES = {
     "ignored_field": "W_RELEASE_PLAN_IGNORED_FIELD",
+    "invalid_bool_literal": "W_RELEASE_PLAN_INVALID_BOOL_LITERAL",
 }
 
 SMALL_FILE_LIMIT = 8
@@ -288,3 +301,27 @@ def runtime_field_roles() -> dict[str, Any]:
         "derived_worker_fields": list(DERIVED_WORKER_FIELDS),
         "explanatory_worker_fields": list(EXPLANATORY_WORKER_FIELDS),
     }
+
+
+def should_require_qa(
+    review_mode: str,
+    *,
+    publish_mode: str,
+    readme_mode: str,
+    issue_mode: str,
+) -> tuple[bool, str | None]:
+    if review_mode != "broad-delegation":
+        return False, None
+
+    mutated_surfaces = 0
+    if publish_mode != "noop":
+        mutated_surfaces += 1
+    if readme_mode != "noop":
+        mutated_surfaces += 1
+    if issue_mode in {"create", "sync-existing-body"}:
+        mutated_surfaces += 1
+
+    if mutated_surfaces < 2:
+        return False, None
+
+    return True, "broad-delegation plan mutates multiple release-copy surfaces; local QA clear is required before apply."

@@ -32,24 +32,7 @@ class WeeklyUpdateFailurePathTests(unittest.TestCase):
         self.sample = load_json("weekly_update_sample.json")
         self.context = build_fixture_context(self.sample)
 
-    def test_collect_context_stops_immediately_when_gh_auth_is_invalid(self) -> None:
-        repo_path = Path("C:/repo")
-        with (
-            patch.object(wl, "resolve_repo_root", return_value=repo_path),
-            patch.object(wl, "verify_gh_auth", side_effect=SystemExit("[ERROR] GitHub evidence is required but gh auth is invalid: auth failed")),
-            patch.object(wl, "get_repo_metadata") as mocked_repo_metadata,
-        ):
-            with self.assertRaises(SystemExit):
-                wl.collect_context(repo_root=str(repo_path), now_utc="2026-03-27T12:00:00Z")
-        mocked_repo_metadata.assert_not_called()
-
-    def test_verify_gh_auth_stops_cleanly_when_gh_is_missing(self) -> None:
-        with patch.object(wl.subprocess, "run", side_effect=FileNotFoundError("gh")):
-            with self.assertRaises(SystemExit) as exc_info:
-                wl.verify_gh_auth(Path("C:/repo"))
-        self.assertIn("gh auth is invalid", str(exc_info.exception))
-
-    def test_quiet_window_uses_local_only_review_mode(self) -> None:
+    def quiet_context(self) -> dict[str, object]:
         quiet_context = dict(self.context)
         quiet_context["releases"] = []
         quiet_context["top_level_prs"] = []
@@ -76,37 +59,39 @@ class WeeklyUpdateFailurePathTests(unittest.TestCase):
             "multi_surface_active": False,
             "nested_lineage_complexity": False,
         }
+        return quiet_context
+
+    def test_collect_context_stops_immediately_when_gh_auth_is_invalid(self) -> None:
+        repo_path = Path("C:/repo")
+        with (
+            patch.object(wl, "resolve_repo_root", return_value=repo_path),
+            patch.object(wl, "verify_gh_auth", side_effect=SystemExit("[ERROR] GitHub evidence is required but gh auth is invalid: auth failed")),
+            patch.object(wl, "get_repo_metadata") as mocked_repo_metadata,
+        ):
+            with self.assertRaises(SystemExit):
+                wl.collect_context(repo_root=str(repo_path), now_utc="2026-03-27T12:00:00Z")
+        mocked_repo_metadata.assert_not_called()
+
+    def test_verify_gh_auth_stops_cleanly_when_gh_is_missing(self) -> None:
+        with patch.object(wl.subprocess, "run", side_effect=FileNotFoundError("gh")):
+            with self.assertRaises(SystemExit) as exc_info:
+                wl.verify_gh_auth(Path("C:/repo"))
+        self.assertIn("gh auth is invalid", str(exc_info.exception))
+
+    def test_quiet_window_uses_local_only_review_mode(self) -> None:
+        quiet_context = self.quiet_context()
         lint = wl.lint_context(quiet_context)
         packets = wl.build_packets(quiet_context, lint)
+        artifacts = wl.build_packet_artifacts(quiet_context, lint)
         self.assertTrue(lint["can_proceed"])
         self.assertEqual(packets["orchestrator.json"]["review_mode"], "local-only")
-        self.assertEqual(packets["orchestrator.json"]["recommended_workers"], [])
+        self.assertEqual(artifacts["build_result"]["recommended_workers"], [])
         self.assertEqual(packets["changes_packet.json"]["candidate_ids"], [])
         self.assertEqual(packets["incidents_packet.json"]["candidate_ids"], [])
         self.assertEqual(packets["risks_packet.json"]["candidate_ids"], [])
 
     def test_override_signal_promotes_local_only_to_targeted_delegation(self) -> None:
-        quiet_context = dict(self.context)
-        quiet_context["releases"] = []
-        quiet_context["top_level_prs"] = []
-        quiet_context["nested_prs"] = []
-        quiet_context["pr_lineage"] = {}
-        quiet_context["classified_issues"] = []
-        quiet_context["review_findings"] = []
-        quiet_context["workflow_failures"] = []
-        quiet_context["candidate_inventory"] = []
-        quiet_context["counts"] = {
-            "releases": 0,
-            "top_level_prs": 0,
-            "nested_prs": 0,
-            "selected_issues": 0,
-            "review_findings": 0,
-            "workflow_failures": 0,
-            "actual_incident_items": 0,
-            "changed_files": 0,
-            "task_packet_count": len(wl.PACKET_NAMES),
-            "batch_count": 0,
-        }
+        quiet_context = self.quiet_context()
         quiet_context["override_signals"] = {
             "high_churn": True,
             "multi_surface_active": False,
@@ -114,11 +99,41 @@ class WeeklyUpdateFailurePathTests(unittest.TestCase):
         }
         lint = wl.lint_context(quiet_context)
         packets = wl.build_packets(quiet_context, lint)
+        artifacts = wl.build_packet_artifacts(quiet_context, lint)
         self.assertTrue(lint["can_proceed"])
-        self.assertEqual(packets["orchestrator.json"]["review_mode_baseline"], "local-only")
         self.assertEqual(packets["orchestrator.json"]["review_mode"], "targeted-delegation")
-        self.assertEqual(packets["orchestrator.json"]["review_mode_adjustments"], ["override_signal"])
-        self.assertGreater(len(packets["orchestrator.json"]["recommended_workers"]), 0)
+        self.assertEqual(artifacts["build_result"]["review_mode_baseline"], "local-only")
+        self.assertEqual(artifacts["build_result"]["review_mode_adjustments"], ["override_signal"])
+        self.assertGreater(len(artifacts["build_result"]["recommended_workers"]), 0)
+
+    def test_build_packets_skips_build_result_only_counts(self) -> None:
+        quiet_context = self.quiet_context()
+        lint = wl.lint_context(quiet_context)
+
+        with (
+            patch.object(wl, "count_candidates_by_proposed_classification", side_effect=AssertionError("build_result-only helper should not run")),
+            patch.object(wl, "count_raw_reread_reasons", side_effect=AssertionError("build_result-only helper should not run")),
+        ):
+            packets = wl.build_packets(quiet_context, lint)
+
+        self.assertEqual(packets["orchestrator.json"]["review_mode"], "local-only")
+
+    def test_packet_metrics_are_recomputed_after_review_mode_rerender(self) -> None:
+        quiet_context = self.quiet_context()
+        lint = wl.lint_context(quiet_context)
+
+        with patch.object(wl, "DELEGATION_SAVINGS_FLOOR", 0):
+            artifacts = wl.build_packet_artifacts(quiet_context, lint)
+
+        self.assertEqual(artifacts["packets"]["orchestrator.json"]["review_mode"], "targeted-delegation")
+        self.assertEqual(
+            artifacts["packet_metrics"],
+            wl.compute_packet_metrics(
+                artifacts["packets"],
+                raw_local_sources={"context": quiet_context, "lint": lint},
+            ),
+        )
+        self.assertEqual(artifacts["build_result"]["packet_metrics"], artifacts["packet_metrics"])
 
     def test_non_mapping_analysis_ref_is_ignored_during_packet_builds(self) -> None:
         legacy_context = dict(self.context)

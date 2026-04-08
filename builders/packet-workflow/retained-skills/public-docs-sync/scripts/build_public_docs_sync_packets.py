@@ -348,6 +348,7 @@ def build_result_payload(
     applied_override_signals: list[str],
     active_packet_names: list[str],
     recommended: list[dict[str, str]],
+    optional: list[dict[str, Any]],
     selected_packets: list[str],
     packet_order: list[str],
     packet_metrics: dict[str, int],
@@ -360,6 +361,7 @@ def build_result_payload(
         "review_mode_adjustments": review_mode_adjustments,
         "recommended_worker_count": len(recommended),
         "recommended_workers": recommended,
+        "optional_workers": optional,
         "selected_packets": selected_packets,
         "packet_order": packet_order,
         "active_packets": active_packet_names,
@@ -409,8 +411,6 @@ def main() -> int:
 
     def build_orchestrator_payload(
         final_review_mode: str,
-        final_recommended: list[dict[str, str]],
-        final_adjustments: list[str],
     ) -> dict[str, Any]:
         return {
             "skill_name": context.get("skill_name"),
@@ -418,8 +418,6 @@ def main() -> int:
             "archetype": ARCHETYPE,
             "orchestrator_profile": ORCHESTRATOR_PROFILE,
             "review_mode": final_review_mode,
-            "review_mode_baseline": review_mode_baseline,
-            "review_mode_adjustments": final_adjustments,
             "decision_ready_packets": DECISION_READY_PACKETS,
             "worker_return_contract": WORKER_RETURN_CONTRACT,
             "worker_output_shape": WORKER_OUTPUT_SHAPE,
@@ -427,9 +425,6 @@ def main() -> int:
             "packet_worker_map": PACKET_WORKER_MAP,
             "worker_selection_guidance": WORKER_SELECTION_GUIDANCE,
             "uses_batch_packets": uses_batch_packets,
-            "recommended_worker_count": len(final_recommended),
-            "recommended_workers": final_recommended,
-            "optional_workers": optional_workers(final_review_mode, final_recommended),
             "local_responsibilities": [
                 "read global_packet.json and active focused packets",
                 "decide deterministic vs manual public-doc drift",
@@ -440,17 +435,11 @@ def main() -> int:
             "shared_packet": "global_packet.json",
             "packet_order": packet_order,
             "selected_packets": selected_packets,
-            "applied_override_signals": applied_override_signals,
-            "override_applied": override_applied,
             "xhigh_reread_policy": XHIGH_REREAD_POLICY,
             "raw_reread_allowed_reasons": RAW_REREAD_ALLOWED_REASONS,
         }
 
-    orchestrator = build_orchestrator_payload(
-        review_mode,
-        recommended,
-        review_mode_adjustments,
-    )
+    orchestrator = build_orchestrator_payload(review_mode)
 
     global_packet = {
         "skill_name": context.get("skill_name"),
@@ -527,11 +516,7 @@ def main() -> int:
             review_mode,
             review_mode_adjustments,
         )
-        orchestrator = build_orchestrator_payload(
-            review_mode,
-            recommended,
-            review_mode_adjustments,
-        )
+        orchestrator = build_orchestrator_payload(review_mode)
         packet_payloads["orchestrator.json"] = orchestrator
         packet_metrics = compute_packet_metrics(
             packet_payloads,
@@ -544,6 +529,7 @@ def main() -> int:
     write_json(output_dir / "packet_metrics.json", packet_metrics)
 
     if args.result_output:
+        final_optional_workers = optional_workers(review_mode, recommended)
         build_result = build_result_payload(
             review_mode=review_mode,
             review_mode_baseline=review_mode_baseline,
@@ -551,6 +537,7 @@ def main() -> int:
             applied_override_signals=applied_override_signals,
             active_packet_names=active_packet_names,
             recommended=recommended,
+            optional=final_optional_workers,
             selected_packets=selected_packets,
             packet_order=packet_order,
             packet_metrics=packet_metrics,

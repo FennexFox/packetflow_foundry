@@ -281,6 +281,16 @@ MIGRATED_LOCAL_MUTATION_FORBIDDEN_HEADERS = (
     "## Safety",
     "## Output",
 )
+MIGRATED_SYNTHESIS_FORBIDDEN_HEADERS = (
+    "## Workflow",
+    "## Packet Contract",
+    "## Automation Prompt Shape",
+    "## Required Packets",
+    "## Eval-Side Build Artifacts",
+    "## Scripts",
+    "## Evaluation",
+    "## Output",
+)
 
 
 def assert_skill_md_execution_contract(
@@ -470,6 +480,29 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 for header in RETAINED_MINIMUM_HEADERS:
                     self.assertIn(header, skill_md, skill_path)
                 for header in MIGRATED_LOCAL_MUTATION_FORBIDDEN_HEADERS:
+                    self.assertNotIn(header, skill_md, skill_path)
+
+    def test_migrated_synthesis_skill_docs_follow_minimum_operator_contract(self) -> None:
+        foundry_root = builder.foundry_root_dir()
+        for skill_name in (
+            "weekly-update",
+            "draft-release-copy",
+            "public-docs-sync",
+        ):
+            skill_path = (
+                foundry_root
+                / "builders"
+                / "packet-workflow"
+                / "retained-skills"
+                / skill_name
+                / "SKILL.md"
+            )
+            skill_md = skill_path.read_text(encoding="utf-8")
+            with self.subTest(skill=skill_name):
+                assert_skill_md_execution_contract(self, skill_md, source=skill_path)
+                for header in RETAINED_MINIMUM_HEADERS:
+                    self.assertIn(header, skill_md, skill_path)
+                for header in MIGRATED_SYNTHESIS_FORBIDDEN_HEADERS:
                     self.assertNotIn(header, skill_md, skill_path)
 
     def test_builder_uses_root_core_assets(self) -> None:

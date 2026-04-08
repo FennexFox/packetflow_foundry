@@ -37,9 +37,6 @@ class RepoPublicDocsSyncEvaluationLogTests(unittest.TestCase):
             "review_mode": "targeted-delegation",
             "packet_order": ["global_packet.json", "claims_packet.json"],
             "selected_packets": ["claims_packet.json"],
-            "recommended_worker_count": 1,
-            "recommended_workers": [{"agent_type": "large_diff_auditor"}],
-            "applied_override_signals": ["lint"],
         }
 
         payload = eval_log.skill_specific_data("public-docs-sync", context, orchestrator, lint_report)
@@ -49,7 +46,30 @@ class RepoPublicDocsSyncEvaluationLogTests(unittest.TestCase):
         self.assertEqual(payload["link_error_count"], 1)
         self.assertEqual(payload["stale_baseline_count"], 1)
         self.assertEqual(payload["auto_apply_candidate_count"], 1)
-        self.assertEqual(payload["worker_mix"], ["large_diff_auditor"])
+        self.assertEqual(payload["selected_packets"], ["claims_packet.json"])
+        self.assertIsNone(payload["worker_count"])
+        self.assertEqual(payload["worker_mix"], [])
+
+    def test_build_base_log_leaves_eval_only_worker_metadata_unset_for_lean_runtime_packets(self) -> None:
+        context = {
+            "repo_root": str(Path("repo-root")),
+            "current_branch": "batch_3",
+            "packet_candidates": {},
+            "baseline": {},
+        }
+        orchestrator = {
+            "review_mode": "targeted-delegation",
+            "packet_order": ["global_packet.json", "claims_packet.json", "orchestrator.json"],
+            "shared_packet": "global_packet.json",
+        }
+
+        payload = eval_log.build_base_log(SCRIPT_DIR / "write_evaluation_log.py", context, orchestrator, None)
+
+        self.assertIsNone(payload["orchestration"]["worker_count"])
+        self.assertEqual(payload["orchestration"]["worker_roles"], [])
+        self.assertEqual(payload["orchestration"]["override_signals"], [])
+        self.assertIsNone(payload["skill_specific"]["data"]["worker_count"])
+        self.assertEqual(payload["skill_specific"]["data"]["worker_mix"], [])
 
     def test_build_phase_merges_packet_metrics_and_active_packet_counts(self) -> None:
         log = {
@@ -57,7 +77,7 @@ class RepoPublicDocsSyncEvaluationLogTests(unittest.TestCase):
             "baseline": {},
             "orchestration": {},
             "input_size": {},
-            "skill_specific": {"data": {}},
+            "skill_specific": {"data": {"worker_count": 0}},
         }
         result = {
             "review_mode": "targeted-delegation",
@@ -83,6 +103,7 @@ class RepoPublicDocsSyncEvaluationLogTests(unittest.TestCase):
 
         self.assertEqual(log["orchestration"]["review_mode"], "targeted-delegation")
         self.assertEqual(log["orchestration"]["worker_count"], 2)
+        self.assertEqual(log["skill_specific"]["data"]["worker_count"], 2)
         self.assertEqual(log["orchestration"]["override_signals"], ["high_churn"])
         self.assertEqual(log["input_size"]["active_areas"], 2)
         self.assertEqual(log["skill_specific"]["data"]["packet_count"], 4)

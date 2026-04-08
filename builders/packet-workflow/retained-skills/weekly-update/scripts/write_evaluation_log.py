@@ -432,7 +432,7 @@ def skill_specific_data(
             "reporting_window": context.get("reporting_window"),
             "review_mode": orchestrator.get("review_mode"),
             "selected_packets": list(orchestrator.get("selected_packets") or []),
-            "worker_count": safe_int(orchestrator.get("recommended_worker_count")) or len(worker_roles(orchestrator)),
+            "worker_count": safe_int(orchestrator.get("recommended_worker_count")),
             "worker_mix": worker_roles(orchestrator),
             "candidate_counts_by_proposed_classification": classification_counts,
             "raw_reread_reason_counts": raw_reread_reason_counts,
@@ -516,7 +516,7 @@ def build_base_log(
                 orchestrator.get("review_mode_adjustments")
             ),
             "override_signals": normalize_override_signals(orchestrator),
-            "worker_count": safe_int(orchestrator.get("recommended_worker_count")) or len(worker_roles(orchestrator)),
+            "worker_count": safe_int(orchestrator.get("recommended_worker_count")),
             "worker_roles": worker_roles(orchestrator),
             "batch_packets_used": batch_packet_count(orchestrator),
             "item_packets_used": item_packet_count(orchestrator),
@@ -786,6 +786,9 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
         if worker_count is not None:
             orchestration["worker_count"] = worker_count
             skill_specific["worker_count"] = worker_count
+        override_signals = list_of_strings(result.get("override_signals"))
+        if override_signals:
+            orchestration["override_signals"] = override_signals
         workers = result.get("recommended_workers")
         if isinstance(workers, list):
             roles = []

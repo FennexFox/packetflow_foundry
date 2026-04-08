@@ -5,6 +5,8 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -165,14 +167,69 @@ def script_path(name: str) -> Path:
     return Path(__file__).resolve().with_name(name)
 
 
+def is_windowsapps_shim(candidate: object) -> bool:
+    return "/windowsapps/" in str(candidate or "").strip().replace("\\", "/").lower()
+
+
+def python_bin_candidates() -> list[Path]:
+    seen: set[str] = set()
+    ordered: list[Path] = []
+
+    def add(candidate: object) -> None:
+        text = str(candidate or "").strip()
+        if not text:
+            return
+        path = Path(text)
+        key = str(path)
+        if key in seen:
+            return
+        seen.add(key)
+        ordered.append(path)
+
+    add(sys.executable)
+    add(shutil.which("python"))
+    add(shutil.which("python3"))
+    for prefix in (sys.prefix, getattr(sys, "base_prefix", ""), sys.exec_prefix, getattr(sys, "base_exec_prefix", "")):
+        root = Path(str(prefix or "").strip())
+        if not str(root):
+            continue
+        if os.name == "nt":
+            add(root / "python.exe")
+            add(root / "python3.exe")
+            add(root / "Scripts" / "python.exe")
+            add(root / "Scripts" / "python3.exe")
+            continue
+        add(root / "bin" / "python")
+        add(root / "bin" / "python3")
+    return ordered
+
+
+def resolve_python_bin() -> str:
+    for candidate in python_bin_candidates():
+        if candidate.is_file() and not is_windowsapps_shim(candidate):
+            return str(candidate)
+    raise RuntimeError("Could not resolve a concrete Python interpreter; avoid WindowsApps Python shims.")
+
+
+def build_python_command(args: list[str]) -> list[str]:
+    if not args:
+        raise ValueError("Python command requires at least one argument.")
+    return [resolve_python_bin(), "-B", *args]
+
+
+def command_string(argv: list[str]) -> str:
+    return subprocess.list2cmdline(argv) if os.name == "nt" else shlex.join(argv)
+
+
 def run_command(args: list[str], *, cwd: Path) -> str:
     env = os.environ.copy()
     env["PYTHONDONTWRITEBYTECODE"] = "1"
-    command = [sys.executable, "-B", *args] if args[0].endswith(".py") else args
+    command = build_python_command(args) if args and Path(str(args[0])).suffix == ".py" else args
     result = subprocess.run(
         command,
         cwd=str(cwd),
         env=env,
+        stdin=subprocess.DEVNULL,
         capture_output=True,
         text=True,
         encoding="utf-8",
@@ -181,7 +238,7 @@ def run_command(args: list[str], *, cwd: Path) -> str:
     if result.returncode != 0:
         details = "\n".join(part for part in ((result.stderr or "").strip(), (result.stdout or "").strip()) if part)
         detail_suffix = f"\n{details}" if details else ""
-        raise RuntimeError(f"Command failed: {' '.join(command)}{detail_suffix}")
+        raise RuntimeError(f"Command failed: {command_string(command)}{detail_suffix}")
     return result.stdout
 
 
@@ -244,12 +301,17 @@ def init_repo(repo_root: Path) -> None:
     git(["commit", "-m", "Refresh diagnostics release copy"], cwd=repo_root)
 
 
-def build_smoke_plan(context: dict[str, Any], synthesis_packet: dict[str, Any]) -> dict[str, Any]:
+def build_smoke_plan(
+    context: dict[str, Any],
+    synthesis_packet: dict[str, Any],
+    build_result: dict[str, Any],
+) -> dict[str, Any]:
     defaults = synthesis_packet.get("plan_defaults") or {}
     draft_basis = defaults.get("draft_basis") or {}
     return {
         "context_fingerprint": defaults.get("context_fingerprint") or context.get("context_fingerprint"),
         "freshness_tuple": defaults.get("freshness_tuple") or context.get("freshness_tuple"),
+        "review_mode": defaults.get("review_mode") or build_result.get("review_mode") or "local-only",
         "overall_confidence": defaults.get("overall_confidence") or "medium",
         "stop_reasons": [],
         "evidence_status": defaults.get("evidence_status") or "not-applicable",
@@ -260,6 +322,9 @@ def build_smoke_plan(context: dict[str, Any], synthesis_packet: dict[str, Any]) 
             "focused_packets_used": [],
             "compensatory_reread_detected": False,
             "synthesis_packet_fingerprint": draft_basis.get("synthesis_packet_fingerprint"),
+        },
+        "qa_gate": {
+            "qa_clear": bool((defaults.get("qa_gate") or {}).get("qa_clear")),
         },
         "publish_update": {"mode": "noop"},
         "readme_update": {"mode": "noop"},
@@ -365,7 +430,7 @@ def main() -> int:
         if build_result.get("common_path_sufficient") is not True:
             raise RuntimeError("build result did not report common-path sufficiency")
 
-        plan = build_smoke_plan(context, synthesis_packet)
+        plan = build_smoke_plan(context, synthesis_packet, build_result)
         plan_path.write_text(json.dumps(plan, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
 
         run_command(
@@ -375,6 +440,8 @@ def main() -> int:
                 str(context_path),
                 "--lint",
                 str(lint_path),
+                "--build",
+                str(build_path),
                 "--plan",
                 str(plan_path),
                 "--output",

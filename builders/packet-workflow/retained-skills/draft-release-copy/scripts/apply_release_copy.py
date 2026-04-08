@@ -91,9 +91,21 @@ def main() -> int:
     repo_root = Path(str(normalized_plan.get("repo_root") or ".")).resolve()
     payload["normalized_plan_fingerprint"] = str(validation.get("normalized_plan_fingerprint") or "")
     payload["validation_commands"] = list(normalized_plan.get("validation_commands") or [])
+    qa_gate = normalized_plan.get("qa_gate") or {}
+    payload["review_mode"] = str(normalized_plan.get("review_mode") or "")
+    payload["qa_required"] = bool(qa_gate.get("required"))
+    payload["qa_clear"] = bool(qa_gate.get("qa_clear"))
     draft_basis = normalized_plan.get("draft_basis") or {}
     payload["raw_reread_count"] = int(draft_basis.get("raw_reread_count", 0) or 0)
     payload["compensatory_reread_detected"] = bool(draft_basis.get("compensatory_reread_detected"))
+
+    if payload["qa_required"] and not payload["qa_clear"]:
+        return fail(
+            payload,
+            result_output,
+            "qa_required",
+            str(qa_gate.get("reason") or "validated release-copy plan still requires local QA clear before apply"),
+        )
 
     try:
         current_head = plan_tools.current_head_commit(repo_root)

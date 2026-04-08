@@ -6,6 +6,8 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -39,6 +41,60 @@ def script_path(name: str) -> Path:
     return Path(__file__).resolve().with_name(name)
 
 
+def is_windowsapps_shim(candidate: object) -> bool:
+    return "/windowsapps/" in str(candidate or "").strip().replace("\\", "/").lower()
+
+
+def python_bin_candidates() -> list[Path]:
+    seen: set[str] = set()
+    ordered: list[Path] = []
+
+    def add(candidate: object) -> None:
+        text = str(candidate or "").strip()
+        if not text:
+            return
+        path = Path(text)
+        key = str(path)
+        if key in seen:
+            return
+        seen.add(key)
+        ordered.append(path)
+
+    add(sys.executable)
+    add(shutil.which("python"))
+    add(shutil.which("python3"))
+    for prefix in (sys.prefix, getattr(sys, "base_prefix", ""), sys.exec_prefix, getattr(sys, "base_exec_prefix", "")):
+        root = Path(str(prefix or "").strip())
+        if not str(root):
+            continue
+        if os.name == "nt":
+            add(root / "python.exe")
+            add(root / "python3.exe")
+            add(root / "Scripts" / "python.exe")
+            add(root / "Scripts" / "python3.exe")
+            continue
+        add(root / "bin" / "python")
+        add(root / "bin" / "python3")
+    return ordered
+
+
+def resolve_python_bin() -> str:
+    for candidate in python_bin_candidates():
+        if candidate.is_file() and not is_windowsapps_shim(candidate):
+            return str(candidate)
+    raise RuntimeError("Could not resolve a concrete Python interpreter; avoid WindowsApps Python shims.")
+
+
+def build_python_command(args: list[str]) -> list[str]:
+    if not args:
+        raise ValueError("Python command requires at least one argument.")
+    return [resolve_python_bin(), "-B", *args]
+
+
+def command_string(argv: list[str]) -> str:
+    return subprocess.list2cmdline(argv) if os.name == "nt" else shlex.join(argv)
+
+
 def repo_root_path(value: str | None) -> Path | None:
     if value:
         candidate = Path(value).resolve()
@@ -63,15 +119,23 @@ def smoke_summary(status: str, reason: str | None, repo_root: Path | None, next_
 def run_script(args: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
     env = os.environ.copy()
     env["PYTHONDONTWRITEBYTECODE"] = "1"
-    command = [sys.executable, "-B", *args]
+    command = build_python_command(args)
     try:
-        return subprocess.run(command, cwd=str(cwd) if cwd else None, env=env, text=True, capture_output=True, check=True)
+        return subprocess.run(
+            command,
+            cwd=str(cwd) if cwd else None,
+            env=env,
+            stdin=subprocess.DEVNULL,
+            text=True,
+            capture_output=True,
+            check=True,
+        )
     except subprocess.CalledProcessError as exc:
         stderr = (exc.stderr or "").strip()
         stdout = (exc.stdout or "").strip()
         details = "\n".join(part for part in (stderr, stdout) if part)
         detail_suffix = f"\n{details}" if details else ""
-        raise RuntimeError(f"Command failed: {' '.join(command)}{detail_suffix}") from exc
+        raise RuntimeError(f"Command failed: {command_string(command)}{detail_suffix}") from exc
 
 
 def read_json(path: Path) -> Any:

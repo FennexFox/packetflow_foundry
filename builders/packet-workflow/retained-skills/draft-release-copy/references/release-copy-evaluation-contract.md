@@ -14,6 +14,7 @@ Record the signals that matter for release-copy preparation:
 - release issue creation status
 - project scope availability and project add policy
 - local helper handoff availability
+- broad-mutation QA gate status and whether QA actually ran
 
 ## Skill-Specific Data
 
@@ -30,6 +31,10 @@ Keep these values in `skill_specific.data` when they are available:
 - `estimated_local_only_tokens`
 - `estimated_packet_tokens`
 - `estimated_delegation_savings`
+- `qa_required`
+- `qa_reason`
+- `qa_ran`
+- `validation_commands`
 - `changelog_lines`
 - `publish_fields_changed`
 - `readme_sections_changed`

@@ -294,16 +294,24 @@ class BuildPublicDocsSyncPacketsContractTests(unittest.TestCase):
             self.assertFalse(orchestrator["decision_ready_packets"])
             self.assertEqual(orchestrator["worker_return_contract"], contract.WORKER_RETURN_CONTRACT)
             self.assertEqual(orchestrator["worker_output_shape"], contract.WORKER_OUTPUT_SHAPE)
-            self.assertEqual(orchestrator["applied_override_signals"], ["lint"])
             self.assertEqual(orchestrator["packet_worker_map"], contract.PACKET_WORKER_MAP)
             self.assertEqual(orchestrator["raw_reread_allowed_reasons"], contract.RAW_REREAD_ALLOWED_REASONS)
             self.assertNotIn("packet_size_bytes", orchestrator)
+            self.assertNotIn("review_mode_baseline", orchestrator)
+            self.assertNotIn("review_mode_adjustments", orchestrator)
+            self.assertNotIn("recommended_worker_count", orchestrator)
+            self.assertNotIn("recommended_workers", orchestrator)
+            self.assertNotIn("optional_workers", orchestrator)
+            self.assertNotIn("applied_override_signals", orchestrator)
+            self.assertEqual(build_result["review_mode_baseline"], "broad-delegation")
+            self.assertEqual(build_result["review_mode_adjustments"], ["override_signal"])
+            self.assertEqual(build_result["applied_override_signals"], ["lint"])
             self.assertEqual(
-                [worker["agent_type"] for worker in orchestrator["recommended_workers"]],
+                [worker["agent_type"] for worker in build_result["recommended_workers"]],
                 ["large_diff_auditor", "evidence_summarizer", "docs_verifier", "docs_verifier"],
             )
-            self.assertEqual(orchestrator["recommended_workers"][-1]["packet"], "batch-packet-01.json")
-            self.assertEqual([worker["agent_type"] for worker in orchestrator["optional_workers"]], ["repo_mapper", "log_triager"])
+            self.assertEqual(build_result["recommended_workers"][-1]["packet"], "batch-packet-01.json")
+            self.assertEqual([worker["agent_type"] for worker in build_result["optional_workers"]], ["repo_mapper", "log_triager"])
             self.assertEqual(global_packet["orchestrator_profile"], "standard")
             self.assertEqual(global_packet["review_mode_overrides"], contract.REVIEW_MODE_OVERRIDES)
             self.assertEqual(global_packet["packet_worker_map"]["batch-packet-01"], ["docs_verifier"])

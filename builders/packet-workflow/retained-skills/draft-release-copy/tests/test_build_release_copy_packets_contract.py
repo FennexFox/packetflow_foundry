@@ -272,6 +272,27 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         self.assertEqual(packets.baseline_review_mode(9, 2), ("targeted-delegation", 2))
         self.assertEqual(packets.baseline_review_mode(21, 4), ("broad-delegation", 3))
         self.assertEqual(
+            contract.should_require_qa(
+                "broad-delegation",
+                publish_mode="replace-fields",
+                readme_mode="replace-sections",
+                issue_mode="create",
+            ),
+            (
+                True,
+                "broad-delegation plan mutates multiple release-copy surfaces; local QA clear is required before apply.",
+            ),
+        )
+        self.assertEqual(
+            contract.should_require_qa(
+                "targeted-delegation",
+                publish_mode="replace-fields",
+                readme_mode="replace-sections",
+                issue_mode="create",
+            ),
+            (False, None),
+        )
+        self.assertEqual(
             packets.apply_override_adjustment(
                 "local-only",
                 0,
@@ -335,10 +356,13 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
 
         orchestrator = payloads["orchestrator.json"]
         packet_metrics = payloads["packet_metrics.json"]
+        self.assertEqual(result_payload["context_fingerprint"], context["context_fingerprint"])
+        self.assertEqual(result_payload["freshness_tuple"], context["freshness_tuple"])
         self.assertEqual(result_payload["review_mode"], orchestrator["review_mode"])
-        self.assertEqual(result_payload["recommended_worker_count"], orchestrator["recommended_worker_count"])
+        self.assertEqual(result_payload["recommended_worker_count"], len(result_payload["recommended_workers"]))
         self.assertEqual(result_payload["packet_files"], orchestrator["packet_files"])
         self.assertEqual(result_payload["packet_metrics"], packet_metrics)
+        self.assertEqual(result_payload["override_signals"], [])
         self.assertTrue(result_payload["packet_metrics_file"].endswith("packet_metrics.json"))
         self.assertEqual(result_payload["packet_count"], packet_metrics["packet_count"])
         self.assertEqual(result_payload["largest_packet_bytes"], packet_metrics["largest_packet_bytes"])
@@ -352,6 +376,21 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
             result_payload["synthesis_packet_sufficient_for_common_path"],
             packet_metrics["synthesis_packet_sufficient_for_common_path"],
         )
+        self.assertEqual(result_payload["qa_gate_guidance"]["review_mode"], orchestrator["review_mode"])
+
+    def test_build_packet_payloads_skip_eval_only_worker_assignment_derivation(self) -> None:
+        context = self.build_context()
+        lint = self.build_lint()
+
+        with mock.patch.object(
+            packets,
+            "recommended_worker_assignments",
+            side_effect=AssertionError("runtime packet build should not derive worker assignments"),
+        ):
+            payloads = packets.build_packet_payloads(context, lint)
+
+        self.assertIn("orchestrator.json", payloads)
+        self.assertIn("packet_metrics.json", payloads)
 
     def test_packet_emission_and_common_path_sufficiency(self) -> None:
         context = self.build_context()
@@ -402,6 +441,9 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         self.assertFalse(
             synthesis_packet["plan_defaults"]["draft_basis"]["compensatory_reread_detected"]
         )
+        self.assertEqual(synthesis_packet["plan_defaults"]["review_mode"], orchestrator["review_mode"])
+        self.assertEqual(synthesis_packet["plan_defaults"]["qa_gate"], {"qa_clear": False})
+        self.assertEqual(synthesis_packet["qa_gate_guidance"]["review_mode"], orchestrator["review_mode"])
 
         self.assertEqual(global_packet["worker_return_contract"], contract.WORKER_RETURN_CONTRACT)
         self.assertEqual(global_packet["worker_output_shape"], contract.WORKER_OUTPUT_SHAPE)
@@ -426,8 +468,11 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         self.assertEqual(orchestrator["shared_packet"], "global_packet.json")
         self.assertEqual(orchestrator["shared_local_packet"], "synthesis_packet.json")
         self.assertEqual(orchestrator["routing_contract"], contract.runtime_field_roles())
-        self.assertEqual(orchestrator["review_mode_baseline"], "targeted-delegation")
-        self.assertEqual(orchestrator["review_mode_adjustments"], [])
+        self.assertNotIn("review_mode_baseline", orchestrator)
+        self.assertNotIn("review_mode_adjustments", orchestrator)
+        self.assertNotIn("recommended_worker_count", orchestrator)
+        self.assertNotIn("recommended_workers", orchestrator)
+        self.assertNotIn("optional_workers", orchestrator)
         self.assertEqual(
             orchestrator["common_path_contract"]["required_packets"],
             ["global_packet.json", "synthesis_packet.json"],
@@ -443,6 +488,10 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         self.assertEqual(packet_metrics["packet_count"], len(orchestrator["packet_files"]))
         self.assertEqual(packet_metrics["packet_count"], len(expected_files) - 1)
         packet_sizes = packet_metrics["packet_size_bytes"]
+        self.assertEqual(
+            packet_sizes["by_packet"]["synthesis_packet.json"],
+            contract.packet_size_bytes(synthesis_packet),
+        )
         self.assertEqual(
             packet_sizes["worker_facing_total"],
             sum(

@@ -21,6 +21,31 @@ import smoke_weekly_update as smoke  # noqa: E402
 
 
 class SmokeWeeklyUpdateTests(unittest.TestCase):
+    def test_resolve_python_bin_skips_windowsapps_shims(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            tmp_dir = Path(tmp_dir_name)
+            shim = tmp_dir / "Microsoft" / "WindowsApps" / "python.exe"
+            concrete = tmp_dir / "Python312" / "python.exe"
+            shim.parent.mkdir(parents=True, exist_ok=True)
+            concrete.parent.mkdir(parents=True, exist_ok=True)
+            shim.write_text("", encoding="utf-8")
+            concrete.write_text("", encoding="utf-8")
+
+            with patch.object(smoke, "python_bin_candidates", return_value=[shim, concrete]):
+                self.assertEqual(smoke.resolve_python_bin(), str(concrete))
+
+    def test_run_script_uses_python_builder(self) -> None:
+        completed = subprocess.CompletedProcess(["python"], 0, "{}", "")
+
+        with (
+            patch.object(smoke, "build_python_command", return_value=["C:/Python312/python.exe", "-B", "driver.py", "--flag"]),
+            patch.object(smoke.subprocess, "run", return_value=completed) as run_mock,
+        ):
+            result = smoke.run_script(["driver.py", "--flag"], cwd=Path("C:/repo"))
+
+        self.assertIs(result, completed)
+        self.assertEqual(run_mock.call_args.args[0], ["C:/Python312/python.exe", "-B", "driver.py", "--flag"])
+
     def test_explicit_non_repo_root_returns_blocked_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir_name:
             tmp_dir = Path(tmp_dir_name)
