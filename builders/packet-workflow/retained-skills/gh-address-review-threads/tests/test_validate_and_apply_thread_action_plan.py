@@ -16,7 +16,7 @@ for candidate in (str(TEST_DIR), str(SCRIPT_DIR)):
 
 import apply_thread_action_plan as apply_plan  # type: ignore  # noqa: E402
 import validate_thread_action_plan as validate_plan  # type: ignore  # noqa: E402
-from review_thread_test_support import context_with_threads, marker_conflict, reply_candidate, review_thread, write_json  # noqa: E402
+from review_thread_test_support import comment, context_with_threads, marker_conflict, reply_candidate, review_thread, write_json  # noqa: E402
 from thread_action_contract import build_context_fingerprint, validate_thread_action_payload  # type: ignore  # noqa: E402
 
 
@@ -42,7 +42,8 @@ class ValidateAndApplyThreadActionPlanTests(unittest.TestCase):
                     {
                         "thread_id": "t-2",
                         "decision": "defer",
-                        "ack_mode": "skip",
+                        "ack_mode": "add",
+                        "ack_body": "Deferring until the current packet evidence is re-grounded.",
                         "junk": "remove me",
                     },
                     {
@@ -156,7 +157,8 @@ class ValidateAndApplyThreadActionPlanTests(unittest.TestCase):
                         {
                             "thread_id": "t-1",
                             "decision": "accept",
-                            "ack_mode": "skip",
+                            "ack_mode": "add",
+                            "ack_body": "Will update the naming and rerun the relevant check.",
                             "resolve_after_complete": True,
                         }
                     ]
@@ -182,6 +184,270 @@ class ValidateAndApplyThreadActionPlanTests(unittest.TestCase):
             )
             self.assertFalse(complete_result["valid"])
             self.assertEqual(complete_result["errors"][0]["code"], "invalid_resolve_after_complete")
+
+    def test_validator_rejects_ack_skip_without_exact_managed_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            thread = review_thread(
+                thread_id="t-1",
+                path="src/app.py",
+                line=10,
+                reviewer_login="reviewer-a",
+                reviewer_body="Please rename this.",
+                reply_candidates={
+                    "ack": reply_candidate(
+                        mode="update",
+                        comment_id="self-1",
+                        reason="adopt_latest_unmarked_reply_after_reviewer",
+                        managed=False,
+                        adopted_unmarked_reply=True,
+                    ),
+                    "complete": reply_candidate(
+                        mode="add",
+                        comment_id=None,
+                        reason="complete_never_adopts_unmarked_reply",
+                        managed=False,
+                        adopted_unmarked_reply=False,
+                    ),
+                },
+                comments=[
+                    comment(
+                        comment_id="self-1",
+                        author_login="codex",
+                        body="Previous unmarked reply.",
+                        created_at="2026-03-01T00:05:00Z",
+                    )
+                ],
+            )
+            context = context_with_threads(tmp, [thread])
+            context["context_fingerprint"] = build_context_fingerprint(context)
+
+            result = validate_thread_action_payload(
+                context,
+                {
+                    "thread_actions": [
+                        {
+                            "thread_id": "t-1",
+                            "decision": "defer",
+                            "ack_mode": "skip",
+                        }
+                    ]
+                },
+                "ack",
+            )
+
+            self.assertFalse(result["valid"])
+            self.assertEqual(result["errors"][0]["code"], "non_exact_reply_candidate_for_skip")
+
+    def test_validator_rejects_ack_skip_when_no_existing_ack_reply_exists(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            thread = review_thread(
+                thread_id="t-1",
+                path="src/app.py",
+                line=10,
+                reviewer_login="reviewer-a",
+                reviewer_body="Please rename this.",
+            )
+            context = context_with_threads(tmp, [thread])
+            context["context_fingerprint"] = build_context_fingerprint(context)
+
+            result = validate_thread_action_payload(
+                context,
+                {
+                    "thread_actions": [
+                        {
+                            "thread_id": "t-1",
+                            "decision": "defer",
+                            "ack_mode": "skip",
+                        }
+                    ]
+                },
+                "ack",
+            )
+
+            self.assertFalse(result["valid"])
+            self.assertEqual(result["errors"][0]["code"], "missing_exact_managed_skip_target")
+
+    def test_validator_allows_ack_skip_with_exact_managed_target(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            thread = review_thread(
+                thread_id="t-1",
+                path="src/app.py",
+                line=10,
+                reviewer_login="reviewer-a",
+                reviewer_body="Please rename this.",
+                reply_candidates={
+                    "ack": reply_candidate(
+                        mode="update",
+                        comment_id="self-2",
+                        reason="exact_managed_reply",
+                        managed=True,
+                        adopted_unmarked_reply=False,
+                    ),
+                    "complete": reply_candidate(
+                        mode="add",
+                        comment_id=None,
+                        reason="complete_never_adopts_unmarked_reply",
+                        managed=False,
+                        adopted_unmarked_reply=False,
+                    ),
+                },
+                comments=[
+                    comment(
+                        comment_id="self-2",
+                        author_login="codex",
+                        body=(
+                            "<!-- codex:review-thread v1 phase=ack thread=t-1 -->\n"
+                            "Reviewer asked to rename this.\n"
+                            "accept\n"
+                            "Will update the naming and rerun the relevant check."
+                        ),
+                        created_at="2026-03-01T00:05:00Z",
+                        managed_phase="ack",
+                        managed_thread_id="t-1",
+                        has_exact_managed_marker=True,
+                    )
+                ],
+            )
+            context = context_with_threads(tmp, [thread])
+            context["context_fingerprint"] = build_context_fingerprint(context)
+
+            result = validate_thread_action_payload(
+                context,
+                {
+                    "thread_actions": [
+                        {
+                            "thread_id": "t-1",
+                            "decision": "accept",
+                            "ack_mode": "skip",
+                        }
+                    ]
+                },
+                "ack",
+            )
+
+            self.assertTrue(result["valid"])
+            self.assertEqual(result["normalized_thread_actions"][0]["ack_mode"], "skip")
+
+    def test_validator_rejects_ack_skip_when_exact_managed_decision_differs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            thread = review_thread(
+                thread_id="t-1",
+                path="src/app.py",
+                line=10,
+                reviewer_login="reviewer-a",
+                reviewer_body="Please rename this.",
+                reply_candidates={
+                    "ack": reply_candidate(
+                        mode="update",
+                        comment_id="self-4",
+                        reason="exact_managed_reply",
+                        managed=True,
+                        adopted_unmarked_reply=False,
+                    ),
+                    "complete": reply_candidate(
+                        mode="add",
+                        comment_id=None,
+                        reason="complete_never_adopts_unmarked_reply",
+                        managed=False,
+                        adopted_unmarked_reply=False,
+                    ),
+                },
+                comments=[
+                    comment(
+                        comment_id="self-4",
+                        author_login="codex",
+                        body=(
+                            "<!-- codex:review-thread v1 phase=ack thread=t-1 -->\n"
+                            "Reviewer asked to rename this.\n"
+                            "accept\n"
+                            "Will update the naming and rerun the relevant check."
+                        ),
+                        created_at="2026-03-01T00:05:00Z",
+                        managed_phase="ack",
+                        managed_thread_id="t-1",
+                        has_exact_managed_marker=True,
+                    )
+                ],
+            )
+            context = context_with_threads(tmp, [thread])
+            context["context_fingerprint"] = build_context_fingerprint(context)
+
+            result = validate_thread_action_payload(
+                context,
+                {
+                    "thread_actions": [
+                        {
+                            "thread_id": "t-1",
+                            "decision": "defer",
+                            "ack_mode": "skip",
+                        }
+                    ]
+                },
+                "ack",
+            )
+
+            self.assertFalse(result["valid"])
+            self.assertEqual(result["errors"][0]["code"], "mismatched_exact_managed_skip_decision")
+
+    def test_validator_allows_adoptable_ack_reply_update_fallback(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            thread = review_thread(
+                thread_id="t-1",
+                path="src/app.py",
+                line=10,
+                reviewer_login="reviewer-a",
+                reviewer_body="Please rename this.",
+                reply_candidates={
+                    "ack": reply_candidate(
+                        mode="update",
+                        comment_id="self-3",
+                        reason="adopt_latest_unmarked_reply_after_reviewer",
+                        managed=False,
+                        adopted_unmarked_reply=True,
+                    ),
+                    "complete": reply_candidate(
+                        mode="add",
+                        comment_id=None,
+                        reason="complete_never_adopts_unmarked_reply",
+                        managed=False,
+                        adopted_unmarked_reply=False,
+                    ),
+                },
+                comments=[
+                    comment(
+                        comment_id="self-3",
+                        author_login="codex",
+                        body="Previous unmarked reply.",
+                        created_at="2026-03-01T00:05:00Z",
+                    )
+                ],
+            )
+            context = context_with_threads(tmp, [thread])
+            context["context_fingerprint"] = build_context_fingerprint(context)
+
+            result = validate_thread_action_payload(
+                context,
+                {
+                    "thread_actions": [
+                        {
+                            "thread_id": "t-1",
+                            "decision": "defer",
+                            "ack_mode": "update",
+                            "ack_body": "Updating the previous reply into a managed defer acknowledgement.",
+                        }
+                    ]
+                },
+                "ack",
+            )
+
+            self.assertTrue(result["valid"])
+            self.assertEqual(result["normalized_thread_actions"][0]["ack_comment_id"], "self-3")
+            self.assertEqual(result["counters"]["adopted_unmarked_reply_count"], 1)
 
     def test_validator_and_apply_enforce_fingerprint_and_normalized_envelope(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

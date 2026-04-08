@@ -16,7 +16,7 @@ for candidate in (str(TEST_DIR), str(SCRIPT_DIR)):
         sys.path.insert(0, candidate)
 
 import build_review_packets as packets  # type: ignore  # noqa: E402
-from review_thread_packet_contract import compute_packet_metrics  # type: ignore  # noqa: E402
+from review_thread_packet_contract import build_grounding_diagnostics, compute_packet_metrics  # type: ignore  # noqa: E402
 from review_thread_test_support import context_with_threads, marker_conflict, review_thread, write_json  # noqa: E402
 from thread_action_contract import build_context_fingerprint  # type: ignore  # noqa: E402
 
@@ -119,6 +119,34 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertEqual(matched_exact_anchors, [])
         self.assertEqual(identifier_anchors, ["module", "helper"])
         self.assertEqual(matched_identifier_anchors, ["module", "helper"])
+
+    def test_grounding_diagnostics_marks_near_match_as_mismatch(self) -> None:
+        grounding = build_grounding_diagnostics(
+            "Please update `module.helper()` to match the renamed parameter.",
+            path="src/app.py",
+            path_exists=True,
+            snippet="   10: module = helper\n",
+            diff_snippet=None,
+        )
+
+        self.assertTrue(grounding["has_explicit_anchor"])
+        self.assertFalse(grounding["exact_anchor_match"])
+        self.assertFalse(grounding["structural_anchor_match"])
+        self.assertTrue(grounding["grounding_mismatch"])
+        self.assertEqual(grounding["mapped_escape_reason"], "missing_required_evidence")
+
+    def test_grounding_diagnostics_ignores_broad_natural_language_requests(self) -> None:
+        grounding = build_grounding_diagnostics(
+            "Please clarify this flow before merging.",
+            path="src/app.py",
+            path_exists=True,
+            snippet="   10: return current_flow\n",
+            diff_snippet=None,
+        )
+
+        self.assertFalse(grounding["has_explicit_anchor"])
+        self.assertFalse(grounding["grounding_mismatch"])
+        self.assertIsNone(grounding["mapped_escape_reason"])
 
     def _run_estimated_savings_observation_case(
         self,
@@ -382,6 +410,98 @@ class BuildReviewPacketsTests(unittest.TestCase):
             )
             self.assertEqual(thread_packet["marker_conflicts"][0]["severity"], "warning")
             self.assertEqual(thread_packet["marker_conflicts"][1]["severity"], "hard-stop")
+
+    def test_main_defaults_singleton_explicit_anchor_mismatch_to_defer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            threads = [
+                review_thread(
+                    thread_id="t-1",
+                    path="src/app.py",
+                    line=10,
+                    reviewer_login="reviewer-a",
+                    reviewer_body="Please update `module.helper()` to match the renamed parameter.",
+                )
+            ]
+            context = context_with_threads(tmp, threads)
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            context_path = tmp / "context.json"
+            output_dir = tmp / "packets"
+            build_result_path = tmp / "build-result.json"
+            write_json(context_path, context)
+
+            argv = [
+                "build_review_packets.py",
+                "--context",
+                str(context_path),
+                "--repo-root",
+                context["repo_root"],
+                "--output-dir",
+                str(output_dir),
+                "--result-output",
+                str(build_result_path),
+            ]
+            with patch.object(sys, "argv", argv), patch.object(packets, "diff_snippet_for_path", return_value=None):
+                self.assertEqual(packets.main(), 0)
+
+            thread_packet = json.loads((output_dir / "thread-01.json").read_text(encoding="utf-8"))
+            build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
+
+            self.assertTrue(thread_packet["grounding"]["grounding_mismatch"])
+            self.assertEqual(thread_packet["grounding"]["mapped_escape_reason"], "missing_required_evidence")
+            self.assertEqual(thread_packet["thread"]["default_decision_candidate"], "defer")
+            self.assertEqual(thread_packet["applicability"]["default_decision_candidate"], "defer")
+            self.assertFalse(thread_packet["adjudication_basis"]["common_path_sufficient"])
+            self.assertFalse(build_result["common_path_sufficient"])
+
+    def test_main_lowers_batch_shared_default_without_overwriting_thread_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            threads = [
+                review_thread(
+                    thread_id="t-1",
+                    path="src/app.py",
+                    line=10,
+                    reviewer_login="reviewer-a",
+                    reviewer_body="Please tighten naming.",
+                ),
+                review_thread(
+                    thread_id="t-2",
+                    path="src/app.py",
+                    line=18,
+                    reviewer_login="reviewer-a",
+                    reviewer_body="Please update `module.helper()` to match the renamed parameter.",
+                ),
+            ]
+            context = context_with_threads(tmp, threads)
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            context_path = tmp / "context.json"
+            output_dir = tmp / "packets"
+            build_result_path = tmp / "build-result.json"
+            write_json(context_path, context)
+
+            argv = [
+                "build_review_packets.py",
+                "--context",
+                str(context_path),
+                "--repo-root",
+                context["repo_root"],
+                "--output-dir",
+                str(output_dir),
+                "--result-output",
+                str(build_result_path),
+            ]
+            with patch.object(sys, "argv", argv), patch.object(packets, "diff_snippet_for_path", return_value=None):
+                self.assertEqual(packets.main(), 0)
+
+            batch_packet = json.loads((output_dir / "thread-batch-01.json").read_text(encoding="utf-8"))
+            thread_defaults = {item["thread_id"]: item for item in batch_packet["threads"]}
+
+            self.assertEqual(batch_packet["shared_fix_surface"]["default_decision_candidate"], "defer")
+            self.assertEqual(thread_defaults["t-1"]["default_decision_candidate"], "accept")
+            self.assertFalse(thread_defaults["t-1"]["grounding"]["grounding_mismatch"])
+            self.assertEqual(thread_defaults["t-2"]["default_decision_candidate"], "defer")
+            self.assertTrue(thread_defaults["t-2"]["grounding"]["grounding_mismatch"])
 
     def test_review_mode_override_does_not_upgrade_missing_evidence_to_common_path_sufficient(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

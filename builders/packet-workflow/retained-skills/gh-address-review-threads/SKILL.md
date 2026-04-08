@@ -39,10 +39,13 @@ Use this skill to handle unresolved GitHub PR review threads on the current bran
 
 - `manage_review_thread_run.py` allows the next transition.
 - `ack` is posted and recorded as `ack-applied` before validation recording, post-push staging, or further accepted-thread work.
+- `ack_mode=skip` is used only to preserve an already-correct exact managed `ack` reply for that thread.
+- adoptable unmarked replies may be used as `update` fallback targets, but they are never enough to justify `ack_mode=skip`.
 - `record-apply` sees `apply_succeeded=true`, `fingerprint_match=true`, and a non-dry-run result for live runs.
 - `apply_thread_action_plan.py` consumes only normalized validator output.
 - `packet_worker_map` is the runtime routing authority.
 - `packet_metrics.json` and build-result worker derivation are evaluation-side only.
+- manifest `state.accepted_threads` is the run-local `ack-applied` accepted set, while post-push accepted provenance lives in `reconciliation-input.json`.
 - same-run accepted non-outdated auto-resolve uses post-push `HEAD` delta evidence from the manifest reconciliation input, not the full PR base-to-head diff.
 - same-run outdated auto-resolve has accepted-before-push provenance, current-`HEAD` evidence, and real validation evidence.
 - broad or cross-cutting fixes stay local even when delegation is allowed for narrow analysis.

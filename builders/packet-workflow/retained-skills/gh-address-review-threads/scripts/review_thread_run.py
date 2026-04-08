@@ -170,6 +170,9 @@ def initialize_run_manifest(
             "evaluation_log": eval_path.resolve().as_posix(),
         },
         "state": {
+            # This field is the run-local ack-applied accepted set. Same-run
+            # post-push reconciliation turns it into explicit accepted
+            # provenance together with validation commands and HEAD SHAs.
             "accepted_threads": [],
             "validation_commands": [],
             "latest_context_fingerprint": context.get("context_fingerprint"),
@@ -296,16 +299,6 @@ def copy_validated_plan_into_manifest(
     if not isinstance(phase_paths, dict) or "validated_plan" not in phase_paths:
         raise RuntimeError(f"Manifest does not define a `{phase}` validated plan path.")
     payload = copy_json_document(source_path, Path(phase_paths["validated_plan"]))
-    actions = payload.get("normalized_thread_actions")
-    if phase == "ack" and isinstance(actions, list):
-        accepted = sorted(
-            {
-                str(item.get("thread_id") or "").strip()
-                for item in actions
-                if isinstance(item, dict) and str(item.get("decision") or "").strip() == "accept"
-            }
-        )
-        manifest["state"]["accepted_threads"] = [thread_id for thread_id in accepted if thread_id]
     manifest["state"]["last_completed_phase"] = f"{phase}-validated"
     return payload
 
@@ -348,6 +341,16 @@ def copy_apply_result_into_manifest(
     fingerprint = str(payload.get("context_fingerprint") or "").strip()
     if fingerprint:
         manifest["state"]["latest_context_fingerprint"] = fingerprint
+    if phase == "ack":
+        actions = payload.get("normalized_thread_actions")
+        accepted = sorted(
+            {
+                str(item.get("thread_id") or "").strip()
+                for item in actions or []
+                if isinstance(item, dict) and str(item.get("decision") or "").strip() == "accept"
+            }
+        )
+        manifest["state"]["accepted_threads"] = [thread_id for thread_id in accepted if thread_id]
     manifest["state"]["last_completed_phase"] = f"{phase}-applied"
     return payload
 
@@ -364,6 +367,7 @@ def set_accepted_threads(
     manifest: dict[str, Any],
     thread_ids: list[str],
 ) -> dict[str, Any]:
+    # This is a manual escape hatch for the run-local ack-applied accepted set.
     manifest["state"]["accepted_threads"] = sorted({thread_id.strip() for thread_id in thread_ids if thread_id.strip()})
     return manifest
 

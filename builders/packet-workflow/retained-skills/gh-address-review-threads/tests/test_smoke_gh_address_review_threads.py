@@ -105,7 +105,7 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
         self.assertEqual(payload["reason"], "no_open_pr")
         self.assertEqual(payload["next_action"], "open_pr_for_current_branch")
 
-    def test_main_runs_safe_skip_defer_smoke_path(self) -> None:
+    def test_main_runs_ack_reply_smoke_path_without_contract_bypass(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir_name:
             tmp_dir = Path(tmp_dir_name)
             repo_holder = tmp_dir / "repo-holder"

@@ -19,7 +19,7 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from thread_action_contract import build_context_fingerprint
+from thread_action_contract import build_context_fingerprint, exact_managed_target_id
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -149,6 +149,16 @@ def synthetic_reply_candidate(*, mode: str, reason: str) -> dict[str, Any]:
         "managed": False,
         "adopted_unmarked_reply": False,
     }
+
+
+def safe_ack_body(*, decision: str) -> str:
+    if decision == "accept":
+        return "Dry-run smoke: this accepted thread would be addressed before post-push reconciliation."
+    if decision == "reject":
+        return "Dry-run smoke: rejecting this thread would require a brief thread-local rationale."
+    if decision == "defer-outdated":
+        return "Dry-run smoke: deferring this outdated thread until current HEAD is re-grounded."
+    return "Dry-run smoke: deferring this thread until the current packet evidence is re-grounded."
 
 
 def synthetic_thread(*, thread_id: str, path: str, line: int, reviewer_login: str, reviewer_body: str) -> dict[str, Any]:
@@ -434,15 +444,15 @@ def build_safe_plan(
             continue
         is_accepted = phase == "ack" and thread_id in accepted
         if phase == "ack":
+            decision = "accept" if is_accepted else ("defer-outdated" if thread.get("is_outdated") else "defer")
+            exact_ack_target = exact_managed_target_id(thread, "ack")
             action = {
                 "thread_id": thread_id,
-                "decision": "accept" if is_accepted else ("defer-outdated" if thread.get("is_outdated") else "defer"),
-                "ack_mode": "add" if is_accepted else "skip",
+                "decision": decision,
+                "ack_mode": "skip" if exact_ack_target else "add",
             }
-            if is_accepted:
-                action["ack_body"] = (
-                    "Dry-run smoke: this accepted thread would be addressed before post-push reconciliation."
-                )
+            if not exact_ack_target:
+                action["ack_body"] = safe_ack_body(decision=decision)
         else:
             action = {
                 "thread_id": thread_id,

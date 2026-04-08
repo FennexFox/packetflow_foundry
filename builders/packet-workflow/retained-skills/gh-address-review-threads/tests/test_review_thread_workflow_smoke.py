@@ -51,7 +51,8 @@ class ReviewThreadWorkflowSmokeTests(unittest.TestCase):
                         {
                             "thread_id": "t-2",
                             "decision": "defer",
-                            "ack_mode": "skip",
+                            "ack_mode": "add",
+                            "ack_body": "Deferring this thread until the current packet evidence is re-grounded.",
                         },
                         {
                             "thread_id": "t-1",

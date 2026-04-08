@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from typing import Any
 
 
@@ -53,6 +54,10 @@ VALIDATION_ERROR_CODES = {
     "invalid_resolve_after_complete",
     "adoption_blocked_update",
     "hard_stop_marker_conflict",
+    "missing_exact_managed_skip_target",
+    "non_exact_reply_candidate_for_skip",
+    "missing_exact_managed_skip_decision",
+    "mismatched_exact_managed_skip_decision",
     "stale_context_fingerprint",
 }
 
@@ -90,6 +95,27 @@ def _timestamp(value: dict[str, Any] | None) -> str:
 
 def comment_sort_key(comment: dict[str, Any]) -> tuple[str, str]:
     return (_timestamp(comment), _stringify(comment.get("id")))
+
+
+def _managed_comment_content_lines(body: str | None) -> list[str]:
+    lines = [line.strip() for line in str(body or "").lstrip("\ufeff").splitlines()]
+    return [
+        line
+        for line in lines
+        if line and not line.lstrip().startswith("<!-- codex:review-thread")
+    ]
+
+
+def _decision_mentions(line: str) -> list[str]:
+    lowered = line.lower()
+    mentions: list[str] = []
+    if re.search(r"\bdefer-outdated\b", lowered):
+        mentions.append("defer-outdated")
+        lowered = re.sub(r"\bdefer-outdated\b", " ", lowered)
+    for decision in ("accept", "reject", "defer"):
+        if re.search(rf"\b{decision}\b", lowered):
+            mentions.append(decision)
+    return mentions
 
 
 def thread_sort_key(thread: dict[str, Any]) -> tuple[str, int, str]:
@@ -196,8 +222,39 @@ def exact_managed_target_id(thread: dict[str, Any], phase: str) -> str | None:
     if not matches:
         return None
     matches.sort(key=comment_sort_key)
-    target = _stringify(matches[-1].get("id"))
-    return target or None
+    target = matches[-1]
+    target_id = _stringify(target.get("id"))
+    return target_id or None
+
+
+def exact_managed_target(thread: dict[str, Any], phase: str) -> dict[str, Any] | None:
+    matches = [
+        comment
+        for comment in thread.get("comments", [])
+        if isinstance(comment, dict)
+        and bool(comment.get("is_self"))
+        and _stringify(comment.get("managed_phase")) == phase
+        and bool(comment.get("has_exact_managed_marker"))
+    ]
+    if not matches:
+        return None
+    matches.sort(key=comment_sort_key)
+    return matches[-1]
+
+
+def managed_ack_decision(comment: dict[str, Any] | None) -> str | None:
+    if not isinstance(comment, dict):
+        return None
+    content_lines = _managed_comment_content_lines(_stringify(comment.get("body")))
+    if not content_lines:
+        return None
+    candidate_lines = content_lines[1:3] if len(content_lines) > 1 else []
+    candidate_lines.extend(content_lines[:1])
+    for line in candidate_lines:
+        mentions = sorted(set(_decision_mentions(line)))
+        if len(mentions) == 1:
+            return mentions[0]
+    return None
 
 
 def marker_conflict_summary(threads: list[dict[str, Any]]) -> dict[str, Any]:
@@ -272,6 +329,14 @@ def validation_message(code: str, *, thread_id: str | None = None, phase: str | 
         return f"{prefix}{phase}_mode=update cannot rely on reply_candidates.{phase} because marker_conflicts severity=adoption-blocking"
     if code == "hard_stop_marker_conflict":
         return f"{prefix}{phase} actions are blocked because marker_conflicts severity=hard-stop"
+    if code == "missing_exact_managed_skip_target":
+        return f"{prefix}{phase}_mode=skip requires an existing exact managed {phase} reply target"
+    if code == "non_exact_reply_candidate_for_skip":
+        return f"{prefix}{phase}_mode=skip cannot rely on reply_candidates.{phase}; only an exact managed {phase} reply may be preserved"
+    if code == "missing_exact_managed_skip_decision":
+        return f"{prefix}{phase}_mode=skip requires an exact managed {phase} reply whose current decision is parseable"
+    if code == "mismatched_exact_managed_skip_decision":
+        return f"{prefix}{phase}_mode=skip requires the existing exact managed {phase} reply decision to match the planned decision"
     if code == "stale_context_fingerprint":
         return "plan context_fingerprint does not match the current context"
     if code == "unknown_action_field_ignored":
@@ -474,10 +539,33 @@ def validate_thread_action_payload(context: dict[str, Any], payload: Any, phase:
         explicit_comment_id = _stringify(raw_entry.get(comment_id_field))
         fallback_comment_id = reply_candidate(thread, phase).get("comment_id")
         adopted_candidate = bool(reply_candidate(thread, phase).get("adopted_unmarked_reply"))
-        exact_managed_id = exact_managed_target_id(thread, phase)
+        exact_managed_comment = exact_managed_target(thread, phase)
+        exact_managed_id = _stringify((exact_managed_comment or {}).get("id")) or None
         adoption_blocked = any(item.get("severity") == "adoption-blocking" for item in phase_conflicts)
 
         if mode == "skip":
+            if phase == "ack" and not exact_managed_id:
+                if fallback_comment_id:
+                    result["errors"].append(
+                        build_issue("error", "non_exact_reply_candidate_for_skip", thread_id=thread_id, phase=phase)
+                    )
+                else:
+                    result["errors"].append(
+                        build_issue("error", "missing_exact_managed_skip_target", thread_id=thread_id, phase=phase)
+                    )
+                continue
+            if phase == "ack":
+                existing_decision = managed_ack_decision(exact_managed_comment)
+                if not existing_decision:
+                    result["errors"].append(
+                        build_issue("error", "missing_exact_managed_skip_decision", thread_id=thread_id, phase=phase)
+                    )
+                    continue
+                if existing_decision != decision:
+                    result["errors"].append(
+                        build_issue("error", "mismatched_exact_managed_skip_decision", thread_id=thread_id, phase=phase)
+                    )
+                    continue
             if body:
                 result["warnings"].append(build_issue("warning", "ignored_body_for_skip", thread_id=thread_id, phase=phase))
             if explicit_comment_id:

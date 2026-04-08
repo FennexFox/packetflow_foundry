@@ -159,7 +159,7 @@ class ReviewThreadRunTests(unittest.TestCase):
                 },
             )
 
-    def test_copy_validated_ack_plan_records_accepted_threads(self) -> None:
+    def test_copy_validated_ack_plan_keeps_pre_ack_decisions_out_of_authoritative_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
             context = context_with_threads(
@@ -200,7 +200,12 @@ class ReviewThreadRunTests(unittest.TestCase):
                     "phase": "ack",
                     "valid": True,
                     "normalized_thread_actions": [
-                        {"thread_id": "t-2", "decision": "defer", "ack_mode": "skip"},
+                        {
+                            "thread_id": "t-2",
+                            "decision": "defer",
+                            "ack_mode": "add",
+                            "ack_body": "Deferring until packet-local evidence is re-grounded.",
+                        },
                         {"thread_id": "t-1", "decision": "accept", "ack_mode": "add", "ack_body": "Will fix this."},
                     ],
                 },
@@ -212,7 +217,8 @@ class ReviewThreadRunTests(unittest.TestCase):
                 source_path=validated_plan_path,
             )
 
-            self.assertEqual(manifest["state"]["accepted_threads"], ["t-1"])
+            self.assertEqual(manifest["state"]["accepted_threads"], [])
+            self.assertEqual(manifest["state"]["last_completed_phase"], "ack-validated")
             self.assertTrue(Path(manifest["paths"]["ack"]["validated_plan"]).is_file())
 
     def test_record_apply_cli_records_phase_result_and_advances_state(self) -> None:
@@ -247,6 +253,9 @@ class ReviewThreadRunTests(unittest.TestCase):
                     "context_fingerprint": "updated-fingerprint",
                     "mutation_type": "add_reply",
                     "mutations": [{"kind": "add_reply", "thread_id": "t-1", "phase": "ack"}],
+                    "normalized_thread_actions": [
+                        {"thread_id": "t-1", "decision": "accept", "ack_mode": "add", "ack_body": "Will fix this."}
+                    ],
                 },
             )
 
@@ -276,6 +285,7 @@ class ReviewThreadRunTests(unittest.TestCase):
             updated = run_support.load_manifest(manifest_path)
             self.assertEqual(updated["state"]["last_completed_phase"], "ack-applied")
             self.assertEqual(updated["state"]["latest_context_fingerprint"], "updated-fingerprint")
+            self.assertEqual(updated["state"]["accepted_threads"], ["t-1"])
             self.assertEqual(
                 updated["state"]["phase_apply_results"]["ack"],
                 {
@@ -512,6 +522,52 @@ class ReviewThreadRunTests(unittest.TestCase):
                 "py -3 -m unittest tests/test_docs.py",
                 "py -3 -m unittest tests/test_more.py",
             ])
+
+    def test_record_accepts_requires_ack_applied_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            context = context_with_threads(
+                tmp,
+                [
+                    review_thread(
+                        thread_id="t-1",
+                        path="src/app.py",
+                        line=10,
+                        reviewer_login="reviewer-a",
+                        reviewer_body="Please rename this.",
+                    )
+                ],
+            )
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            repo_root = Path(context["repo_root"])
+            init_repo(repo_root)
+
+            context_path = tmp / "context.json"
+            write_json(context_path, context)
+            manifest = run_support.create_run(
+                repo_root,
+                context_path,
+                run_id="test-run",
+                evaluation_log_path=tmp / "eval-log.json",
+            )
+            manifest_path = Path(manifest["paths"]["manifest"])
+            manifest["state"]["last_completed_phase"] = "ack-validated"
+            run_support.write_manifest(manifest_path, manifest)
+
+            argv = [
+                "manage_review_thread_run.py",
+                "record-accepts",
+                "--manifest",
+                str(manifest_path),
+                "--thread-id",
+                "t-1",
+            ]
+            with patch.object(sys, "argv", argv):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "record-accepts requires manifest state in \\{ack-applied\\}",
+                ):
+                    manage_run.main()
 
     def test_record_validation_requires_ack_applied_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
