@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import json
+import os
+import shlex
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -13,10 +16,73 @@ from pathlib import Path
 SCRIPT_DIR = Path(__file__).resolve().parent
 
 
+def script_path(name: str) -> Path:
+    return SCRIPT_DIR / name
+
+
+def is_windowsapps_shim(candidate: object) -> bool:
+    return "/windowsapps/" in str(candidate or "").strip().replace("\\", "/").lower()
+
+
+def python_bin_candidates() -> list[Path]:
+    seen: set[str] = set()
+    ordered: list[Path] = []
+
+    def add(candidate: object) -> None:
+        text = str(candidate or "").strip()
+        if not text:
+            return
+        path = Path(text)
+        key = str(path)
+        if key in seen:
+            return
+        seen.add(key)
+        ordered.append(path)
+
+    add(sys.executable)
+    add(shutil.which("python"))
+    add(shutil.which("python3"))
+    for prefix in (sys.prefix, getattr(sys, "base_prefix", ""), sys.exec_prefix, getattr(sys, "base_exec_prefix", "")):
+        root = Path(str(prefix or "").strip())
+        if not str(root):
+            continue
+        if os.name == "nt":
+            add(root / "python.exe")
+            add(root / "python3.exe")
+            add(root / "Scripts" / "python.exe")
+            add(root / "Scripts" / "python3.exe")
+            continue
+        add(root / "bin" / "python")
+        add(root / "bin" / "python3")
+    return ordered
+
+
+def resolve_python_bin() -> str:
+    for candidate in python_bin_candidates():
+        if candidate.is_file() and not is_windowsapps_shim(candidate):
+            return str(candidate)
+    raise RuntimeError("Could not resolve a concrete Python interpreter; avoid WindowsApps Python shims.")
+
+
+def build_python_command(args: list[str]) -> list[str]:
+    if not args:
+        raise ValueError("Python command requires at least one argument.")
+    return [resolve_python_bin(), "-B", *args]
+
+
+def command_string(argv: list[str]) -> str:
+    return subprocess.list2cmdline(argv) if os.name == "nt" else shlex.join(argv)
+
+
 def run_python(args: list[str], *, cwd: Path | None = None) -> subprocess.CompletedProcess[str]:
+    env = os.environ.copy()
+    env["PYTHONDONTWRITEBYTECODE"] = "1"
+    command = build_python_command(args)
     result = subprocess.run(
-        [sys.executable, *args],
+        command,
         cwd=cwd,
+        env=env,
+        stdin=subprocess.DEVNULL,
         text=True,
         encoding="utf-8",
         errors="replace",
@@ -24,7 +90,8 @@ def run_python(args: list[str], *, cwd: Path | None = None) -> subprocess.Comple
         check=False,
     )
     if result.returncode != 0:
-        raise RuntimeError(result.stderr.strip() or result.stdout.strip() or f"python {' '.join(args)} failed")
+        detail = result.stderr.strip() or result.stdout.strip() or f"{command_string(command)} failed"
+        raise RuntimeError(detail)
     return result
 
 
@@ -32,6 +99,7 @@ def run_git(repo_root: Path, args: list[str]) -> None:
     result = subprocess.run(
         ["git", *args],
         cwd=repo_root,
+        stdin=subprocess.DEVNULL,
         text=True,
         encoding="utf-8",
         errors="replace",
@@ -231,7 +299,7 @@ def main() -> int:
 
         run_python(
             [
-                str(SCRIPT_DIR / "collect_public_docs_sync_context.py"),
+                str(script_path("collect_public_docs_sync_context.py")),
                 "--repo-root",
                 str(repo_root),
                 "--output",
@@ -243,7 +311,7 @@ def main() -> int:
         )
         run_python(
             [
-                str(SCRIPT_DIR / "lint_public_docs_sync.py"),
+                str(script_path("lint_public_docs_sync.py")),
                 "--context",
                 str(context_path),
                 "--output",
@@ -252,7 +320,7 @@ def main() -> int:
         )
         run_python(
             [
-                str(SCRIPT_DIR / "build_public_docs_sync_packets.py"),
+                str(script_path("build_public_docs_sync_packets.py")),
                 "--context",
                 str(context_path),
                 "--lint",
@@ -271,7 +339,7 @@ def main() -> int:
 
         run_python(
             [
-                str(SCRIPT_DIR / "validate_public_docs_sync.py"),
+                str(script_path("validate_public_docs_sync.py")),
                 "--context",
                 str(context_path),
                 "--plan",
@@ -282,7 +350,7 @@ def main() -> int:
         )
         run_python(
             [
-                str(SCRIPT_DIR / "apply_public_docs_sync.py"),
+                str(script_path("apply_public_docs_sync.py")),
                 "--validation",
                 str(validation_path),
                 "--dry-run",
@@ -294,7 +362,7 @@ def main() -> int:
         )
         run_python(
             [
-                str(SCRIPT_DIR / "write_evaluation_log.py"),
+                str(script_path("write_evaluation_log.py")),
                 "init",
                 "--context",
                 str(context_path),
@@ -308,7 +376,7 @@ def main() -> int:
         )
         run_python(
             [
-                str(SCRIPT_DIR / "write_evaluation_log.py"),
+                str(script_path("write_evaluation_log.py")),
                 "phase",
                 "--log",
                 str(eval_log_path),
@@ -320,7 +388,7 @@ def main() -> int:
         )
         run_python(
             [
-                str(SCRIPT_DIR / "write_evaluation_log.py"),
+                str(script_path("write_evaluation_log.py")),
                 "phase",
                 "--log",
                 str(eval_log_path),
@@ -332,7 +400,7 @@ def main() -> int:
         )
         run_python(
             [
-                str(SCRIPT_DIR / "write_evaluation_log.py"),
+                str(script_path("write_evaluation_log.py")),
                 "phase",
                 "--log",
                 str(eval_log_path),

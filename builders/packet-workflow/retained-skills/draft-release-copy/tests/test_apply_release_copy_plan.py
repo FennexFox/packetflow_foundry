@@ -68,6 +68,7 @@ class ApplyReleaseCopyPlanTests(unittest.TestCase):
                 "readme": str(readme_path),
             },
             "local_release_helper_status": "present",
+            "review_mode": "targeted-delegation",
             "overall_confidence": "high",
             "stop_reasons": [],
             "evidence_status": "not-applicable",
@@ -79,6 +80,7 @@ class ApplyReleaseCopyPlanTests(unittest.TestCase):
                 "compensatory_reread_detected": False,
                 "synthesis_packet_fingerprint": "sha256:synthesis",
             },
+            "qa_gate": {"required": False, "reason": None, "qa_clear": False},
             "publish_update": {
                 "mode": "replace-fields",
                 "fields": {
@@ -195,6 +197,27 @@ class ApplyReleaseCopyPlanTests(unittest.TestCase):
 
             self.assertEqual(exit_code, 1)
             self.assertEqual(payload["stop_reason"], "validator_mismatch")
+
+    def test_apply_rejects_qa_required_validation_without_clear(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            normalized_plan, publish_path, readme_path = self.build_normalized_plan(tmp)
+            normalized_plan["review_mode"] = "broad-delegation"
+            normalized_plan["qa_gate"] = {
+                "required": True,
+                "reason": "broad-delegation plan mutates multiple release-copy surfaces; local QA clear is required before apply.",
+                "qa_clear": False,
+            }
+            validation = self.validation_payload(normalized_plan)
+
+            exit_code, _stdout, payload = self.run_apply(validation)
+
+            self.assertEqual(exit_code, 1)
+            self.assertEqual(payload["stop_reason"], "qa_required")
+            self.assertTrue(payload["qa_required"])
+            self.assertFalse(payload["qa_clear"])
+            self.assertEqual(publish_path.read_text(encoding="utf-8"), PUBLISH_XML)
+            self.assertEqual(readme_path.read_text(encoding="utf-8"), README_MD)
 
     def test_apply_rolls_back_files_when_issue_action_fails(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

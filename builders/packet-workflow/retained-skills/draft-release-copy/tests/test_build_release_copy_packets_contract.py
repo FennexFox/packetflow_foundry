@@ -272,6 +272,27 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         self.assertEqual(packets.baseline_review_mode(9, 2), ("targeted-delegation", 2))
         self.assertEqual(packets.baseline_review_mode(21, 4), ("broad-delegation", 3))
         self.assertEqual(
+            contract.should_require_qa(
+                "broad-delegation",
+                publish_mode="replace-fields",
+                readme_mode="replace-sections",
+                issue_mode="create",
+            ),
+            (
+                True,
+                "broad-delegation plan mutates multiple release-copy surfaces; local QA clear is required before apply.",
+            ),
+        )
+        self.assertEqual(
+            contract.should_require_qa(
+                "targeted-delegation",
+                publish_mode="replace-fields",
+                readme_mode="replace-sections",
+                issue_mode="create",
+            ),
+            (False, None),
+        )
+        self.assertEqual(
             packets.apply_override_adjustment(
                 "local-only",
                 0,
@@ -353,6 +374,7 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
             result_payload["synthesis_packet_sufficient_for_common_path"],
             packet_metrics["synthesis_packet_sufficient_for_common_path"],
         )
+        self.assertEqual(result_payload["qa_gate_guidance"]["review_mode"], orchestrator["review_mode"])
 
     def test_build_packet_payloads_skip_eval_only_worker_assignment_derivation(self) -> None:
         context = self.build_context()
@@ -417,6 +439,9 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         self.assertFalse(
             synthesis_packet["plan_defaults"]["draft_basis"]["compensatory_reread_detected"]
         )
+        self.assertEqual(synthesis_packet["plan_defaults"]["review_mode"], orchestrator["review_mode"])
+        self.assertEqual(synthesis_packet["plan_defaults"]["qa_gate"], {"qa_clear": False})
+        self.assertEqual(synthesis_packet["qa_gate_guidance"]["review_mode"], orchestrator["review_mode"])
 
         self.assertEqual(global_packet["worker_return_contract"], contract.WORKER_RETURN_CONTRACT)
         self.assertEqual(global_packet["worker_output_shape"], contract.WORKER_OUTPUT_SHAPE)
@@ -461,6 +486,10 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         self.assertEqual(packet_metrics["packet_count"], len(orchestrator["packet_files"]))
         self.assertEqual(packet_metrics["packet_count"], len(expected_files) - 1)
         packet_sizes = packet_metrics["packet_size_bytes"]
+        self.assertEqual(
+            packet_sizes["by_packet"]["synthesis_packet.json"],
+            contract.packet_size_bytes(synthesis_packet),
+        )
         self.assertEqual(
             packet_sizes["worker_facing_total"],
             sum(

@@ -25,7 +25,7 @@ Use this skill to prepare reusable release-copy updates with packet-heavy local 
 
 1. Collect, lint, and build with `<python-bin> -B <skill-dir>/scripts/collect_release_copy_context.py`, `lint_release_copy.py`, and `build_release_copy_packets.py --result-output <build-result-json>`.
 2. Initialize the evaluation log, merge the build result, then read `orchestrator.json`, `global_packet.json`, `synthesis_packet.json`, and only the focused packet needed for the current drafting decision.
-3. Draft the local release-copy plan, validate it with `validate_release_copy.py`, and run `apply_release_copy.py` only from validator-normalized output.
+3. Draft the local release-copy plan, validate it with `validate_release_copy.py --build <build-result-json>`, and run `apply_release_copy.py` only from validator-normalized output.
 4. Finalize the evaluation log after validation and apply results are recorded.
 
 ## Continue Only If
@@ -35,6 +35,7 @@ Use this skill to prepare reusable release-copy updates with packet-heavy local 
 - packet insufficiency is treated as a contract failure instead of compensating with broad raw rereads
 - apply consumes validator-normalized output only and never raw plan JSON directly
 - repo-specific bindings stay data-only in the active profile
+- broad-delegation plans that mutate multiple release-copy surfaces stay blocked until local QA clear is explicit in the reviewed plan
 
 ## Stop When
 

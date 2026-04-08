@@ -26,7 +26,7 @@ Read [`architecture-note.md`](architecture-note.md) for why this skill keeps the
 ### Canonical Local Interfaces
 
 - local draft: `release-copy-plan.json`
-- validator output: normalized validation JSON from `validate_release_copy.py`
+- validator output: normalized validation JSON from `validate_release_copy.py --build <build-result-json>`
 - build result: JSON from `build_release_copy_packets.py --result-output ...`
 - apply input: validator output only
 - apply result: JSON from `apply_release_copy.py --result-output ...`
@@ -42,6 +42,7 @@ When `build_release_copy_packets.py --result-output` is supplied, the build resu
 - `packet_files`
 - `packet_metrics`
 - `common_path_sufficient`
+- `qa_gate_guidance`
 
 `packet_metrics` remains the evaluation-side home for packet sizing and token-proxy fields. The build result may mirror selected metric fields at top level for evaluation-log compatibility, but runtime routing still belongs in `orchestrator.json`.
 
@@ -92,6 +93,7 @@ Trigger phrases:
   - local final drafting packet
   - common-path decision basis
   - publish/readme/issue rewrite guidance
+  - qa-gate guidance for broad multi-surface mutation
   - explicit stop risks
 
 ## Authority Order

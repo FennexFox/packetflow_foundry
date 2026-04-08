@@ -51,6 +51,10 @@ class WriteEvaluationLogReleaseCopyTests(unittest.TestCase):
         result = {
             "review_mode": "targeted-delegation",
             "recommended_worker_count": 2,
+            "qa_gate_guidance": {
+                "required_for_default_plan": True,
+                "reason": "broad-delegation plan mutates multiple release-copy surfaces; local QA clear is required before apply.",
+            },
             "packet_metrics": {
                 "packet_count": 8,
                 "largest_packet_bytes": 1200,
@@ -70,10 +74,56 @@ class WriteEvaluationLogReleaseCopyTests(unittest.TestCase):
         self.assertEqual(log["skill_specific"]["data"]["packet_count"], 8)
         self.assertEqual(log["skill_specific"]["data"]["estimated_packet_tokens"], 950)
         self.assertEqual(log["skill_specific"]["data"]["estimated_delegation_savings"], 850)
+        self.assertTrue(log["skill_specific"]["data"]["qa_required"])
+        self.assertIn("local QA clear", log["skill_specific"]["data"]["qa_reason"])
         self.assertEqual(log["baseline"]["estimated_local_only_tokens"], 1800)
         self.assertEqual(log["baseline"]["estimated_token_savings"], 850)
         self.assertEqual(log["baseline"]["estimated_delegation_savings"], 850)
         self.assertEqual(log["measurement"]["token_source"], "estimated")
+
+    def test_validate_and_apply_merge_qa_state(self) -> None:
+        log = eval_log.build_base_log(
+            SCRIPT_DIR / "write_evaluation_log.py",
+            {"repo_root": str(Path("repo-root")), "current_branch": "batch_3", "publish_configuration": {}},
+            {
+                "review_mode": "broad-delegation",
+                "packet_files": ["global_packet.json", "release_packet.json", "orchestrator.json"],
+                "shared_packet": "global_packet.json",
+            },
+            None,
+        )
+
+        eval_log.apply_phase_update(
+            log,
+            "validate",
+            {
+                "valid": True,
+                "qa_required": True,
+                "qa_reason": "broad-delegation plan mutates multiple release-copy surfaces; local QA clear is required before apply.",
+                "qa_clear": False,
+                "validation_commands": ["git rev-parse --short HEAD", "gh auth status"],
+                "stop_reasons": [],
+            },
+            duration=0.1,
+        )
+        eval_log.apply_phase_update(
+            log,
+            "apply",
+            {
+                "dry_run": True,
+                "qa_required": True,
+                "qa_clear": True,
+                "apply_succeeded": True,
+                "mutation_type": "release_copy_apply",
+            },
+            duration=0.2,
+        )
+
+        data = log["skill_specific"]["data"]
+        self.assertTrue(data["qa_required"])
+        self.assertIn("local QA clear", data["qa_reason"])
+        self.assertTrue(data["qa_ran"])
+        self.assertEqual(data["validation_commands"], ["git rev-parse --short HEAD", "gh auth status"])
 
 
 if __name__ == "__main__":

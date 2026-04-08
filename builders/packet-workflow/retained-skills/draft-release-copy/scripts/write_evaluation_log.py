@@ -400,6 +400,10 @@ def skill_specific_data(
             "estimated_local_only_tokens": None,
             "estimated_packet_tokens": None,
             "estimated_delegation_savings": None,
+            "qa_required": None,
+            "qa_reason": None,
+            "qa_ran": None,
+            "validation_commands": [],
             "raw_reread_count": None,
             "compensatory_reread_detected": None,
             "deterministic_file_edit_count": None,
@@ -770,6 +774,11 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
                 skill_data["worker_count"] = worker_count
             if worker_mix:
                 skill_data["worker_mix"] = worker_mix
+            qa_gate_guidance = result.get("qa_gate_guidance") if isinstance(result.get("qa_gate_guidance"), dict) else {}
+            if qa_gate_guidance.get("required_for_default_plan") is not None:
+                skill_data["qa_required"] = to_bool(qa_gate_guidance.get("required_for_default_plan"))
+            if qa_gate_guidance.get("reason") is not None:
+                skill_data["qa_reason"] = qa_gate_guidance.get("reason")
             packet_metrics = result.get("packet_metrics") if isinstance(result.get("packet_metrics"), dict) else {}
             packet_count = safe_int(packet_metrics.get("packet_count"))
             if packet_count is None:
@@ -865,6 +874,16 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
             orchestration["low_confidence_stop"] = any(
                 "low confidence" in str(reason).lower() for reason in existing
             )
+        skill_name = ((log.get("skill") or {}).get("name") or "").strip()
+        if skill_name == "draft-release-copy":
+            skill_data = ((log.setdefault("skill_specific", {}).setdefault("data", {})))
+            if result.get("qa_required") is not None:
+                skill_data["qa_required"] = to_bool(result.get("qa_required"))
+            if result.get("qa_reason") is not None:
+                skill_data["qa_reason"] = result.get("qa_reason")
+            validation_commands = result.get("validation_commands")
+            if isinstance(validation_commands, list):
+                skill_data["validation_commands"] = [str(item) for item in validation_commands if str(item).strip()]
         return
 
     if phase == "apply":
@@ -937,6 +956,8 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
             compensatory = to_bool(result.get("compensatory_reread_detected"))
             deterministic_count = safe_int(result.get("deterministic_file_edit_count"))
             issue_action_attempted = to_bool(result.get("issue_action_attempted"))
+            qa_required = to_bool(result.get("qa_required"))
+            qa_clear = to_bool(result.get("qa_clear"))
             if raw_reread_count is not None:
                 skill_data["raw_reread_count"] = raw_reread_count
                 orchestration["raw_reread_required"] = raw_reread_count > 0
@@ -946,6 +967,10 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
                 skill_data["deterministic_file_edit_count"] = deterministic_count
             if issue_action_attempted is not None:
                 skill_data["issue_action_attempted"] = issue_action_attempted
+            if qa_required is not None:
+                skill_data["qa_required"] = qa_required
+            if qa_clear is not None:
+                skill_data["qa_ran"] = bool(qa_required) or qa_clear
         return
 
 

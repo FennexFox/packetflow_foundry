@@ -5,6 +5,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
+import shlex
+import subprocess
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +20,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--context", required=True, help="Path to collect_release_copy_context.py JSON")
     parser.add_argument("--lint", required=True, help="Path to lint_release_copy.py JSON")
+    parser.add_argument("--build", required=True, help="Path to build_release_copy_packets.py JSON")
     parser.add_argument("--plan", required=True, help="Path to local release-copy plan JSON")
     parser.add_argument("--output", help="Optional output path for validation JSON")
     return parser.parse_args()
@@ -80,6 +84,13 @@ def unique_strings(values: Any) -> list[str]:
 
 
 def normalize_bool(value: Any) -> bool:
+    if isinstance(value, bool):
+        return value
+    text = normalize_string(value).lower()
+    if text in {"true", "1", "yes"}:
+        return True
+    if text in {"false", "0", "no", ""}:
+        return False
     return bool(value)
 
 
@@ -96,6 +107,10 @@ def normalized_reread_reason(reason: str) -> str:
 
 def expected_issue_title(context: dict[str, Any]) -> str:
     return f"[Release] {plan_tools.normalize_release_version(str(context.get('target_version') or ''))}"
+
+
+def command_string(argv: list[str]) -> str:
+    return subprocess.list2cmdline(argv) if os.name == "nt" else shlex.join(argv)
 
 
 def apply_gate_status(issue_action_mode: str, lint: dict[str, Any]) -> dict[str, Any]:
@@ -125,6 +140,7 @@ def apply_gate_status(issue_action_mode: str, lint: dict[str, Any]) -> dict[str,
 def validate_plan_contract(
     context: dict[str, Any],
     lint: dict[str, Any],
+    build: dict[str, Any],
     raw_plan: dict[str, Any],
 ) -> dict[str, Any]:
     errors: list[str] = []
@@ -133,9 +149,10 @@ def validate_plan_contract(
     warning_details: list[dict[str, Any]] = []
     stop_reasons: list[str] = []
     validation_commands: list[str] = [
-        "git rev-parse --short HEAD",
+        command_string(["git", "rev-parse", "--short", "HEAD"]),
         "source fingerprint check",
         "synthesis packet sufficiency check",
+        "build review_mode / qa gate check",
     ]
 
     normalized_plan = normalize_mapping(
@@ -192,6 +209,36 @@ def validate_plan_contract(
             code=contract.VALIDATION_ERROR_CODES["freshness_tuple"],
             message="Plan freshness tuple does not match the collected context.",
             field="freshness_tuple",
+            stop_category="validator_mismatch",
+        )
+
+    plan_review_mode = normalize_string(normalized_plan.get("review_mode"))
+    build_review_mode = normalize_string(build.get("review_mode"))
+    if plan_review_mode not in contract.REVIEW_MODES:
+        push_issue(
+            errors,
+            error_details,
+            code=contract.VALIDATION_ERROR_CODES["validator_mismatch"],
+            message="Plan review_mode must match a build-provided release-copy review mode.",
+            field="review_mode",
+            stop_category="validator_mismatch",
+        )
+    if build_review_mode not in contract.REVIEW_MODES:
+        push_issue(
+            errors,
+            error_details,
+            code=contract.VALIDATION_ERROR_CODES["validator_mismatch"],
+            message="Build result is missing a valid release-copy review_mode.",
+            field="build.review_mode",
+            stop_category="validator_mismatch",
+        )
+    elif plan_review_mode and plan_review_mode != build_review_mode:
+        push_issue(
+            errors,
+            error_details,
+            code=contract.VALIDATION_ERROR_CODES["validator_mismatch"],
+            message="Plan review_mode does not match the build result review_mode.",
+            field="review_mode",
             stop_category="validator_mismatch",
         )
 
@@ -291,6 +338,22 @@ def validate_plan_contract(
             field="draft_basis.focused_packets_used",
             stop_category="synthesis_packet_insufficient",
         )
+
+    qa_gate = normalized_plan.get("qa_gate")
+    if not isinstance(qa_gate, dict):
+        qa_gate = {}
+    qa_gate = normalize_mapping("qa_gate", qa_gate, warnings=warnings, warning_details=warning_details)
+    for field in contract.PLAN_PHASE_FIELDS["qa_gate"]["required"]:
+        if field not in qa_gate:
+            push_issue(
+                errors,
+                error_details,
+                code=contract.VALIDATION_ERROR_CODES["missing_field"],
+                message=f"qa_gate is missing `{field}`.",
+                field=f"qa_gate.{field}",
+                stop_category="validator_mismatch",
+            )
+    qa_clear = normalize_bool(qa_gate.get("qa_clear"))
 
     publish_update = normalized_plan.get("publish_update")
     if not isinstance(publish_update, dict):
@@ -480,6 +543,22 @@ def validate_plan_contract(
             stop_category="release_gate_incomplete",
         )
 
+    qa_required, qa_reason = contract.should_require_qa(
+        build_review_mode,
+        publish_mode=publish_mode,
+        readme_mode=readme_mode,
+        issue_mode=issue_mode,
+    )
+    if not errors and qa_required and not qa_clear:
+        push_issue(
+            errors,
+            error_details,
+            code=contract.VALIDATION_ERROR_CODES["qa_clear_required"],
+            message=qa_reason or "Broad release-copy mutation requires an explicit local QA clear before apply.",
+            field="qa_gate.qa_clear",
+            stop_category="qa_required",
+        )
+
     repo_root = Path(str(context.get("repo_root") or ".")).resolve()
     try:
         current_head = plan_tools.current_head_commit(repo_root)
@@ -526,7 +605,7 @@ def validate_plan_contract(
         )
 
     if not errors and issue_mode != "noop":
-        validation_commands.append("gh auth status")
+        validation_commands.append(command_string(["gh", "auth", "status"]))
         try:
             auth_status = issue_tools.run_command(["gh", "auth", "status"], cwd=repo_root)
         except Exception as exc:
@@ -552,7 +631,7 @@ def validate_plan_contract(
 
         if not errors and issue_mode in {"reuse-existing", "sync-existing-body"} and isinstance(existing_issue, dict):
             issue_number = int(existing_issue.get("number") or 0)
-            validation_commands.append(f"gh issue view {issue_number}")
+            validation_commands.append(command_string(["gh", "issue", "view", str(issue_number)]))
             live_issue = plan_tools.fetch_issue_snapshot(repo_root, context.get("repo_slug"), issue_number)
             live_snapshot = plan_tools.existing_issue_snapshot(live_issue)
             if live_snapshot != validated_issue_snapshot:
@@ -577,6 +656,7 @@ def validate_plan_contract(
         "repo_slug": context.get("repo_slug"),
         "context_fingerprint": expected_context_fingerprint,
         "freshness_tuple": expected_freshness,
+        "review_mode": build_review_mode,
         "source_fingerprints": {
             key: normalize_string(value)
             for key, value in source_fingerprints.items()
@@ -598,6 +678,11 @@ def validate_plan_contract(
             "focused_packets_used": focused_packets_used,
             "compensatory_reread_detected": compensatory_reread_detected,
             "synthesis_packet_fingerprint": normalize_string(draft_basis.get("synthesis_packet_fingerprint")),
+        },
+        "qa_gate": {
+            "required": qa_required,
+            "reason": qa_reason,
+            "qa_clear": qa_clear if qa_required else False,
         },
         "publish_update": {
             "mode": publish_mode,
@@ -630,6 +715,10 @@ def validate_plan_contract(
         "error_details": error_details,
         "warning_details": warning_details,
         "stop_reasons": stop_reasons,
+        "review_mode": build_review_mode,
+        "qa_required": qa_required,
+        "qa_reason": qa_reason,
+        "qa_clear": qa_clear if qa_required else False,
         "validation_commands": validation_commands,
         "normalized_plan": normalized,
         "normalized_plan_fingerprint": plan_tools.json_fingerprint(normalized),
@@ -641,8 +730,9 @@ def main() -> int:
     args = parse_args()
     context = plan_tools.load_json(Path(args.context).resolve())
     lint = plan_tools.load_json(Path(args.lint).resolve())
+    build = plan_tools.load_json(Path(args.build).resolve())
     plan = plan_tools.load_json(Path(args.plan).resolve())
-    payload = validate_plan_contract(context, lint, plan)
+    payload = validate_plan_contract(context, lint, build, plan)
     if args.output:
         plan_tools.write_json(Path(args.output).resolve(), payload)
     else:
