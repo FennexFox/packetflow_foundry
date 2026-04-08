@@ -356,6 +356,8 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
 
         orchestrator = payloads["orchestrator.json"]
         packet_metrics = payloads["packet_metrics.json"]
+        self.assertEqual(result_payload["context_fingerprint"], context["context_fingerprint"])
+        self.assertEqual(result_payload["freshness_tuple"], context["freshness_tuple"])
         self.assertEqual(result_payload["review_mode"], orchestrator["review_mode"])
         self.assertEqual(result_payload["recommended_worker_count"], len(result_payload["recommended_workers"]))
         self.assertEqual(result_payload["packet_files"], orchestrator["packet_files"])

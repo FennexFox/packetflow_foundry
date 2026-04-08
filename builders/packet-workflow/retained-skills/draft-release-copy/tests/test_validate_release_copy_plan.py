@@ -95,8 +95,10 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
             },
         }
 
-    def base_build(self, *, review_mode: str = "targeted-delegation") -> dict:
+    def base_build(self, context: dict, *, review_mode: str = "targeted-delegation") -> dict:
         return {
+            "context_fingerprint": context["context_fingerprint"],
+            "freshness_tuple": context["freshness_tuple"],
             "review_mode": review_mode,
             "common_path_sufficient": True,
         }
@@ -184,7 +186,7 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
                 evidence_complete=False,
                 tracks={"software_gate": True, "telemetry_validation": False},
             )
-            build = self.base_build()
+            build = self.base_build(context)
             plan = self.base_plan(
                 context,
                 evidence_status="complete",
@@ -217,7 +219,7 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
             tmp = Path(tmpdir)
             context = self.build_context(tmp)
             lint = self.base_lint(evidence_complete=True)
-            build = self.base_build()
+            build = self.base_build(context)
             plan = self.base_plan(context)
             plan["extra_top_level"] = "ignore me"
             plan["publish_update"] = {
@@ -239,7 +241,7 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
             tmp = Path(tmpdir)
             context = self.build_context(tmp)
             lint = self.base_lint(evidence_complete=True)
-            build = self.base_build()
+            build = self.base_build(context)
             plan = self.base_plan(context)
             plan["draft_basis"]["raw_reread_count"] = 1
             plan["draft_basis"]["reread_reasons"] = ["unsupported_layout"]
@@ -255,7 +257,7 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
             tmp = Path(tmpdir)
             context = self.build_context(tmp)
             lint = self.base_lint(evidence_complete=True)
-            build = self.base_build()
+            build = self.base_build(context)
             plan = self.base_plan(context)
             plan["draft_basis"]["raw_reread_count"] = 1
             plan["draft_basis"]["reread_reasons"] = ["packet_insufficiency"]
@@ -279,7 +281,7 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
                 },
             )
             lint = self.base_lint(evidence_complete=True)
-            build = self.base_build()
+            build = self.base_build(context)
             plan = self.base_plan(
                 context,
                 issue_action={
@@ -319,7 +321,7 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
             tmp = Path(tmpdir)
             context = self.build_context(tmp)
             lint = self.base_lint(evidence_complete=True)
-            build = self.base_build(review_mode="broad-delegation")
+            build = self.base_build(context, review_mode="broad-delegation")
             plan = self.base_plan(
                 context,
                 review_mode="broad-delegation",
@@ -351,7 +353,7 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
             tmp = Path(tmpdir)
             context = self.build_context(tmp)
             lint = self.base_lint(evidence_complete=True)
-            build = self.base_build(review_mode="broad-delegation")
+            build = self.base_build(context, review_mode="broad-delegation")
             plan = self.base_plan(
                 context,
                 review_mode="broad-delegation",
@@ -390,7 +392,7 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
             tmp = Path(tmpdir)
             context = self.build_context(tmp)
             lint = self.base_lint(evidence_complete=True)
-            build = self.base_build(review_mode="broad-delegation")
+            build = self.base_build(context, review_mode="broad-delegation")
             plan = self.base_plan(
                 context,
                 review_mode="broad-delegation",
@@ -420,12 +422,29 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
             warning_codes = {item["code"] for item in payload["warning_details"]}
             self.assertIn("W_RELEASE_PLAN_INVALID_BOOL_LITERAL", warning_codes)
 
+    def test_validator_rejects_build_metadata_from_a_different_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            context = self.build_context(tmp)
+            lint = self.base_lint(evidence_complete=True)
+            build = self.base_build(context, review_mode="local-only")
+            build["context_fingerprint"] = "sha256:stale-build"
+            build["freshness_tuple"] = {"head_commit": "deadbeef"}
+            plan = self.base_plan(context, review_mode="local-only")
+
+            payload = self.run_validator(context, lint, build, plan)
+
+            self.assertFalse(payload["valid"])
+            fields = {item.get("field") for item in payload["error_details"]}
+            self.assertIn("build.context_fingerprint", fields)
+            self.assertIn("build.freshness_tuple", fields)
+
     def test_validator_emits_apply_safe_normalized_plan(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             context = self.build_context(tmp)
             lint = self.base_lint(evidence_complete=True)
-            build = self.base_build()
+            build = self.base_build(context)
             plan = self.base_plan(context)
             plan["publish_update"] = {
                 "mode": "replace-fields",

@@ -894,6 +894,7 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
 
 def build_result_payload(
     output_dir: Path,
+    context: dict[str, Any],
     packets: dict[str, dict[str, Any]],
     *,
     review_mode_baseline: str,
@@ -906,6 +907,8 @@ def build_result_payload(
     packet_metrics = packets["packet_metrics.json"]
     return {
         "output_dir": str(output_dir),
+        "context_fingerprint": context.get("context_fingerprint"),
+        "freshness_tuple": context.get("freshness_tuple"),
         "review_mode": orchestrator["review_mode"],
         "review_mode_baseline": review_mode_baseline,
         "review_mode_adjustments": list(review_mode_adjustments),
@@ -964,6 +967,7 @@ def main() -> int:
     )
     result_payload = build_result_payload(
         output_dir,
+        context,
         packets,
         review_mode_baseline=runtime_state["review_mode_baseline"],
         review_mode_adjustments=runtime_state["review_mode_adjustments"],

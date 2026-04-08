@@ -222,6 +222,26 @@ def validate_plan_contract(
             stop_category="validator_mismatch",
         )
 
+    if normalize_string(build.get("context_fingerprint")) != expected_context_fingerprint:
+        push_issue(
+            errors,
+            error_details,
+            code=contract.VALIDATION_ERROR_CODES["context_fingerprint"],
+            message="Build result context fingerprint does not match the collected context.",
+            field="build.context_fingerprint",
+            stop_category="validator_mismatch",
+        )
+
+    if build.get("freshness_tuple") != expected_freshness:
+        push_issue(
+            errors,
+            error_details,
+            code=contract.VALIDATION_ERROR_CODES["freshness_tuple"],
+            message="Build result freshness tuple does not match the collected context.",
+            field="build.freshness_tuple",
+            stop_category="validator_mismatch",
+        )
+
     plan_review_mode = normalize_string(normalized_plan.get("review_mode"))
     build_review_mode = normalize_string(build.get("review_mode"))
     if plan_review_mode not in contract.REVIEW_MODES:
