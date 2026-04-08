@@ -106,6 +106,9 @@ class WriteEvaluationLogReleaseCopyTests(unittest.TestCase):
             },
             duration=0.1,
         )
+
+        self.assertFalse(log["skill_specific"]["data"]["qa_ran"])
+
         eval_log.apply_phase_update(
             log,
             "apply",

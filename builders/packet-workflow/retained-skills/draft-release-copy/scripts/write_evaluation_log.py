@@ -970,7 +970,7 @@ def apply_phase_update(log: dict[str, Any], phase: str, result: dict[str, Any], 
             if qa_required is not None:
                 skill_data["qa_required"] = qa_required
             if qa_clear is not None:
-                skill_data["qa_ran"] = bool(qa_required) or qa_clear
+                skill_data["qa_ran"] = qa_clear
         return
 
 
