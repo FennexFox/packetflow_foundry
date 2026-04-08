@@ -385,6 +385,41 @@ class ValidateReleaseCopyPlanTests(unittest.TestCase):
             self.assertTrue(payload["qa_clear"])
             self.assertEqual(payload["normalized_plan"]["qa_gate"]["reason"], payload["qa_reason"])
 
+    def test_validator_treats_unrecognized_qa_clear_literal_as_false(self) -> None:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp = Path(tmpdir)
+            context = self.build_context(tmp)
+            lint = self.base_lint(evidence_complete=True)
+            build = self.base_build(review_mode="broad-delegation")
+            plan = self.base_plan(
+                context,
+                review_mode="broad-delegation",
+                issue_action={
+                    "mode": "create",
+                    "title": "[Release] v1.2.3",
+                    "body_markdown": "Checklist body",
+                    "project_mode": "auto-add-first",
+                },
+            )
+            plan["qa_gate"] = {"qa_clear": "maybe"}
+            plan["publish_update"] = {
+                "mode": "replace-fields",
+                "short_description": "Updated short description",
+            }
+            plan["readme_update"] = {
+                "mode": "replace-sections",
+                "sections": {"Current Release": "Updated release block."},
+            }
+
+            payload = self.run_validator(context, lint, build, plan)
+
+            self.assertFalse(payload["valid"])
+            self.assertTrue(payload["qa_required"])
+            self.assertFalse(payload["qa_clear"])
+            self.assertIn("qa_required", payload["stop_reasons"])
+            warning_codes = {item["code"] for item in payload["warning_details"]}
+            self.assertIn("W_RELEASE_PLAN_INVALID_BOOL_LITERAL", warning_codes)
+
     def test_validator_emits_apply_safe_normalized_plan(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)

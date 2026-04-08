@@ -83,15 +83,25 @@ def unique_strings(values: Any) -> list[str]:
     return ordered
 
 
+TRUE_BOOL_LITERALS = {"true", "1", "yes"}
+FALSE_BOOL_LITERALS = {"false", "0", "no", ""}
+
+
+def is_supported_bool_literal(value: Any) -> bool:
+    if isinstance(value, bool):
+        return True
+    return normalize_string(value).lower() in TRUE_BOOL_LITERALS | FALSE_BOOL_LITERALS
+
+
 def normalize_bool(value: Any) -> bool:
     if isinstance(value, bool):
         return value
     text = normalize_string(value).lower()
-    if text in {"true", "1", "yes"}:
+    if text in TRUE_BOOL_LITERALS:
         return True
-    if text in {"false", "0", "no", ""}:
+    if text in FALSE_BOOL_LITERALS:
         return False
-    return bool(value)
+    return False
 
 
 def normalize_int(value: Any) -> int:
@@ -353,7 +363,16 @@ def validate_plan_contract(
                 field=f"qa_gate.{field}",
                 stop_category="validator_mismatch",
             )
-    qa_clear = normalize_bool(qa_gate.get("qa_clear"))
+    qa_clear_raw = qa_gate.get("qa_clear")
+    qa_clear = normalize_bool(qa_clear_raw)
+    if "qa_clear" in qa_gate and not is_supported_bool_literal(qa_clear_raw):
+        push_issue(
+            warnings,
+            warning_details,
+            code=contract.VALIDATION_WARNING_CODES["invalid_bool_literal"],
+            message="qa_gate.qa_clear used an unsupported boolean literal; treating it as `False`.",
+            field="qa_gate.qa_clear",
+        )
 
     publish_update = normalized_plan.get("publish_update")
     if not isinstance(publish_update, dict):

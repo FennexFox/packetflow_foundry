@@ -392,6 +392,23 @@ class WeeklyUpdateContractTests(unittest.TestCase):
         self.assertIn("candidate_counts_by_proposed_classification", self.build_result)
         self.assertIn("raw_reread_reason_counts", self.build_result)
 
+    def test_build_artifacts_sort_override_signals_deterministically(self) -> None:
+        context = dict(self.context)
+        context["override_signals"] = {
+            "z_signal": True,
+            "a_signal": True,
+        }
+        lint = dict(self.lint)
+        lint["override_signals"] = {
+            "m_signal": True,
+            "a_signal": True,
+            "ignored_signal": False,
+        }
+
+        artifacts = wl.build_packet_artifacts(context, lint)
+
+        self.assertEqual(artifacts["build_result"]["override_signals"], ["a_signal", "m_signal", "z_signal"])
+
     def test_build_wrapper_writes_packet_metrics_and_build_result(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)

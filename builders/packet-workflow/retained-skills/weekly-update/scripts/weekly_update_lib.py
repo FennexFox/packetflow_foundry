@@ -1859,14 +1859,14 @@ def _build_runtime_packet_state(context: dict[str, Any], lint_report: dict[str, 
         "notes": "worker_selection_guidance is explanatory only; packet_worker_map is the concrete routing source.",
         "agent_type_guidance": WORKER_SELECTION_GUIDANCE,
     }
-    override_signals = [
+    override_signals = sorted(
         str(name)
         for name, value in {
             **(context.get("override_signals") or {}),
             **(lint_report.get("override_signals") or {}),
         }.items()
         if bool(value)
-    ]
+    )
     mapping_packet = {
         "packet_id": "mapping_packet",
         "reporting_window": context.get("reporting_window"),
