@@ -17,6 +17,26 @@ import write_evaluation_log as eval_log  # noqa: E402
 
 
 class WriteEvaluationLogReleaseCopyTests(unittest.TestCase):
+    def test_build_base_log_leaves_eval_only_worker_metadata_unset_for_lean_runtime_packets(self) -> None:
+        context = {
+            "repo_root": str(Path("repo-root")),
+            "current_branch": "batch_3",
+            "publish_configuration": {},
+        }
+        orchestrator = {
+            "review_mode": "targeted-delegation",
+            "packet_files": ["global_packet.json", "release_packet.json", "orchestrator.json"],
+            "shared_packet": "global_packet.json",
+        }
+
+        payload = eval_log.build_base_log(SCRIPT_DIR / "write_evaluation_log.py", context, orchestrator, None)
+
+        self.assertIsNone(payload["orchestration"]["worker_count"])
+        self.assertEqual(payload["orchestration"]["worker_roles"], [])
+        self.assertEqual(payload["orchestration"]["override_signals"], [])
+        self.assertIsNone(payload["skill_specific"]["data"]["worker_count"])
+        self.assertEqual(payload["skill_specific"]["data"]["worker_mix"], [])
+
     def test_build_phase_merges_packet_metrics_as_eval_only(self) -> None:
         log = {
             "skill": {"name": "draft-release-copy"},

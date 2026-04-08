@@ -408,7 +408,7 @@ def skill_specific_data(
             "review_mode": orchestrator.get("review_mode"),
             "selected_packets": selected_packets,
             "active_packets": active_packets,
-            "worker_count": safe_int(orchestrator.get("recommended_worker_count")) or len(worker_roles(orchestrator)),
+            "worker_count": safe_int(orchestrator.get("recommended_worker_count")),
             "worker_mix": worker_roles(orchestrator),
             "hard_drift_count": len(findings.get("hard_drift", [])) if isinstance(findings.get("hard_drift"), list) else 0,
             "review_required_count": len(findings.get("review_required", [])) if isinstance(findings.get("review_required"), list) else 0,
@@ -511,7 +511,7 @@ def build_base_log(
                 orchestrator.get("review_mode_adjustments")
             ),
             "override_signals": normalize_override_signals(orchestrator),
-            "worker_count": safe_int(orchestrator.get("recommended_worker_count")) or len(worker_roles(orchestrator)),
+            "worker_count": safe_int(orchestrator.get("recommended_worker_count")),
             "worker_roles": worker_roles(orchestrator),
             "batch_packets_used": batch_packet_count(orchestrator),
             "item_packets_used": item_packet_count(orchestrator),

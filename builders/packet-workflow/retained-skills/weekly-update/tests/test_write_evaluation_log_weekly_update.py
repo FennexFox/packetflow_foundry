@@ -68,12 +68,34 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
 
         self.assertEqual(payload["review_mode"], "targeted-delegation")
         self.assertEqual(payload["selected_packets"], ["mapping_packet", "changes_packet", "risks_packet"])
+        self.assertIsNone(payload["worker_count"])
+        self.assertEqual(payload["worker_mix"], [])
         self.assertEqual(payload["candidate_counts_by_proposed_classification"]["actual_incident"], 1)
         self.assertEqual(payload["candidate_counts_by_proposed_classification"]["blocker_or_risk"], 1)
         self.assertEqual(payload["raw_reread_reason_counts"], {"conflicting_signals": 1})
         self.assertEqual(payload["coverage_gap_count"], 1)
         self.assertFalse(payload["common_path_sufficient"])
         self.assertEqual(payload["raw_reread_count"], 1)
+
+    def test_build_base_log_leaves_eval_only_worker_metadata_unset_for_lean_runtime_packets(self) -> None:
+        context = {
+            "repo_root": str(Path("repo-root")),
+            "current_branch": "batch_3",
+            "reporting_window": {"start_utc": "2026-03-20T00:00:00Z", "end_utc": "2026-03-27T00:00:00Z"},
+        }
+        orchestrator = {
+            "review_mode": "targeted-delegation",
+            "packet_files": ["global_packet.json", "mapping_packet.json", "orchestrator.json"],
+            "shared_packet": "global_packet.json",
+        }
+
+        payload = eval_log.build_base_log(SCRIPT_DIR / "write_evaluation_log.py", context, orchestrator, None)
+
+        self.assertIsNone(payload["orchestration"]["worker_count"])
+        self.assertEqual(payload["orchestration"]["worker_roles"], [])
+        self.assertEqual(payload["orchestration"]["override_signals"], [])
+        self.assertIsNone(payload["skill_specific"]["data"]["worker_count"])
+        self.assertEqual(payload["skill_specific"]["data"]["worker_mix"], [])
 
     def test_build_phase_merges_packet_metrics_and_common_path_signals(self) -> None:
         log = {

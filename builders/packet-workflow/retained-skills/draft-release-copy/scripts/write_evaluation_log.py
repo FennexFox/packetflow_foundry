@@ -378,7 +378,7 @@ def skill_specific_data(
             "branch": context.get("branch"),
             "review_mode": orchestrator.get("review_mode"),
             "selected_packets": selected_packets,
-            "worker_count": safe_int(orchestrator.get("recommended_worker_count")) or len(worker_roles(orchestrator)),
+            "worker_count": safe_int(orchestrator.get("recommended_worker_count")),
             "worker_mix": worker_roles(orchestrator),
             "base_tag": context.get("base_tag"),
             "changelog_lines": changelog_lines,
@@ -492,7 +492,7 @@ def build_base_log(
                 orchestrator.get("review_mode_adjustments")
             ),
             "override_signals": normalize_override_signals(orchestrator),
-            "worker_count": safe_int(orchestrator.get("recommended_worker_count")) or len(worker_roles(orchestrator)),
+            "worker_count": safe_int(orchestrator.get("recommended_worker_count")),
             "worker_roles": worker_roles(orchestrator),
             "batch_packets_used": batch_packet_count(orchestrator),
             "item_packets_used": item_packet_count(orchestrator),
