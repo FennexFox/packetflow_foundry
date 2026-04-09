@@ -40,6 +40,7 @@ Use this skill to handle unresolved GitHub PR review threads on the current bran
 - `manage_review_thread_run.py` allows the next transition.
 - `ack` is posted and recorded as `ack-applied` before validation recording, post-push staging, or further accepted-thread work.
 - `ack_mode=skip` is used only to preserve an already-correct exact managed `ack` reply for that thread.
+- `ack_mode=add` and `ack_mode=update` keep an explicit decision line in `ack_body` that matches the planned decision.
 - adoptable unmarked replies may be used as `update` fallback targets, but they are never enough to justify `ack_mode=skip`.
 - `record-apply` sees `apply_succeeded=true`, `fingerprint_match=true`, and a non-dry-run result for live runs.
 - `apply_thread_action_plan.py` consumes only normalized validator output.

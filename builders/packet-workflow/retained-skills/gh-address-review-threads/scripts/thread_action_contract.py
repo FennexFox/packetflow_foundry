@@ -58,6 +58,8 @@ VALIDATION_ERROR_CODES = {
     "non_exact_reply_candidate_for_skip",
     "missing_exact_managed_skip_decision",
     "mismatched_exact_managed_skip_decision",
+    "missing_ack_body_decision",
+    "mismatched_ack_body_decision",
     "stale_context_fingerprint",
 }
 
@@ -260,7 +262,11 @@ def exact_managed_target(thread: dict[str, Any], phase: str) -> dict[str, Any] |
 def managed_ack_decision(comment: dict[str, Any] | None) -> str | None:
     if not isinstance(comment, dict):
         return None
-    content_lines = _managed_comment_content_lines(_stringify(comment.get("body")))
+    return body_decision(_stringify(comment.get("body")))
+
+
+def body_decision(body: str | None) -> str | None:
+    content_lines = _managed_comment_content_lines(_stringify(body))
     if not content_lines:
         return None
     candidate_lines = content_lines[:4]
@@ -351,6 +357,10 @@ def validation_message(code: str, *, thread_id: str | None = None, phase: str | 
         return f"{prefix}{phase}_mode=skip requires an exact managed {phase} reply whose current decision is parseable"
     if code == "mismatched_exact_managed_skip_decision":
         return f"{prefix}{phase}_mode=skip requires the existing exact managed {phase} reply decision to match the planned decision"
+    if code == "missing_ack_body_decision":
+        return f"{prefix}{phase}_body must include an explicit parseable decision line matching the planned decision"
+    if code == "mismatched_ack_body_decision":
+        return f"{prefix}{phase}_body decision line must match the planned decision"
     if code == "stale_context_fingerprint":
         return "plan context_fingerprint does not match the current context"
     if code == "unknown_action_field_ignored":
@@ -596,6 +606,18 @@ def validate_thread_action_payload(context: dict[str, Any], payload: Any, phase:
             if not body:
                 result["errors"].append(build_issue("error", "missing_required_body", thread_id=thread_id, phase=phase))
                 continue
+            if phase == "ack":
+                body_decision_value = body_decision(body)
+                if not body_decision_value:
+                    result["errors"].append(
+                        build_issue("error", "missing_ack_body_decision", thread_id=thread_id, phase=phase)
+                    )
+                    continue
+                if body_decision_value != decision:
+                    result["errors"].append(
+                        build_issue("error", "mismatched_ack_body_decision", thread_id=thread_id, phase=phase)
+                    )
+                    continue
             normalized_entry[body_field] = body
 
             if mode == "add":

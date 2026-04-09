@@ -17,7 +17,7 @@ for candidate in (str(TEST_DIR), str(SCRIPT_DIR)):
 
 import review_thread_run as run_support  # type: ignore  # noqa: E402
 import manage_review_thread_run as manage_run  # type: ignore  # noqa: E402
-from review_thread_test_support import context_with_threads, review_thread, write_json  # noqa: E402
+from review_thread_test_support import ack_reply_body, context_with_threads, review_thread, write_json  # noqa: E402
 from thread_action_contract import build_context_fingerprint  # type: ignore  # noqa: E402
 
 
@@ -204,9 +204,17 @@ class ReviewThreadRunTests(unittest.TestCase):
                             "thread_id": "t-2",
                             "decision": "defer",
                             "ack_mode": "add",
-                            "ack_body": "Deferring until packet-local evidence is re-grounded.",
+                            "ack_body": ack_reply_body(
+                                decision="defer",
+                                detail="Deferring until packet-local evidence is re-grounded.",
+                            ),
                         },
-                        {"thread_id": "t-1", "decision": "accept", "ack_mode": "add", "ack_body": "Will fix this."},
+                        {
+                            "thread_id": "t-1",
+                            "decision": "accept",
+                            "ack_mode": "add",
+                            "ack_body": ack_reply_body(decision="accept", detail="Will fix this."),
+                        },
                     ],
                 },
             )
@@ -254,7 +262,12 @@ class ReviewThreadRunTests(unittest.TestCase):
                     "mutation_type": "add_reply",
                     "mutations": [{"kind": "add_reply", "thread_id": "t-1", "phase": "ack"}],
                     "normalized_thread_actions": [
-                        {"thread_id": "t-1", "decision": "accept", "ack_mode": "add", "ack_body": "Will fix this."}
+                        {
+                            "thread_id": "t-1",
+                            "decision": "accept",
+                            "ack_mode": "add",
+                            "ack_body": ack_reply_body(decision="accept", detail="Will fix this."),
+                        }
                     ],
                 },
             )

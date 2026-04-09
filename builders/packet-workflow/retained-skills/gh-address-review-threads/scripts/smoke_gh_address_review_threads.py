@@ -156,13 +156,16 @@ def synthetic_reply_candidate(*, mode: str, reason: str) -> dict[str, Any]:
 
 
 def safe_ack_body(*, decision: str) -> str:
+    summary = "Dry-run smoke: capturing the current thread-local acknowledgement plan."
     if decision == "accept":
-        return "Dry-run smoke: this accepted thread would be addressed before post-push reconciliation."
-    if decision == "reject":
-        return "Dry-run smoke: rejecting this thread would require a brief thread-local rationale."
-    if decision == "defer-outdated":
-        return "Dry-run smoke: deferring this outdated thread until current HEAD is re-grounded."
-    return "Dry-run smoke: deferring this thread until the current packet evidence is re-grounded."
+        detail = "Dry-run smoke: this accepted thread would be addressed before post-push reconciliation."
+    elif decision == "reject":
+        detail = "Dry-run smoke: rejecting this thread would require a brief thread-local rationale."
+    elif decision == "defer-outdated":
+        detail = "Dry-run smoke: deferring this outdated thread until current HEAD is re-grounded."
+    else:
+        detail = "Dry-run smoke: deferring this thread until the current packet evidence is re-grounded."
+    return "\n".join([summary, decision, detail])
 
 
 def synthetic_thread(*, thread_id: str, path: str, line: int, reviewer_login: str, reviewer_body: str) -> dict[str, Any]:

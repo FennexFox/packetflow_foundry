@@ -22,6 +22,10 @@ def pr_body() -> str:
     )
 
 
+def ack_reply_body(*, decision: str, detail: str, summary: str = "Acknowledging the current thread-local plan.") -> str:
+    return "\n".join([summary, decision, detail])
+
+
 def reply_candidate(
     *,
     mode: str,

@@ -74,10 +74,7 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
 
             self.assertEqual(plan["thread_actions"][0]["ack_mode"], "update")
             self.assertEqual(plan["thread_actions"][0]["ack_comment_id"], "self-1")
-            self.assertEqual(
-                plan["thread_actions"][0]["ack_body"],
-                "Dry-run smoke: deferring this thread until the current packet evidence is re-grounded.",
-            )
+            self.assertEqual(plan["thread_actions"][0]["ack_body"], smoke.safe_ack_body(decision="defer"))
 
     def test_build_safe_plan_skips_exact_ack_when_decision_matches(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir_name:
