@@ -1370,6 +1370,10 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             )
             self.assertIn("packet_count", packet_sizing)
             self.assertIn("packet_size_breakdown", packet_sizing)
+            self.assertEqual(
+                packet_sizing["packet_size_bytes"],
+                sum(packet_sizing["packet_size_breakdown"].values()),
+            )
 
             build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
             self.assertEqual(

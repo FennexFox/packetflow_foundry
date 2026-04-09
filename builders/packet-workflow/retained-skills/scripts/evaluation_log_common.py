@@ -634,6 +634,13 @@ def normalize_planned_workers_payload(
 
 
 def packet_size_breakdown(packet_metrics: dict[str, Any]) -> dict[str, int]:
+    direct_breakdown = packet_metrics.get("packet_size_breakdown")
+    if isinstance(direct_breakdown, dict):
+        return {
+            str(key): int(value)
+            for key, value in direct_breakdown.items()
+            if safe_int(value) is not None
+        }
     breakdown = packet_metrics.get("packet_size_by_file")
     if isinstance(breakdown, dict):
         return {
@@ -1614,7 +1621,12 @@ def normalize_actual_workers(log: dict[str, Any]) -> None:
         planned_worker_id = str(normalized.get("planned_worker_id") or "").strip() or None
         if planned_worker_id and planned_worker_id in by_id:
             normalized["planned_worker_id"] = planned_worker_id
-        elif not planned_worker_id:
+        elif planned_worker_id:
+            normalized["planned_worker_id"] = None
+            notes.append(
+                "Unknown planned_worker_id in actual worker payload; recorded as unplanned execution."
+            )
+        else:
             matches = by_tuple.get(actual_worker_fallback_tuple(normalized), [])
             if len(matches) == 1:
                 normalized["planned_worker_id"] = matches[0]["worker_id"]

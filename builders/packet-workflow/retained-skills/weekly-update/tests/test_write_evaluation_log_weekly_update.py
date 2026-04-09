@@ -138,7 +138,7 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
             "raw_reread_count": 1,
             "packet_sizing": {
                 "packet_count": 6,
-                "total_packet_bytes": 4096,
+                "packet_size_bytes": 4096,
                 "largest_packet_bytes": 1024,
                 "largest_two_packets_bytes": 1800,
             },
@@ -165,10 +165,70 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
         self.assertFalse(log["skill_specific"]["data"]["common_path_sufficient"])
         self.assertTrue(log["orchestration"]["raw_reread_required"])
         self.assertEqual(log["packet_sizing"]["packet_count"], 6)
-        self.assertEqual(log["packet_sizing"]["total_packet_bytes"], 4096)
+        self.assertEqual(log["packet_sizing"]["packet_size_bytes"], 4096)
         self.assertEqual(log["efficiency"]["packet_compaction"]["local_only_tokens"], 1200)
         self.assertEqual(log["efficiency"]["packet_compaction"]["savings_tokens"], 800)
         self.assertEqual(log["latency"]["packet_builder_seconds"], 1.5)
+
+    def test_finalize_treats_unknown_planned_worker_id_as_unplanned_execution(self) -> None:
+        log = {
+            "skill": {"name": "weekly-update"},
+            "measurement": {},
+            "baseline": {},
+            "orchestration": {
+                "review_mode": "targeted-delegation",
+                "planned_workers": {
+                    "count": 1,
+                    "roles": ["repo_mapper"],
+                    "workers": [
+                        {
+                            "worker_id": "planned:mapping:repo_mapper:abc123",
+                            "name": "mapping-repo-mapper",
+                            "agent_type": "repo_mapper",
+                            "model": "gpt-5.4-mini",
+                            "reasoning_effort": "medium",
+                            "packets": ["mapping_packet.json"],
+                            "responsibility": "Map repo surfaces",
+                        }
+                    ],
+                },
+            },
+            "quality": {},
+            "safety": {},
+            "skill_specific": {"data": {}},
+        }
+
+        eval_log.finalize_log(
+            log,
+            {
+                "orchestration": {
+                    "actual_workers": {
+                        "summary": {"capture_complete": True},
+                        "workers": [
+                            {
+                                "planned_worker_id": "planned:missing:repo_mapper:deadbeef",
+                                "agent_type": "repo_mapper",
+                                "model": "gpt-5.4-mini",
+                                "reasoning_effort": "medium",
+                                "status": "completed",
+                            }
+                        ],
+                    }
+                }
+            },
+        )
+
+        actual_workers = log["orchestration"]["actual_workers"]
+        self.assertEqual(actual_workers["summary"]["executed_count"], 1)
+        self.assertEqual(actual_workers["summary"]["planned_not_run_count"], 1)
+        self.assertEqual(actual_workers["summary"]["unplanned_count"], 1)
+        self.assertEqual(actual_workers["workers"][0]["planned_worker_id"], None)
+        self.assertEqual(actual_workers["workers"][0]["status"], "unplanned_completed")
+        self.assertEqual(actual_workers["workers"][1]["status"], "planned_not_run")
+        self.assertIn(
+            "Unknown planned_worker_id in actual worker payload; recorded as unplanned execution.",
+            log["notes"],
+        )
 
     def test_validate_and_apply_merge_plan_and_marker_fields(self) -> None:
         log = {

@@ -351,7 +351,8 @@ def packet_metrics_payload(context: dict, lint: dict, packet_payloads: dict[str,
     packet_tokens = estimate_tokens(worker_facing_bytes)
     return {
         "packet_count": len(packet_sizes),
-        "packet_size_bytes": packet_sizes,
+        "packet_size_bytes": sum(packet_sizes.values()),
+        "packet_size_breakdown": packet_sizes,
         "largest_packet_bytes": ordered_sizes[0] if ordered_sizes else 0,
         "largest_two_packets_bytes": sum(ordered_sizes[:2]),
         "local_only_tokens": local_only_tokens,

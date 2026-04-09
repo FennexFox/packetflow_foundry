@@ -33,20 +33,20 @@
 - new retained interface additions: `builder-spec.json`, `references/core-contract.md`, `profiles/default/profile.json`
 - scripts to update for profile metadata wiring: `collect_worktree_context.py`, `build_commit_packets.py`
 
-## Retained vs Consumer-Local ?먯젙
-- Data-only profile濡??쒗쁽 媛?ν븳 repo-specific 李⑥씠:
+## Retained vs Consumer-Local Decision
+- Data-only profile differences that should stay repo-specific:
   - commit guidance locations
   - ownership/source-path hints
   - repo markers
-- ?ㅽ뻾 ?섎?/?뺤콉/?됰룞 怨꾩빟源뚯? 嫄대뱶由щ뒗 李⑥씠:
-  - ?놁쓬. split validation, rollback semantics, and packet adjudication rules are reusable skill-local contracts.
+- Behavior that remains skill-local:
+  - split validation, rollback semantics, and packet adjudication rules are reusable skill-local contracts.
 - Decision: `retained`
 
-## Core ?밴꺽 湲곗?
-- 諛섎났 shared gap ?щ?:
+## Core Escalation Check
+- Shared gap already handled in foundry:
   - profile loading and packet profile metadata propagation repeat across retained skills
   - generic area/path heuristics repeat across Git-oriented retained skills
-- ?쇳쉶???고쉶 ?щ?:
+- Commit-splitting logic that should not move into core:
   - commit split safety, hunk rematch, and rollback behavior are one-skill domain logic
 - Decision:
   - shared profile-loading and generic path classification boundaries should be documented at foundry level

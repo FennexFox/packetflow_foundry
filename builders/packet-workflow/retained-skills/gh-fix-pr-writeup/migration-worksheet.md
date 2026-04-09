@@ -33,20 +33,20 @@
 - new retained interface additions: `builder-spec.json`, `references/core-contract.md`, `profiles/default/profile.json`
 - scripts to update for profile metadata wiring: `collect_pr_context.py`, `build_pr_review_packets.py`
 
-## Retained vs Consumer-Local ?먯젙
-- Data-only profile濡??쒗쁽 媛?ν븳 repo-specific 李⑥씠:
+## Retained vs Consumer-Local Decision
+- Data-only profile differences that should stay repo-specific:
   - PR template file paths
   - repo instruction file bindings
   - review-doc sets and source globs
-- ?ㅽ뻾 ?섎?/?뺤콉/?됰룞 怨꾩빟源뚯? 嫄대뱶由щ뒗 李⑥씠:
-  - ?놁쓬. QA gating and validator/apply behavior remain reusable skill-local contracts.
+- Behavior that remains skill-local:
+  - QA gating and validator/apply behavior remain reusable skill-local contracts.
 - Decision: `retained`
 
-## Core ?밴꺽 湲곗?
-- 諛섎났 shared gap ?щ?:
+## Core Escalation Check
+- Shared gap already handled in foundry:
   - profile loading and profile metadata propagation repeat across multiple retained skills
   - packet-heavy common-path documentation already belongs in core and builder
-- ?쇳쉶???고쉶 ?щ?:
+- PR writeup logic that should not move into core:
   - PR title/body QA policy and writeup validation are local to this skill
 - Decision:
   - shared profile-loading contract should be treated as foundry-wide

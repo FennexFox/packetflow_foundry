@@ -601,7 +601,7 @@ def build_result_payload(
     outdated_transition_candidates: int,
     outdated_auto_resolve_candidates: int,
     outdated_recheck_ambiguous: int,
-    packet_metrics_path: str,
+    packet_sizing_path: str,
 ) -> dict[str, Any]:
     return {
         "review_mode": review_mode,
@@ -626,5 +626,5 @@ def build_result_payload(
         "outdated_transition_candidates": outdated_transition_candidates,
         "outdated_auto_resolve_candidates": outdated_auto_resolve_candidates,
         "outdated_recheck_ambiguous": outdated_recheck_ambiguous,
-        "packet_metrics_file": packet_metrics_path,
+        "packet_sizing_file": packet_sizing_path,
     }

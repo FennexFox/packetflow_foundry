@@ -33,20 +33,20 @@
 - new retained interface additions: `builder-spec.json`, `references/core-contract.md`, `profiles/default/profile.json`
 - scripts to update for profile metadata wiring: `collect_recent_commits.py`, `build_reword_packets.py`
 
-## Retained vs Consumer-Local ?먯젙
-- Data-only profile濡??쒗쁽 媛?ν븳 repo-specific 李⑥씠:
+## Retained vs Consumer-Local Decision
+- Data-only profile differences that should stay repo-specific:
   - commit-guidance file paths
   - review-doc ownership and path hints
   - repo markers
-- ?ㅽ뻾 ?섎?/?뺤콉/?됰룞 怨꾩빟源뚯? 嫄대뱶由щ뒗 李⑥씠:
-  - ?놁쓬. rewrite safety, confirmation, and apply behavior remain reusable skill-local contracts.
+- Behavior that remains skill-local:
+  - rewrite safety, confirmation, and apply behavior remain reusable skill-local contracts.
 - Decision: `retained`
 
-## Core ?밴꺽 湲곗?
-- 諛섎났 shared gap ?щ?:
+## Core Escalation Check
+- Shared gap already handled in foundry:
   - profile loading and profile metadata propagation repeat across retained skills
   - generic path/area heuristics repeat across Git-oriented retained skills
-- ?쇳쉶???고쉶 ?щ?:
+- Reword-specific logic that should not move into core:
   - rewrite-plan semantics and replay safety remain one-skill logic
 - Decision:
   - shared profile-loading boundary is foundry-wide

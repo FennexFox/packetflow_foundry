@@ -932,6 +932,8 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertGreater(build_result["efficiency"]["packet_compaction"]["savings_tokens"], 0)
         self.assertEqual(build_result["review_mode"], "local-only")
         self.assertEqual(build_result["packet_sizing"], packet_sizing)
+        self.assertNotIn("packet_metrics_file", build_result)
+        self.assertTrue(build_result["packet_sizing_file"].endswith("packet_sizing.json"))
 
     def test_main_marks_same_run_outdated_transition_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

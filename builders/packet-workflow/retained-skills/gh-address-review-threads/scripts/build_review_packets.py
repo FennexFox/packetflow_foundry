@@ -1602,7 +1602,7 @@ def main() -> int:
         outdated_recheck_ambiguous=sum(
             1 for item in outdated_recheck_records if item["resolution_verdict"] == "ambiguous"
         ),
-        packet_metrics_path=str(packet_sizing_path),
+        packet_sizing_path=str(packet_sizing_path),
     )
     build_result = common.normalize_build_result(
         build_result,
