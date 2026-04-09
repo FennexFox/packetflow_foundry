@@ -27,6 +27,7 @@ NAMED_TEMPLATE_GLOBS = [
     "docs/PULL_REQUEST_TEMPLATE/*.md",
 ]
 ISSUE_REF_PATTERN = re.compile(r"#(?P<number>\d+)")
+EXPLICIT_ISSUE_HINT_PATTERN = re.compile(r"^#?(?P<number>[1-9]\d*)$")
 
 
 def read_utf8_text(path: Path) -> str:
@@ -410,6 +411,29 @@ def extract_issue_numbers(text: str | None) -> list[str]:
     return seen
 
 
+def normalize_explicit_issue_hints(values: Iterable[Any] | None) -> list[str]:
+    normalized: list[str] = []
+    invalid: list[str] = []
+    for value in values or []:
+        text = str(value).strip()
+        if not text:
+            continue
+        match = EXPLICIT_ISSUE_HINT_PATTERN.fullmatch(text)
+        if not match:
+            invalid.append(text)
+            continue
+        number = match.group("number")
+        if number not in normalized:
+            normalized.append(number)
+    if invalid:
+        invalid_values = ", ".join(repr(item) for item in invalid)
+        raise ValueError(
+            "Explicit issue hints must be exact issue numbers like `15` or `#15`; "
+            f"got {invalid_values}."
+        )
+    return normalized
+
+
 def select_pr_template(repo_root: Path) -> dict[str, Any]:
     default_candidates = [normalize_path(str(repo_root / path)) for path in DEFAULT_TEMPLATE_PATHS if (repo_root / path).is_file()]
     named_candidates: list[str] = []
@@ -527,6 +551,7 @@ def build_context(
     repo_slug: str | None = None,
     base_ref: str | None = None,
     head_ref: str | None = None,
+    issue_hints: list[str] | None = None,
     reviewers: list[str] | None = None,
     assignees: list[str] | None = None,
     labels: list[str] | None = None,
@@ -546,15 +571,20 @@ def build_context(
     commit_subjects = load_commit_subjects(repo_root, resolved_base, resolved_head)
     template_selection = select_pr_template(repo_root)
     rule_paths = template_file_paths(repo_root, template_selection)
+    explicit_issue_hints = normalize_explicit_issue_hints(issue_hints)
+    branch_issue_hints = extract_issue_numbers(resolved_head)
+    commit_issue_hints = extract_issue_numbers(" ".join(commit_subjects))
 
     template_text = read_text_if_exists(Path(template_selection["selected_path"])) if template_selection.get("selected_path") else None
     instructions_text = read_text_if_exists(repo_root / ".github/instructions/pull-request.instructions.md")
     commit_instructions_text = read_text_if_exists(repo_root / ".github/instructions/commit-message.instructions.md")
     issue_hints = sorted(
         {
-            *extract_issue_numbers(resolved_head),
-            *extract_issue_numbers(" ".join(commit_subjects)),
-        }
+            *branch_issue_hints,
+            *commit_issue_hints,
+            *explicit_issue_hints,
+        },
+        key=int,
     )
 
     try:
@@ -599,7 +629,10 @@ def build_context(
         "issue_reference_hints": {
             "numbers": issue_hints,
             "branch": resolved_head,
+            "branch_numbers": branch_issue_hints,
             "commit_subjects": commit_subjects,
+            "commit_numbers": commit_issue_hints,
+            "operator_supplied": explicit_issue_hints,
         },
         "testing_signal_candidates": {
             "exact_commands": [],

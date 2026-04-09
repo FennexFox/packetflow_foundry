@@ -25,6 +25,7 @@ Use this skill to open a new GitHub pull request from a branch already pushed to
 
 1. Run `gh auth status`; stop if authentication is missing.
 2. Collect context with `<python-bin> -B <skill-dir>/scripts/collect_pr_create_context.py --repo-root <repo-root> ... --output <context-json>`.
+   Add repeated `--issue-hint <n>` only when the issue linkage comes from trusted operator context rather than branch or commit metadata.
 3. Run lint and packet build with `lint_pr_create.py` and `build_pr_create_packets.py`.
 4. Initialize the evaluation log, then merge the build result.
 5. Read `orchestrator.json` first, then `rules_packet.json`, then `synthesis_packet.json`, then at most one focused packet.

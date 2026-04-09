@@ -141,6 +141,50 @@ class PrCreateToolsTests(unittest.TestCase):
             self.assertEqual(context["resolved_base"], "release")
             self.assertEqual(context["resolved_head"], "feature/pr-create")
 
+    def test_build_context_merges_explicit_issue_hints_when_branch_and_commits_have_none(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            origin_root = root / "origin.git"
+            repo_root.mkdir()
+            init_repo(repo_root, origin_root)
+
+            run_git(repo_root, ["checkout", "main"])
+            run_git(repo_root, ["checkout", "-b", "feature/pr-create-operator"])
+            run_git(repo_root, ["config", "branch.feature/pr-create-operator.gh-merge-base", "main"])
+            write_text(repo_root / "src" / "feature.py", "VALUE = 3\n")
+            run_git(repo_root, ["add", "."])
+            run_git(repo_root, ["commit", "-m", "feat(pr-create): add guarded creator"])
+            run_git(repo_root, ["push", "-u", "origin", "feature/pr-create-operator"])
+
+            context = tools.build_context(
+                repo_root=repo_root,
+                repo_slug="owner/repo",
+                base_ref="main",
+                head_ref="feature/pr-create-operator",
+                issue_hints=["#15", "15"],
+            )
+
+            self.assertEqual(context["issue_reference_hints"]["numbers"], ["15"])
+            self.assertEqual(context["issue_reference_hints"]["branch_numbers"], [])
+            self.assertEqual(context["issue_reference_hints"]["commit_numbers"], [])
+            self.assertEqual(context["issue_reference_hints"]["operator_supplied"], ["15"])
+
+    def test_build_context_rejects_free_form_explicit_issue_hints(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            origin_root = root / "origin.git"
+            repo_root.mkdir()
+            init_repo(repo_root, origin_root)
+
+            with self.assertRaisesRegex(ValueError, "Explicit issue hints must be exact issue numbers"):
+                tools.build_context(
+                    repo_root=repo_root,
+                    repo_slug="owner/repo",
+                    issue_hints=["Refs: #42"],
+                )
+
     def test_select_pr_template_fails_closed_when_multiple_candidates_exist(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
