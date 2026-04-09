@@ -693,6 +693,68 @@ class ReviewThreadRunTests(unittest.TestCase):
                 ):
                     manage_run.main()
 
+    def test_record_ack_apply_requires_normalized_thread_actions_list(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            context = context_with_threads(
+                tmp,
+                [
+                    review_thread(
+                        thread_id="t-1",
+                        path="src/app.py",
+                        line=10,
+                        reviewer_login="reviewer-a",
+                        reviewer_body="Please rename this.",
+                    )
+                ],
+            )
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            repo_root = Path(context["repo_root"])
+            init_repo(repo_root)
+
+            context_path = tmp / "context.json"
+            result_path = tmp / "ack-result.json"
+            write_json(context_path, context)
+            write_json(
+                result_path,
+                {
+                    "phase": "ack",
+                    "dry_run": False,
+                    "apply_succeeded": True,
+                    "fingerprint_match": True,
+                    "context_fingerprint": "updated-fingerprint",
+                    "mutation_type": "add_reply",
+                    "mutations": [{"kind": "add_reply", "thread_id": "t-1", "phase": "ack"}],
+                },
+            )
+
+            manifest = run_support.create_run(
+                repo_root,
+                context_path,
+                run_id="test-run",
+                evaluation_log_path=tmp / "eval-log.json",
+            )
+            manifest_path = Path(manifest["paths"]["manifest"])
+            manifest["state"]["last_completed_phase"] = "ack-validated"
+            run_support.write_manifest(manifest_path, manifest)
+
+            argv = [
+                "manage_review_thread_run.py",
+                "record-apply",
+                "--manifest",
+                str(manifest_path),
+                "--phase",
+                "ack",
+                "--result",
+                str(result_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "ack apply result must include normalized_thread_actions as a list",
+                ):
+                    manage_run.main()
+
     def test_record_ack_apply_rejects_content_drift_when_status_entry_is_unchanged(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)

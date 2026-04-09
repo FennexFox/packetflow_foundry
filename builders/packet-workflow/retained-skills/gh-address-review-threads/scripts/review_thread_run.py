@@ -573,14 +573,27 @@ def copy_apply_result_into_manifest(
         manifest["state"]["latest_context_fingerprint"] = fingerprint
     if phase == "ack":
         actions = payload.get("normalized_thread_actions")
-        accepted = sorted(
-            {
-                str(item.get("thread_id") or "").strip()
-                for item in actions or []
-                if isinstance(item, dict) and str(item.get("decision") or "").strip() == "accept"
-            }
-        )
-        manifest["state"]["accepted_threads"] = [thread_id for thread_id in accepted if thread_id]
+        if not isinstance(actions, list):
+            if not dry_run:
+                raise RuntimeError("ack apply result must include normalized_thread_actions as a list")
+        else:
+            invalid_actions = [
+                item
+                for item in actions
+                if not isinstance(item, dict)
+                or not str(item.get("thread_id") or "").strip()
+                or not str(item.get("decision") or "").strip()
+            ]
+            if invalid_actions:
+                raise RuntimeError("ack apply result contains malformed normalized_thread_actions entries")
+            accepted = sorted(
+                {
+                    str(item.get("thread_id") or "").strip()
+                    for item in actions
+                    if str(item.get("decision") or "").strip() == "accept"
+                }
+            )
+            manifest["state"]["accepted_threads"] = [thread_id for thread_id in accepted if thread_id]
     manifest["state"]["last_completed_phase"] = f"{phase}-applied"
     return payload
 
