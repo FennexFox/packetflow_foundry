@@ -118,6 +118,13 @@ def _decision_mentions(line: str) -> list[str]:
     return mentions
 
 
+def _explicit_decision_line(line: str) -> str | None:
+    lowered = _stringify(line).lower()
+    if lowered in DECISIONS:
+        return lowered
+    return None
+
+
 def thread_sort_key(thread: dict[str, Any]) -> tuple[str, int, str]:
     line = thread.get("line")
     if line in {None, ""}:
@@ -248,12 +255,11 @@ def managed_ack_decision(comment: dict[str, Any] | None) -> str | None:
     content_lines = _managed_comment_content_lines(_stringify(comment.get("body")))
     if not content_lines:
         return None
-    candidate_lines = content_lines[1:3] if len(content_lines) > 1 else []
-    candidate_lines.extend(content_lines[:1])
+    candidate_lines = content_lines[:4]
     for line in candidate_lines:
-        mentions = sorted(set(_decision_mentions(line)))
-        if len(mentions) == 1:
-            return mentions[0]
+        explicit = _explicit_decision_line(line)
+        if explicit:
+            return explicit
     return None
 
 
