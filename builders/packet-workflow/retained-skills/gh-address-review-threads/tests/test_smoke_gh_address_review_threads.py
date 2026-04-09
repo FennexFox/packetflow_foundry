@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -16,11 +17,125 @@ for candidate in (str(TEST_DIR), str(SCRIPT_DIR)):
         sys.path.insert(0, candidate)
 
 import smoke_gh_address_review_threads as smoke  # type: ignore  # noqa: E402
-from review_thread_test_support import context_with_threads, review_thread, write_json  # noqa: E402
+from review_thread_test_support import comment, context_with_threads, reply_candidate, review_thread, write_json  # noqa: E402
 from thread_action_contract import build_context_fingerprint  # type: ignore  # noqa: E402
 
 
+def init_repo(repo_root: Path) -> None:
+    subprocess.run(["git", "init"], cwd=repo_root, capture_output=True, text=True, check=True)
+
+
 class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
+    def test_build_safe_plan_updates_exact_ack_when_decision_differs(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            tmp_dir = Path(tmp_dir_name)
+            context = context_with_threads(
+                tmp_dir,
+                [
+                    review_thread(
+                        thread_id="t-1",
+                        path="src/app.py",
+                        line=10,
+                        reviewer_login="reviewer-a",
+                        reviewer_body="Please rename this.",
+                        reply_candidates={
+                            "ack": reply_candidate(
+                                mode="update",
+                                comment_id="self-1",
+                                reason="exact_managed_reply",
+                                managed=True,
+                                adopted_unmarked_reply=False,
+                            ),
+                            "complete": reply_candidate(
+                                mode="add",
+                                comment_id=None,
+                                reason="complete_never_adopts_unmarked_reply",
+                                managed=False,
+                                adopted_unmarked_reply=False,
+                            ),
+                        },
+                        comments=[
+                            comment(
+                                comment_id="self-1",
+                                author_login="codex",
+                                body=(
+                                    "<!-- codex:review-thread v1 phase=ack thread=t-1 -->\n"
+                                    "Reviewer asked to rename this.\n"
+                                    "accept\n"
+                                    "Will update the naming and rerun the relevant check."
+                                ),
+                                created_at="2026-03-01T00:05:00Z",
+                                managed_phase="ack",
+                                managed_thread_id="t-1",
+                                has_exact_managed_marker=True,
+                            )
+                        ],
+                    )
+                ],
+            )
+            context["context_fingerprint"] = build_context_fingerprint(context)
+
+            plan = smoke.build_safe_plan(context, phase="ack", accepted_thread_ids=[])
+
+            self.assertEqual(plan["thread_actions"][0]["ack_mode"], "update")
+            self.assertEqual(plan["thread_actions"][0]["ack_comment_id"], "self-1")
+            self.assertEqual(plan["thread_actions"][0]["ack_body"], smoke.safe_ack_body(decision="defer"))
+
+    def test_build_safe_plan_skips_exact_ack_when_decision_matches(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir_name:
+            tmp_dir = Path(tmp_dir_name)
+            context = context_with_threads(
+                tmp_dir,
+                [
+                    review_thread(
+                        thread_id="t-1",
+                        path="src/app.py",
+                        line=10,
+                        reviewer_login="reviewer-a",
+                        reviewer_body="Please rename this.",
+                        reply_candidates={
+                            "ack": reply_candidate(
+                                mode="update",
+                                comment_id="self-2",
+                                reason="exact_managed_reply",
+                                managed=True,
+                                adopted_unmarked_reply=False,
+                            ),
+                            "complete": reply_candidate(
+                                mode="add",
+                                comment_id=None,
+                                reason="complete_never_adopts_unmarked_reply",
+                                managed=False,
+                                adopted_unmarked_reply=False,
+                            ),
+                        },
+                        comments=[
+                            comment(
+                                comment_id="self-2",
+                                author_login="codex",
+                                body=(
+                                    "<!-- codex:review-thread v1 phase=ack thread=t-1 -->\n"
+                                    "Reviewer asked to rename this.\n"
+                                    "defer\n"
+                                    "Waiting for clearer grounding before changing behavior."
+                                ),
+                                created_at="2026-03-01T00:05:00Z",
+                                managed_phase="ack",
+                                managed_thread_id="t-1",
+                                has_exact_managed_marker=True,
+                            )
+                        ],
+                    )
+                ],
+            )
+            context["context_fingerprint"] = build_context_fingerprint(context)
+
+            plan = smoke.build_safe_plan(context, phase="ack", accepted_thread_ids=[])
+
+            self.assertEqual(plan["thread_actions"][0]["ack_mode"], "skip")
+            self.assertNotIn("ack_body", plan["thread_actions"][0])
+            self.assertNotIn("ack_comment_id", plan["thread_actions"][0])
+
     def test_main_runs_self_contained_synthetic_smoke_without_gh(self) -> None:
         with patch.object(sys, "argv", ["smoke_gh_address_review_threads.py", "--synthetic"]):
             with patch.object(smoke, "ensure_gh_auth", side_effect=AssertionError("live gh auth should not run")), patch.object(
@@ -105,11 +220,12 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
         self.assertEqual(payload["reason"], "no_open_pr")
         self.assertEqual(payload["next_action"], "open_pr_for_current_branch")
 
-    def test_main_runs_safe_skip_defer_smoke_path(self) -> None:
+    def test_main_runs_ack_reply_smoke_path_without_contract_bypass(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir_name:
             tmp_dir = Path(tmp_dir_name)
             repo_holder = tmp_dir / "repo-holder"
             repo_holder.mkdir()
+            init_repo(repo_holder)
             context = context_with_threads(
                 tmp_dir,
                 [
@@ -257,6 +373,7 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
             tmp_dir = Path(tmp_dir_name)
             repo_holder = tmp_dir / "repo-holder"
             repo_holder.mkdir()
+            init_repo(repo_holder)
             context = context_with_threads(tmp_dir, [])
             context["context_fingerprint"] = build_context_fingerprint(context)
 

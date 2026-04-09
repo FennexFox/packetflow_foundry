@@ -23,7 +23,14 @@ For the rationale behind keeping the workflow flat/generic, read [`architecture-
 - comment id rules:
   - `add`: ignore explicit id
   - `update`: use explicit id first, then `reply_candidates.ack.comment_id`
-  - `skip`: ignore explicit id
+  - `skip`: ignore explicit id and preserve only the latest exact managed `ack` reply target
+- extra rules:
+  - `ack_mode=add` and `ack_mode=update` require an explicit parseable decision line in `ack_body`
+  - that explicit `ack_body` decision line must match the plan `decision`
+  - `skip` is valid only when the thread already has a latest exact managed `ack` reply
+  - the current exact managed `ack` reply must already encode the same decision as the plan on an explicit decision line
+    such as `defer`, `defer until rerun`, or `Decision: defer until rerun`; otherwise use `update`
+  - adoptable unmarked replies may be used as `update` fallback targets, but never as `skip` targets
 
 `complete`
 - mode field: `complete_mode`
@@ -69,6 +76,12 @@ This ordering uses the current context thread metadata, not the input plan order
 - `invalid_resolve_after_complete`
 - `adoption_blocked_update`
 - `hard_stop_marker_conflict`
+- `missing_exact_managed_skip_target`
+- `non_exact_reply_candidate_for_skip`
+- `missing_exact_managed_skip_decision`
+- `mismatched_exact_managed_skip_decision`
+- `missing_ack_body_decision`
+- `mismatched_ack_body_decision`
 - `stale_context_fingerprint`
 
 ## Apply Boundary

@@ -128,7 +128,7 @@ Notes:
 Notes:
 - `adoption-blocking` does not block `add`.
 - `adoption-blocking` allows `update` only when an explicit comment id targets the current exact managed reply.
-- `hard-stop` allows only `skip` for the affected phase.
+- `hard-stop` allows only `skip` for the affected phase, and `ack_mode=skip` still requires the current exact managed `ack` target.
 
 ## Run Manifest Lifecycle
 
@@ -145,7 +145,10 @@ State-gate rules:
 
 - `record-validation` requires `ack-applied`
 - `post-push` requires `ack-applied`
+- run-start git worktree state is frozen until `ack-applied`; `record-plan --phase ack` and `record-apply --phase ack` reject pre-ack worktree drift
+- manifest `state.accepted_threads` is the run-local `ack-applied` accepted set, not pre-ack decision state
 - `post-push` emits `reconciliation-input.json` with accepted thread ids, validation commands, and pre/post push `HEAD` SHAs for complete-phase seeding
+- `reconciliation-input.json` is the authoritative post-push accepted provenance surface for same-run reconciliation
 - `record-plan --phase complete` requires `post-prepared`
 - `record-apply` requires the matching `*-validated` state
 - `record-apply` advances only on `apply_succeeded=true`, `fingerprint_match=true`, and a non-dry-run result for live runs
@@ -182,6 +185,10 @@ Each `thread-*.json` packet keeps:
 - `ownership_summary`
 - `reply_update_basis`
 - `quality_escape_hints`
+- `grounding`
+  - explicit anchors come only from inline code-style backtick spans such as call-form, dotted identifier, path-form, or exact code text
+  - natural-language referents, pronouns, and broad requests are not explicit anchors
+  - `grounding_mismatch=true` is diagnostic only and maps back to existing allowed reread reasons such as `missing_required_evidence` or `ownership_ambiguity`
 - `accepted_recheck` for same-run accepted, still-current threads:
   - `same_run_acceptance`
   - `validation_provenance`
@@ -210,6 +217,7 @@ Each `thread-batch-*.json` packet keeps:
 - `shared_fix_surface`
 - `validation_candidates`
 - `quality_escape_hints`
+- per-thread grounding and default-decision diagnostics without forcing every thread in the batch to share the same final decision
 
 ## Runtime Vs Eval Artifacts
 
@@ -233,6 +241,7 @@ Each `thread-batch-*.json` packet keeps:
 - synthetic reference smoke:
   - uses a temp fixture and no live GitHub state
   - must exercise collect-equivalent context, build, validate, apply `--dry-run`, phase-result merges, and evaluation finalize end to end
+  - must not bypass the live validator contract with defer/defer-outdated `ack_mode=skip` defaults
 - both smoke modes keep the short summary schema at the top level
 
 ## Reply And Resolution Rules
@@ -241,6 +250,7 @@ Each `thread-batch-*.json` packet keeps:
   - summarize the reviewer request
   - state accept, reject, defer, or defer-outdated
   - state the implementation direction or blocker
+  - must exist and be recorded as `ack-applied` before validation recording, post-push staging, or accepted follow-up work
 - `complete`
   - summarize what changed
   - list validation that actually ran
@@ -263,3 +273,6 @@ Same-run outdated transitions may reuse the normal accepted completion-and-resol
   - `reply_candidates.<phase>.comment_id` fallback
 - `update` with no explicit or fallback id fails with:
   - `missing_update_target`
+- `ack_mode=skip` requires the latest exact managed `ack` reply target for the same thread
+- `ack_mode=skip` also requires that the existing exact managed `ack` reply already states the same decision as the plan
+- adoptable unmarked `reply_candidates.ack.comment_id` values may be used only as `update` fallback targets, never as `skip` targets

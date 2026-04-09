@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import json
+import re
 from typing import Any
 
 
@@ -78,6 +79,363 @@ PACKET_METRIC_FIELDS = [
 ]
 
 SMOKE_OUTPUT_FIELDS = ["status", "reason", "thread_counts", "next_action"]
+REQUEST_ANCHOR_RE = re.compile(r"`([^`]+)`")
+IDENTIFIER_BOUNDARY_RE = r"[A-Za-z0-9_]"
+REQUEST_ANCHOR_STOPWORDS = frozenset(
+    {
+        "a",
+        "an",
+        "and",
+        "as",
+        "at",
+        "be",
+        "by",
+        "change",
+        "clarify",
+        "consider",
+        "ensure",
+        "fix",
+        "for",
+        "from",
+        "here",
+        "in",
+        "into",
+        "it",
+        "keep",
+        "less",
+        "make",
+        "more",
+        "of",
+        "on",
+        "or",
+        "please",
+        "prefer",
+        "remove",
+        "rename",
+        "switch",
+        "that",
+        "the",
+        "there",
+        "this",
+        "tighten",
+        "to",
+        "update",
+        "use",
+        "with",
+    }
+)
+
+
+def clean_headline_line(line: str) -> str:
+    text = line.strip()
+    if not text:
+        return ""
+    text = re.sub(r"<!--.*?-->", " ", text)
+    text = re.sub(r"`{3,}.*", " ", text)
+    text = re.sub(r"!\[[^\]]*\]\([^)]+\)", " ", text)
+    text = re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
+    text = re.sub(r"https?://\S+", " ", text)
+    text = re.sub(r"<[^>]+>", " ", text)
+    text = re.sub(r"^[*\-+>\s]+", "", text)
+    text = re.sub(r"`([^`]+)`", r"\1", text)
+    text = re.sub(r"[*_~]+", "", text)
+    text = re.sub(r"\s+", " ", text).strip().lower()
+    if text in {"nit", "nits", "suggestion", "suggestions", "question", "questions", "please address"}:
+        return ""
+    return text
+
+
+def normalize_text_for_matching(text: str | None) -> str:
+    if not text:
+        return ""
+    normalized_lines = [clean_headline_line(line) for line in str(text).splitlines()]
+    return " ".join(line for line in normalized_lines if line).strip()
+
+
+def dedupe_preserve(items: list[str]) -> list[str]:
+    deduped: list[str] = []
+    seen: set[str] = set()
+    for item in items:
+        if not item or item in seen:
+            continue
+        deduped.append(item)
+        seen.add(item)
+    return deduped
+
+
+def canonical_match_term(text: str | None) -> str:
+    return re.sub(r"[^a-z0-9]+", "", normalize_text_for_matching(text))
+
+
+def canonical_match_terms(token: str) -> list[str]:
+    terms: list[str] = []
+    for part in re.split(r"[./-]+", token):
+        candidate = part.strip(".-/")
+        if len(candidate) < 3 or candidate in REQUEST_ANCHOR_STOPWORDS:
+            continue
+        normalized_candidate = canonical_match_term(candidate)
+        if normalized_candidate:
+            terms.append(normalized_candidate)
+    return dedupe_preserve(terms)
+
+
+def match_terms(text: str | None, *, canonical: bool = False) -> list[str]:
+    normalized = normalize_text_for_matching(text)
+    terms: list[str] = []
+    for raw_token in re.findall(r"[a-z0-9_./-]+", normalized):
+        token = raw_token.strip(".-/")
+        if canonical:
+            terms.extend(canonical_match_terms(token))
+            continue
+        if len(token) >= 3 and token not in REQUEST_ANCHOR_STOPWORDS:
+            terms.append(token)
+    return dedupe_preserve(terms)
+
+
+def extract_exact_anchor_views(reviewer_body: str) -> list[dict[str, Any]]:
+    anchors: list[dict[str, Any]] = []
+    for match in REQUEST_ANCHOR_RE.finditer(reviewer_body):
+        raw_anchor = match.group(1)
+        normalized_text = normalize_text_for_matching(raw_anchor)
+        if not normalized_text:
+            continue
+
+        identifier_pairs: list[tuple[str, str]] = []
+        if re.search(r"[()_./-]|[A-Z]", raw_anchor):
+            seen_canonical: set[str] = set()
+            for token in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", raw_anchor):
+                normalized_token = token.lower()
+                if len(normalized_token) < 3 or normalized_token in REQUEST_ANCHOR_STOPWORDS:
+                    continue
+                canonical_token = canonical_match_term(normalized_token)
+                if not canonical_token or canonical_token in seen_canonical:
+                    continue
+                seen_canonical.add(canonical_token)
+                identifier_pairs.append((normalized_token, canonical_token))
+
+        anchors.append(
+            {
+                "raw": raw_anchor,
+                "normalized_text": normalized_text,
+                "identifier_pairs": identifier_pairs,
+            }
+        )
+    return anchors
+
+
+def boundary_aware_anchor_pattern(anchor: str, *, call_form: bool = False) -> re.Pattern[str] | None:
+    normalized_anchor = str(anchor).strip()
+    if not normalized_anchor:
+        return None
+    if call_form:
+        callee = re.sub(r"\([^)]*\)", "", normalized_anchor).strip()
+        if not callee:
+            return None
+        return re.compile(rf"(?<!{IDENTIFIER_BOUNDARY_RE}){re.escape(callee)}\s*\(")
+    return re.compile(rf"(?<!{IDENTIFIER_BOUNDARY_RE}){re.escape(normalized_anchor)}(?!{IDENTIFIER_BOUNDARY_RE})")
+
+
+def exact_anchor_view_matches(view: dict[str, Any], *, normalized_line_texts: list[str]) -> bool:
+    normalized_anchor = str(view.get("normalized_text") or "").strip()
+    raw_anchor = str(view.get("raw") or "").strip()
+    if not normalized_anchor:
+        return False
+    if "(" in raw_anchor and ")" in raw_anchor:
+        return any(normalized_anchor in line_text for line_text in normalized_line_texts)
+    if any(separator in raw_anchor for separator in (".", "/", "::", "->")):
+        pattern = boundary_aware_anchor_pattern(normalized_anchor)
+        return bool(pattern and any(pattern.search(line_text) for line_text in normalized_line_texts))
+    return any(normalized_anchor in line_text for line_text in normalized_line_texts)
+
+
+def request_anchor_evidence(
+    reviewer_body: str,
+    *,
+    snippet: str | None,
+    diff_snippet: str | None,
+) -> tuple[bool, list[str], list[str], list[str]]:
+    visible_line_texts = _visible_evidence_line_texts(snippet=snippet, diff_snippet=diff_snippet)
+    evidence_text = normalize_text_for_matching("\n".join(visible_line_texts))
+    if not evidence_text:
+        return False, [], [], []
+
+    anchor_views = extract_exact_anchor_views(reviewer_body)
+    exact_anchors = dedupe_preserve([str(view["normalized_text"]) for view in anchor_views])
+    matched_exact_anchors = dedupe_preserve(
+        [
+            str(view["normalized_text"])
+            for view in anchor_views
+            if exact_anchor_view_matches(view, normalized_line_texts=visible_line_texts)
+        ]
+    )
+    if exact_anchors:
+        return len(matched_exact_anchors) == len(exact_anchors), exact_anchors, matched_exact_anchors, []
+
+    requested_terms = sorted(dict.fromkeys(match_terms(reviewer_body)))
+    if len(requested_terms) < 2:
+        return False, [], [], requested_terms
+
+    evidence_terms = set(match_terms(evidence_text))
+    matched_terms = [term for term in requested_terms if term in evidence_terms]
+    return len(matched_terms) >= 2, [], [], matched_terms
+
+
+def _visible_evidence_line_texts(
+    *,
+    snippet: str | None,
+    diff_snippet: str | None,
+) -> list[str]:
+    line_texts: list[str] = []
+    for raw_line in str(snippet or "").splitlines():
+        cleaned_line = re.sub(r"^\s*\d+:\s*", "", raw_line)
+        normalized_line = normalize_text_for_matching(cleaned_line)
+        if normalized_line:
+            line_texts.append(normalized_line)
+    for raw_line in str(diff_snippet or "").splitlines():
+        if raw_line.startswith(("+++", "---", "@@")):
+            continue
+        prefix = raw_line[:1]
+        if prefix == "-":
+            continue
+        candidate_line = raw_line[1:] if prefix in {"+", " "} else raw_line
+        normalized_line = normalize_text_for_matching(candidate_line)
+        if normalized_line:
+            line_texts.append(normalized_line)
+    return line_texts
+
+
+def _strong_identifier_match(
+    anchor_views: list[dict[str, Any]],
+    *,
+    normalized_line_texts: list[str],
+) -> tuple[list[str], list[str], list[str]]:
+    evidence_terms = set(match_terms("\n".join(normalized_line_texts), canonical=True))
+    identifier_pairs = [
+        pair
+        for view in anchor_views
+        for pair in list(view.get("identifier_pairs") or [])
+        if isinstance(pair, tuple) and len(pair) == 2
+    ]
+    identifier_anchors = dedupe_preserve([str(raw_anchor) for raw_anchor, _ in identifier_pairs])
+    matched_identifier_anchors = [
+        raw_anchor
+        for raw_anchor, canonical_anchor in identifier_pairs
+        if canonical_anchor in evidence_terms
+    ]
+    line_term_sets = [set(match_terms(line_text, canonical=True)) for line_text in normalized_line_texts]
+    matched_structural_anchors: list[str] = []
+    for view in anchor_views:
+        view_identifier_pairs = [
+            pair
+            for pair in list(view.get("identifier_pairs") or [])
+            if isinstance(pair, tuple) and len(pair) == 2
+        ]
+        if not view_identifier_pairs:
+            continue
+        normalized_anchor = str(view.get("normalized_text") or "").strip()
+        raw_anchor = str(view.get("raw") or "").strip()
+        structural_anchor = re.sub(r"\([^)]*\)", "", normalized_anchor).strip()
+        matched = False
+        if "(" in raw_anchor and ")" in raw_anchor:
+            pattern = boundary_aware_anchor_pattern(normalized_anchor, call_form=True)
+            matched = bool(pattern and any(pattern.search(line_text) for line_text in normalized_line_texts))
+            if matched:
+                matched_structural_anchors.append(normalized_anchor)
+            continue
+        if any(separator in raw_anchor for separator in (".", "/", "::", "->")):
+            pattern = boundary_aware_anchor_pattern(structural_anchor)
+            matched = bool(pattern and any(pattern.search(line_text) for line_text in normalized_line_texts))
+            if matched:
+                matched_structural_anchors.append(normalized_anchor)
+            continue
+        required_identifier_terms = dedupe_preserve([str(canonical_anchor) for _, canonical_anchor in view_identifier_pairs])
+        if (
+            len(required_identifier_terms) == 1
+            and any(all(term in line_terms for term in required_identifier_terms) for line_terms in line_term_sets)
+        ):
+            matched_structural_anchors.append(normalized_anchor)
+    return (
+        dedupe_preserve(matched_structural_anchors),
+        identifier_anchors,
+        dedupe_preserve(matched_identifier_anchors),
+    )
+
+
+def delta_request_anchor_evidence(
+    reviewer_body: str,
+    *,
+    diff_snippet: str | None,
+) -> tuple[bool, list[str], list[str], list[str]]:
+    added_line_texts = [
+        normalize_text_for_matching(raw_line[1:])
+        for raw_line in str(diff_snippet).splitlines()
+        if raw_line[:1] == "+" and not raw_line.startswith("+++")
+    ]
+    added_line_texts = [line_text for line_text in added_line_texts if line_text]
+    if not added_line_texts:
+        return False, [], [], []
+
+    anchor_views = extract_exact_anchor_views(reviewer_body)
+    if not anchor_views:
+        return False, [], [], []
+
+    exact_anchors = dedupe_preserve([str(view["normalized_text"]) for view in anchor_views])
+    matched_exact_anchors = dedupe_preserve(
+        [
+            str(view["normalized_text"])
+            for view in anchor_views
+            if exact_anchor_view_matches(view, normalized_line_texts=added_line_texts)
+        ]
+    )
+    matched_structural_anchors, identifier_anchors, matched_identifier_anchors = _strong_identifier_match(
+        anchor_views,
+        normalized_line_texts=added_line_texts,
+    )
+    grounded_anchors = dedupe_preserve(matched_exact_anchors + matched_structural_anchors)
+    return (
+        len(grounded_anchors) == len(exact_anchors),
+        matched_exact_anchors,
+        identifier_anchors,
+        matched_identifier_anchors,
+    )
+
+
+def build_grounding_diagnostics(
+    reviewer_body: str,
+    *,
+    path: str,
+    path_exists: bool,
+    snippet: str | None,
+    diff_snippet: str | None,
+) -> dict[str, Any]:
+    anchor_views = extract_exact_anchor_views(reviewer_body)
+    exact_anchor_visible, exact_anchors, matched_exact_anchors, matched_terms = request_anchor_evidence(
+        reviewer_body,
+        snippet=snippet,
+        diff_snippet=diff_snippet,
+    )
+    visible_line_texts = _visible_evidence_line_texts(snippet=snippet, diff_snippet=diff_snippet)
+    matched_structural_anchors, identifier_anchors, matched_identifier_anchors = _strong_identifier_match(
+        anchor_views,
+        normalized_line_texts=visible_line_texts,
+    )
+    grounded_anchors = dedupe_preserve(matched_exact_anchors + matched_structural_anchors)
+    grounding_mismatch = bool(anchor_views) and len(grounded_anchors) != len(exact_anchors)
+    mapped_escape_reason = None
+    if grounding_mismatch:
+        mapped_escape_reason = "ownership_ambiguity" if (not path.strip() or not path_exists) else "missing_required_evidence"
+    return {
+        "has_explicit_anchor": bool(anchor_views),
+        "exact_request_anchors": exact_anchors,
+        "matched_exact_request_anchors": matched_exact_anchors,
+        "identifier_request_anchors": identifier_anchors,
+        "matched_identifier_request_anchors": matched_identifier_anchors,
+        "matched_request_terms": matched_terms,
+        "exact_anchor_match": exact_anchor_visible,
+        "structural_anchor_match": bool(matched_structural_anchors),
+        "grounding_mismatch": grounding_mismatch,
+        "mapped_escape_reason": mapped_escape_reason,
+    }
 
 
 def canonical_json_text(payload: Any) -> str:

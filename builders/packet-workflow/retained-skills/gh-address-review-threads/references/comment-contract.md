@@ -7,6 +7,9 @@ When updating an existing reply, preserve any still-accurate text and edit only 
 
 Start with the exact `ack` marker on line 1.
 Post the acknowledgement reply before any code edits, validation runs, commits, or pushes for that accepted/rejected/deferred item.
+Use `ack_mode=skip` only when the thread already has a correct exact managed `ack` reply that should be preserved without edits, and that existing reply already states the same decision.
+Adoptable unmarked self replies may be updated into a managed reply, but they do not justify `ack_mode=skip`.
+When writing or updating a managed `ack` reply, include an explicit decision line such as `accept`, `defer until rerun`, or `Decision: reject because ...`; that line must match the plan decision so the reply remains skippable on later runs.
 
 Then include:
 - one short sentence summarizing what the reviewer is asking

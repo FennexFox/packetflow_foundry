@@ -19,7 +19,11 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from thread_action_contract import build_context_fingerprint
+from thread_action_contract import (
+    build_context_fingerprint,
+    exact_managed_target,
+    managed_ack_decision,
+)
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -149,6 +153,19 @@ def synthetic_reply_candidate(*, mode: str, reason: str) -> dict[str, Any]:
         "managed": False,
         "adopted_unmarked_reply": False,
     }
+
+
+def safe_ack_body(*, decision: str) -> str:
+    summary = "Dry-run smoke: capturing the current thread-local acknowledgement plan."
+    if decision == "accept":
+        detail = "Dry-run smoke: this accepted thread would be addressed before post-push reconciliation."
+    elif decision == "reject":
+        detail = "Dry-run smoke: rejecting this thread would require a brief thread-local rationale."
+    elif decision == "defer-outdated":
+        detail = "Dry-run smoke: deferring this outdated thread until current HEAD is re-grounded."
+    else:
+        detail = "Dry-run smoke: deferring this thread until the current packet evidence is re-grounded."
+    return "\n".join([summary, decision, detail])
 
 
 def synthetic_thread(*, thread_id: str, path: str, line: int, reviewer_login: str, reviewer_body: str) -> dict[str, Any]:
@@ -434,15 +451,23 @@ def build_safe_plan(
             continue
         is_accepted = phase == "ack" and thread_id in accepted
         if phase == "ack":
+            decision = "accept" if is_accepted else ("defer-outdated" if thread.get("is_outdated") else "defer")
+            exact_ack_comment = exact_managed_target(thread, "ack")
+            exact_ack_target = str((exact_ack_comment or {}).get("id") or "").strip() or None
+            existing_ack_decision = managed_ack_decision(exact_ack_comment)
             action = {
                 "thread_id": thread_id,
-                "decision": "accept" if is_accepted else ("defer-outdated" if thread.get("is_outdated") else "defer"),
-                "ack_mode": "add" if is_accepted else "skip",
+                "decision": decision,
             }
-            if is_accepted:
-                action["ack_body"] = (
-                    "Dry-run smoke: this accepted thread would be addressed before post-push reconciliation."
-                )
+            if exact_ack_target and existing_ack_decision == decision:
+                action["ack_mode"] = "skip"
+            elif exact_ack_target:
+                action["ack_mode"] = "update"
+                action["ack_comment_id"] = exact_ack_target
+                action["ack_body"] = safe_ack_body(decision=decision)
+            else:
+                action["ack_mode"] = "add"
+                action["ack_body"] = safe_ack_body(decision=decision)
         else:
             action = {
                 "thread_id": thread_id,

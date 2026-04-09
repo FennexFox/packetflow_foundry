@@ -28,62 +28,27 @@ from review_thread_packet_contract import (
     WORKER_RETURN_CONTRACT,
     WORKFLOW_FAMILY,
     XHIGH_REREAD_POLICY,
+    build_grounding_diagnostics as contract_build_grounding_diagnostics,
     build_result_payload,
+    canonical_match_term as contract_canonical_match_term,
     compute_packet_metrics,
+    dedupe_preserve as contract_dedupe_preserve,
+    delta_request_anchor_evidence as contract_delta_request_anchor_evidence,
     derive_optional_workers,
     derive_packet_worker_map,
     derive_recommended_workers,
+    extract_exact_anchor_views as contract_extract_exact_anchor_views,
+    match_terms as contract_match_terms,
+    normalize_text_for_matching as contract_normalize_text_for_matching,
+    request_anchor_evidence as contract_request_anchor_evidence,
 )
 
 
 SNIPPET_RADIUS = 12
 DIFF_SNIPPET_CHAR_LIMIT = 2200
 DIFF_HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@", re.MULTILINE)
-REQUEST_ANCHOR_RE = re.compile(r"`([^`]+)`|\"([^\"]+)\"|'([^']+)'")
-DiffCacheKey = tuple[str, str, str]
-REQUEST_ANCHOR_STOPWORDS = frozenset(
-    {
-        "a",
-        "an",
-        "and",
-        "as",
-        "at",
-        "be",
-        "by",
-        "change",
-        "clarify",
-        "consider",
-        "ensure",
-        "fix",
-        "for",
-        "from",
-        "here",
-        "in",
-        "into",
-        "it",
-        "keep",
-        "less",
-        "make",
-        "more",
-        "of",
-        "on",
-        "or",
-        "please",
-        "prefer",
-        "remove",
-        "rename",
-        "switch",
-        "that",
-        "the",
-        "there",
-        "this",
-        "tighten",
-        "to",
-        "update",
-        "use",
-        "with",
-    }
-)
+FullDiffCacheKey = tuple[str, str, str]
+DiffCacheKey = FullDiffCacheKey | tuple[str, str, str, int | None]
 GENERATED_FILE_PATTERNS = (
     re.compile(r"(^|/)(bin|obj|dist|build|coverage|generated|gen)/"),
     re.compile(r"\.(g|generated)\.[^.]+$"),
@@ -286,20 +251,32 @@ def diff_snippet_for_path(
     line_number: int | None,
     cache: dict[DiffCacheKey, str | None],
 ) -> str | None:
-    cache_key = (str(base_ref or "").strip(), str(head_ref or "").strip(), path.replace("\\", "/"))
+    normalized_path = path.replace("\\", "/")
+    full_diff_cache_key: FullDiffCacheKey = (
+        str(base_ref or "").strip(),
+        str(head_ref or "").strip(),
+        normalized_path,
+    )
+    normalized_line = int(line_number) if line_number is not None else None
+    cache_key = (
+        *full_diff_cache_key,
+        normalized_line,
+    )
     if cache_key in cache:
         return cache[cache_key]
-    normalized_path = path.replace("\\", "/")
-    full_diff = None
-    for revision_range in diff_range_candidates(base_ref, head_ref):
-        output = run_git(repo_root, ["diff", "-U3", revision_range, "--", normalized_path])
-        if output.strip():
-            full_diff = output
-            break
+    full_diff = cache.get(full_diff_cache_key)
+    if full_diff_cache_key not in cache:
+        full_diff = None
+        for revision_range in diff_range_candidates(base_ref, head_ref):
+            output = run_git(repo_root, ["diff", "-U3", revision_range, "--", normalized_path])
+            if output.strip():
+                full_diff = output
+                break
+        cache[full_diff_cache_key] = full_diff
     if not full_diff:
         cache[cache_key] = None
         return None
-    if line_number is None or len(full_diff) <= DIFF_SNIPPET_CHAR_LIMIT:
+    if normalized_line is None or len(full_diff) <= DIFF_SNIPPET_CHAR_LIMIT:
         cache[cache_key] = full_diff[:DIFF_SNIPPET_CHAR_LIMIT].rstrip()
         return cache[cache_key]
     matches = list(DIFF_HUNK_HEADER_RE.finditer(full_diff))
@@ -308,7 +285,7 @@ def diff_snippet_for_path(
         start = int(match.group("start"))
         count = int(match.group("count") or "1")
         end = start + max(count, 1) + 3
-        if start - 3 <= line_number <= end:
+        if start - 3 <= normalized_line <= end:
             next_start = matches[index + 1].start() if index + 1 < len(matches) else len(full_diff)
             selected = full_diff[match.start():next_start].strip()
             break
@@ -346,10 +323,7 @@ def normalized_headline(body: str) -> str:
 
 
 def normalize_text_for_matching(text: str | None) -> str:
-    if not text:
-        return ""
-    normalized_lines = [clean_headline_line(line) for line in str(text).splitlines()]
-    return " ".join(line for line in normalized_lines if line).strip()
+    return contract_normalize_text_for_matching(text)
 
 
 def reviewer_headline(thread: dict[str, Any]) -> str:
@@ -375,74 +349,29 @@ def list_of_strings(value: Any) -> list[str]:
 
 
 def dedupe_preserve(items: list[str]) -> list[str]:
-    deduped: list[str] = []
-    seen: set[str] = set()
-    for item in items:
-        if not item or item in seen:
-            continue
-        deduped.append(item)
-        seen.add(item)
-    return deduped
+    return contract_dedupe_preserve(items)
 
 
 def canonical_match_terms(token: str) -> list[str]:
-    terms: list[str] = []
-    for part in re.split(r"[./-]+", token):
-        candidate = part.strip(".-/")
-        if len(candidate) < 3 or candidate in REQUEST_ANCHOR_STOPWORDS:
-            continue
-        normalized_candidate = canonical_match_term(candidate)
-        if normalized_candidate:
-            terms.append(normalized_candidate)
-    return dedupe_preserve(terms)
+    return dedupe_preserve(
+        [
+            term
+            for part in re.split(r"[./-]+", token)
+            for term in contract_match_terms(part, canonical=True)
+        ]
+    )
 
 
 def match_terms(text: str | None, *, canonical: bool = False) -> list[str]:
-    normalized = normalize_text_for_matching(text)
-    terms: list[str] = []
-    for raw_token in re.findall(r"[a-z0-9_./-]+", normalized):
-        token = raw_token.strip(".-/")
-        if canonical:
-            terms.extend(canonical_match_terms(token))
-            continue
-        if len(token) >= 3 and token not in REQUEST_ANCHOR_STOPWORDS:
-            terms.append(token)
-    return dedupe_preserve(terms)
+    return contract_match_terms(text, canonical=canonical)
 
 
 def canonical_match_term(text: str | None) -> str:
-    return re.sub(r"[^a-z0-9]+", "", normalize_text_for_matching(text))
+    return contract_canonical_match_term(text)
 
 
 def extract_exact_anchor_views(reviewer_body: str) -> list[dict[str, Any]]:
-    anchors: list[dict[str, Any]] = []
-    for match in REQUEST_ANCHOR_RE.finditer(reviewer_body):
-        raw_anchor = next(group for group in match.groups() if group)
-        normalized_text = normalize_text_for_matching(raw_anchor)
-        if not normalized_text:
-            continue
-
-        identifier_pairs: list[tuple[str, str]] = []
-        if re.search(r"[()_./-]|[A-Z]", raw_anchor):
-            seen_canonical: set[str] = set()
-            for token in re.findall(r"[A-Za-z_][A-Za-z0-9_]*", raw_anchor):
-                normalized_token = token.lower()
-                if len(normalized_token) < 3 or normalized_token in REQUEST_ANCHOR_STOPWORDS:
-                    continue
-                canonical_token = canonical_match_term(normalized_token)
-                if not canonical_token or canonical_token in seen_canonical:
-                    continue
-                seen_canonical.add(canonical_token)
-                identifier_pairs.append((normalized_token, canonical_token))
-
-        anchors.append(
-            {
-                "raw": raw_anchor,
-                "normalized_text": normalized_text,
-                "identifier_pairs": identifier_pairs,
-            }
-        )
-    return anchors
+    return contract_extract_exact_anchor_views(reviewer_body)
 
 
 def request_anchor_evidence(
@@ -451,23 +380,11 @@ def request_anchor_evidence(
     snippet: str | None,
     diff_snippet: str | None,
 ) -> tuple[bool, list[str], list[str], list[str]]:
-    evidence_text = normalize_text_for_matching("\n".join(part for part in (snippet, diff_snippet) if part))
-    if not evidence_text:
-        return False, [], [], []
-
-    anchor_views = extract_exact_anchor_views(reviewer_body)
-    exact_anchors = [str(view["normalized_text"]) for view in anchor_views]
-    matched_exact_anchors = [anchor for anchor in exact_anchors if anchor in evidence_text]
-    if exact_anchors:
-        return bool(matched_exact_anchors), exact_anchors, matched_exact_anchors, []
-
-    requested_terms = sorted(dict.fromkeys(match_terms(reviewer_body)))
-    if len(requested_terms) < 2:
-        return False, [], [], requested_terms
-
-    evidence_terms = set(match_terms(evidence_text))
-    matched_terms = [term for term in requested_terms if term in evidence_terms]
-    return len(matched_terms) >= 2, [], [], matched_terms
+    return contract_request_anchor_evidence(
+        reviewer_body,
+        snippet=snippet,
+        diff_snippet=diff_snippet,
+    )
 
 
 def delta_request_anchor_evidence(
@@ -475,77 +392,9 @@ def delta_request_anchor_evidence(
     *,
     diff_snippet: str | None,
 ) -> tuple[bool, list[str], list[str], list[str]]:
-    added_line_texts = [
-        normalize_text_for_matching(raw_line[1:])
-        for raw_line in str(diff_snippet).splitlines()
-        if raw_line[:1] == "+" and not raw_line.startswith("+++")
-    ]
-    if not added_line_texts:
-        return False, [], [], []
-    evidence_text = "\n".join(added_line_texts)
-
-    anchor_views = extract_exact_anchor_views(reviewer_body)
-    if not anchor_views:
-        return False, [], [], []
-
-    exact_anchors = [str(view["normalized_text"]) for view in anchor_views]
-    matched_exact_anchors = [anchor for anchor in exact_anchors if anchor in evidence_text]
-    evidence_terms = set(match_terms(evidence_text, canonical=True))
-    identifier_pairs = [
-        pair
-        for view in anchor_views
-        for pair in list(view.get("identifier_pairs") or [])
-        if isinstance(pair, tuple) and len(pair) == 2
-    ]
-    identifier_anchors = dedupe_preserve([str(raw_anchor) for raw_anchor, _ in identifier_pairs])
-    matched_identifier_anchors = [
-        raw_anchor
-        for raw_anchor, canonical_anchor in identifier_pairs
-        if canonical_anchor in evidence_terms
-    ]
-    line_term_sets = [
-        set(match_terms(raw_line[1:], canonical=True))
-        for raw_line in str(diff_snippet).splitlines()
-        if raw_line[:1] == "+" and not raw_line.startswith("+++")
-    ]
-    # Keep diagnostics token-granular for existing consumers, but only treat an
-    # identifier anchor as resolution evidence when every token from one quoted
-    # anchor is present within the same added diff line.
-    strong_identifier_match = False
-    for view in anchor_views:
-        view_identifier_pairs = [
-            pair
-            for pair in list(view.get("identifier_pairs") or [])
-            if isinstance(pair, tuple) and len(pair) == 2
-        ]
-        if not view_identifier_pairs:
-            continue
-        normalized_anchor = str(view.get("normalized_text") or "").strip()
-        raw_anchor = str(view.get("raw") or "").strip()
-        call_anchor = re.sub(r"\([^)]*\)", "(", normalized_anchor)
-        structural_anchor = re.sub(r"\([^)]*\)", "", normalized_anchor).strip()
-        if "(" in raw_anchor and ")" in raw_anchor:
-            if call_anchor and any(call_anchor in line_text for line_text in added_line_texts):
-                strong_identifier_match = True
-                break
-            continue
-        if any(separator in raw_anchor for separator in (".", "/", "::", "->")):
-            if structural_anchor and any(structural_anchor in line_text for line_text in added_line_texts):
-                strong_identifier_match = True
-                break
-            continue
-        required_identifier_terms = dedupe_preserve([str(canonical_anchor) for _, canonical_anchor in view_identifier_pairs])
-        if (
-            len(required_identifier_terms) == 1
-            and any(all(term in line_terms for term in required_identifier_terms) for line_terms in line_term_sets)
-        ):
-            strong_identifier_match = True
-            break
-    return (
-        bool(matched_exact_anchors or strong_identifier_match),
-        matched_exact_anchors,
-        identifier_anchors,
-        dedupe_preserve(matched_identifier_anchors),
+    return contract_delta_request_anchor_evidence(
+        reviewer_body,
+        diff_snippet=diff_snippet,
     )
 
 
@@ -566,8 +415,19 @@ def packet_name(prefix: str, index: int) -> str:
     return f"{prefix}-{index:02d}.json"
 
 
-def candidate_decision(thread: dict[str, Any]) -> str:
-    return "defer-outdated" if thread.get("is_outdated") else "accept"
+def candidate_decision(thread: dict[str, Any], *, quality_basis: dict[str, Any]) -> str:
+    if thread.get("is_outdated"):
+        return "defer-outdated"
+    if bool(quality_basis.get("grounding_mismatch")):
+        return "defer"
+    explicit_reread_reasons = {
+        str(reason)
+        for reason in quality_basis.get("explicit_reread_reasons", [])
+        if str(reason).strip()
+    }
+    if explicit_reread_reasons.intersection({"missing_required_evidence", "ownership_ambiguity"}):
+        return "defer"
+    return "accept"
 
 
 def load_reconciliation_input(path: Path | None) -> dict[str, Any]:
@@ -910,6 +770,7 @@ def packet_quality_basis(
     path_exists: bool,
     snippet: str | None,
     diff_snippet: str | None,
+    grounding: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     required_evidence_present = bool(
         reviewer_bodies
@@ -926,10 +787,16 @@ def packet_quality_basis(
         explicit_escape_reasons.append("ownership_ambiguity")
     if not ((snippet or "").strip() or (diff_snippet or "").strip()):
         explicit_escape_reasons.append("insufficient_excerpt_quality")
+    grounding_mismatch = bool((grounding or {}).get("grounding_mismatch"))
+    grounding_mapped_escape_reason = str((grounding or {}).get("mapped_escape_reason") or "").strip() or None
+    if grounding_mismatch and grounding_mapped_escape_reason:
+        explicit_escape_reasons.append(grounding_mapped_escape_reason)
     explicit_escape_reasons = list(dict.fromkeys(explicit_escape_reasons))
     return {
         "required_evidence_present": required_evidence_present,
         "ownership_ambiguous": ownership_ambiguous,
+        "grounding_mismatch": grounding_mismatch,
+        "grounding_mapped_escape_reason": grounding_mapped_escape_reason,
         "explicit_reread_reasons": explicit_escape_reasons,
         "validator_ready_recommendation_path": required_evidence_present and not explicit_escape_reasons,
         "common_path_sufficient": required_evidence_present and not ownership_ambiguous and not explicit_escape_reasons,
@@ -952,6 +819,8 @@ def quality_escape_hints(
         hints.append("Ownership ambiguity is advisory here; record an explicit allowed reason before widening scope or rereading raw diff.")
     if "insufficient_excerpt_quality" in quality_basis.get("explicit_reread_reasons", []):
         hints.append("Low-quality excerpts are advisory until an explicit reread reason is recorded.")
+    if bool(quality_basis.get("grounding_mismatch")):
+        hints.append("Explicit anchors that do not ground to the visible snippet or diff should default to defer until packet-local evidence is re-grounded.")
     for blocker in blockers or []:
         hints.append(f"Blocker: {blocker}")
     return hints
@@ -1290,6 +1159,81 @@ def main() -> int:
             snippet=common_context["snippet"],
             diff_snippet=common_context["diff_snippet"],
         )
+        batch_thread_details: list[dict[str, Any]] = []
+        batch_thread_reasons: list[str] = []
+        batch_has_grounding_mismatch = False
+        for thread in batch["threads"]:
+            thread_line = thread.get("line") or thread.get("original_line")
+            thread_context = {
+                "path": path,
+                "path_exists": (repo_root / path).is_file(),
+                "snippet": make_line_snippet(repo_root / path, int(thread_line) if thread_line else None),
+                "diff_snippet": diff_snippet_for_path(
+                    repo_root,
+                    str(pr.get("baseRefName") or ""),
+                    str(pr.get("headRefName") or ""),
+                    path,
+                    int(thread_line) if thread_line else None,
+                    diff_cache,
+                ),
+            }
+            grounding = contract_build_grounding_diagnostics(
+                str((thread.get("reviewer_comment") or {}).get("body") or ""),
+                path=path,
+                path_exists=bool(thread_context["path_exists"]),
+                snippet=thread_context["snippet"],
+                diff_snippet=thread_context["diff_snippet"],
+            )
+            thread_quality = packet_quality_basis(
+                reviewer_bodies=[str((thread.get("reviewer_comment") or {}).get("body") or "")],
+                path=path,
+                path_exists=bool(thread_context["path_exists"]),
+                snippet=thread_context["snippet"],
+                diff_snippet=thread_context["diff_snippet"],
+                grounding=grounding,
+            )
+            thread_default = candidate_decision(thread, quality_basis=thread_quality)
+            batch_has_grounding_mismatch = batch_has_grounding_mismatch or bool(thread_quality.get("grounding_mismatch"))
+            batch_thread_reasons.extend(
+                [str(reason) for reason in thread_quality.get("explicit_reread_reasons", []) if str(reason).strip()]
+            )
+            batch_thread_details.append(
+                {
+                    "thread_id": thread["thread_id"],
+                    "line": thread.get("line"),
+                    "original_line": thread.get("original_line"),
+                    "reviewer_login": thread.get("reviewer_login"),
+                    "reviewer_headline": reviewer_headline(thread),
+                    "reviewer_comment_excerpt": safe_excerpt((thread.get("reviewer_comment") or {}).get("body")),
+                    "latest_self_reply_excerpt": safe_excerpt((thread.get("latest_self_reply") or {}).get("body")),
+                    "default_decision_candidate": thread_default,
+                    "grounding": grounding,
+                }
+            )
+        batch_explicit_reasons = dedupe_preserve(
+            list(batch_quality.get("explicit_reread_reasons", [])) + batch_thread_reasons
+        )
+        batch_quality["grounding_mismatch"] = batch_has_grounding_mismatch
+        batch_quality["grounding_mapped_escape_reason"] = next(
+            (
+                reason
+                for reason in batch_explicit_reasons
+                if reason in {"missing_required_evidence", "ownership_ambiguity"}
+            ),
+            None,
+        )
+        batch_quality["explicit_reread_reasons"] = batch_explicit_reasons
+        batch_quality["validator_ready_recommendation_path"] = bool(
+            batch_quality.get("required_evidence_present") and not batch_explicit_reasons
+        )
+        batch_quality["common_path_sufficient"] = bool(
+            batch_quality.get("required_evidence_present")
+            and not batch_quality.get("ownership_ambiguous")
+            and not batch_explicit_reasons
+        )
+        batch_default_decision = "defer" if any(
+            item["default_decision_candidate"] != "accept" for item in batch_thread_details
+        ) else "accept"
         validation_candidates = validation_candidates_for_path(path, str(common_context["area"]), is_outdated=False)
         batch_payload = {
             "purpose": "Analyze a cluster of related unresolved non-outdated review threads together before choosing one fix direction.",
@@ -1306,7 +1250,7 @@ def main() -> int:
                 "area": common_context["area"],
                 "core_area": common_context["core_area"],
                 "thread_count": len(batch["threads"]),
-                "default_decision_candidate": "accept",
+                "default_decision_candidate": batch_default_decision,
             },
             "common_file_context": common_context,
             "validation_candidates": validation_candidates,
@@ -1314,20 +1258,10 @@ def main() -> int:
             "adjudication_basis": batch_quality,
             "threads": [],
         }
-        for thread in batch["threads"]:
-            thread_to_batch[str(thread["thread_id"])] = batch_id
-            batch_payload["threads"].append(
-                {
-                    "thread_id": thread["thread_id"],
-                    "line": thread.get("line"),
-                    "original_line": thread.get("original_line"),
-                    "reviewer_login": thread.get("reviewer_login"),
-                    "reviewer_headline": reviewer_headline(thread),
-                    "reviewer_comment_excerpt": safe_excerpt((thread.get("reviewer_comment") or {}).get("body")),
-                    "latest_self_reply_excerpt": safe_excerpt((thread.get("latest_self_reply") or {}).get("body")),
-                    "default_decision_candidate": candidate_decision(thread),
-                }
-            )
+        for thread_detail in batch_thread_details:
+            thread_id = str(thread_detail["thread_id"])
+            thread_to_batch[thread_id] = batch_id
+            batch_payload["threads"].append(thread_detail)
         write_json(output_dir / batch_file, batch_payload)
         runtime_payloads[batch_file] = batch_payload
         packet_quality_records.append({"packet": batch_file, **batch_quality})
@@ -1356,13 +1290,22 @@ def main() -> int:
                 diff_cache,
             ),
         }
+        grounding = contract_build_grounding_diagnostics(
+            str((thread.get("reviewer_comment") or {}).get("body") or ""),
+            path=path,
+            path_exists=path_exists,
+            snippet=file_context["snippet"],
+            diff_snippet=file_context["diff_snippet"],
+        )
         quality_basis = packet_quality_basis(
             reviewer_bodies=[str((thread.get("reviewer_comment") or {}).get("body") or "")],
             path=path,
             path_exists=path_exists,
             snippet=file_context["snippet"],
             diff_snippet=file_context["diff_snippet"],
+            grounding=grounding,
         )
+        default_decision = candidate_decision(thread, quality_basis=quality_basis)
         validation_candidates = validation_candidates_for_path(
             path,
             area,
@@ -1380,7 +1323,7 @@ def main() -> int:
                 "original_line": thread.get("original_line"),
                 "reviewer_login": thread.get("reviewer_login"),
                 "reviewer_headline": reviewer_headline(thread),
-                "default_decision_candidate": candidate_decision(thread),
+                "default_decision_candidate": default_decision,
             },
             "reviewer_comment": comment_summary(thread.get("reviewer_comment")),
             "discussion": [
@@ -1398,6 +1341,7 @@ def main() -> int:
             "reply_candidates": thread.get("reply_candidates"),
             "reply_update_basis": reply_update_basis(thread.get("reply_candidates")),
             "file_context": file_context,
+            "grounding": grounding,
             "ownership_summary": {
                 "path": path,
                 "area": area,
@@ -1407,7 +1351,7 @@ def main() -> int:
                 "escape_threshold_exceeded": quality_basis["ownership_ambiguous"],
             },
             "applicability": {
-                "default_decision_candidate": candidate_decision(thread),
+                "default_decision_candidate": default_decision,
                 "small_fix_candidate": file_policy["small_fix_candidate"],
                 "blockers": file_policy["blockers"],
             },
@@ -1523,6 +1467,7 @@ def main() -> int:
             "packet": item["packet"],
             "required_evidence_present": item["required_evidence_present"],
             "ownership_ambiguous": item["ownership_ambiguous"],
+            "grounding_mismatch": bool(item.get("grounding_mismatch")),
             "explicit_reread_reasons": item["explicit_reread_reasons"],
             "validator_ready_recommendation_path": item["validator_ready_recommendation_path"],
         }

@@ -20,7 +20,7 @@ import build_review_packets as build_packets  # type: ignore  # noqa: E402
 import validate_thread_action_plan as validate_plan  # type: ignore  # noqa: E402
 sys.modules.pop("write_evaluation_log", None)
 import write_evaluation_log as eval_log  # type: ignore  # noqa: E402
-from review_thread_test_support import context_with_threads, review_thread, write_json  # noqa: E402
+from review_thread_test_support import ack_reply_body, context_with_threads, review_thread, write_json  # noqa: E402
 from thread_action_contract import build_context_fingerprint  # type: ignore  # noqa: E402
 
 
@@ -51,13 +51,20 @@ class ReviewThreadWorkflowSmokeTests(unittest.TestCase):
                         {
                             "thread_id": "t-2",
                             "decision": "defer",
-                            "ack_mode": "skip",
+                            "ack_mode": "add",
+                            "ack_body": ack_reply_body(
+                                decision="defer",
+                                detail="Deferring this thread until the current packet evidence is re-grounded.",
+                            ),
                         },
                         {
                             "thread_id": "t-1",
                             "decision": "accept",
                             "ack_mode": "add",
-                            "ack_body": "I will update the naming and rerun the relevant check.",
+                            "ack_body": ack_reply_body(
+                                decision="accept",
+                                detail="I will update the naming and rerun the relevant check.",
+                            ),
                         },
                     ]
                 },
@@ -159,7 +166,7 @@ class ReviewThreadWorkflowSmokeTests(unittest.TestCase):
                         "thread_id": "t-1",
                         "decision": "accept",
                         "ack_mode": "add",
-                        "ack_body": "Will fix this.",
+                        "ack_body": ack_reply_body(decision="accept", detail="Will fix this."),
                     }
                 ],
             }

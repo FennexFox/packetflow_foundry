@@ -61,7 +61,7 @@ def parse_args() -> argparse.Namespace:
 
     record_accepts = subparsers.add_parser(
         "record-accepts",
-        help="Store accepted thread ids explicitly when no validated ack plan is available to parse.",
+        help="Store the run-local ack-applied accepted set explicitly when no live ack apply result is available.",
     )
     record_accepts.add_argument("--manifest", type=Path, required=True)
     record_accepts.add_argument("--thread-id", action="append", default=[])
@@ -106,6 +106,16 @@ def main() -> int:
                 action_label="record-plan --phase complete",
                 allowed={"post-prepared"},
             )
+        else:
+            run_support.require_last_completed_phase(
+                manifest,
+                action_label="record-plan --phase ack",
+                allowed={"start", "ack-validated"},
+            )
+            run_support.require_pre_ack_worktree_unchanged(
+                manifest,
+                action_label="record-plan --phase ack",
+            )
         run_support.copy_validated_plan_into_manifest(
             manifest,
             phase=str(args.phase),
@@ -125,6 +135,11 @@ def main() -> int:
             action_label=f"record-apply --phase {args.phase}",
             allowed=required_state,
         )
+        if args.phase == "ack":
+            run_support.require_pre_ack_worktree_unchanged(
+                manifest,
+                action_label="record-apply --phase ack",
+            )
         run_support.copy_apply_result_into_manifest(
             manifest,
             phase=str(args.phase),
@@ -153,6 +168,11 @@ def main() -> int:
     if action == "record-accepts":
         manifest_path = args.manifest.resolve()
         manifest = run_support.load_manifest(manifest_path)
+        run_support.require_last_completed_phase(
+            manifest,
+            action_label="record-accepts",
+            allowed={"ack-applied"},
+        )
         run_support.set_accepted_threads(manifest, list(args.thread_id or []))
         run_support.write_manifest(manifest_path, manifest)
         run_support.write_latest_pointer(Path(manifest["repo_root"]), manifest)

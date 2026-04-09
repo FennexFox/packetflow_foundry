@@ -16,7 +16,7 @@ for candidate in (str(TEST_DIR), str(SCRIPT_DIR)):
         sys.path.insert(0, candidate)
 
 import build_review_packets as packets  # type: ignore  # noqa: E402
-from review_thread_packet_contract import compute_packet_metrics  # type: ignore  # noqa: E402
+from review_thread_packet_contract import build_grounding_diagnostics, compute_packet_metrics  # type: ignore  # noqa: E402
 from review_thread_test_support import context_with_threads, marker_conflict, review_thread, write_json  # noqa: E402
 from thread_action_contract import build_context_fingerprint  # type: ignore  # noqa: E402
 
@@ -32,6 +32,46 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertFalse(visible)
         self.assertEqual(exact_anchors, ["buildglobalpacket()"])
         self.assertEqual(matched_exact_anchors, [])
+        self.assertEqual(matched_terms, [])
+
+    def test_request_anchor_evidence_ignores_removed_diff_lines_for_exact_anchors(self) -> None:
+        visible, exact_anchors, matched_exact_anchors, matched_terms = packets.request_anchor_evidence(
+            "Please keep `build_global_packet()` aligned with the new contract.",
+            snippet=None,
+            diff_snippet=(
+                "@@ -1,2 +1,2 @@\n"
+                "-def build_global_packet(report):\n"
+                "+def build_packet(context):\n"
+            ),
+        )
+
+        self.assertFalse(visible)
+        self.assertEqual(exact_anchors, ["buildglobalpacket()"])
+        self.assertEqual(matched_exact_anchors, [])
+        self.assertEqual(matched_terms, [])
+
+    def test_request_anchor_evidence_requires_boundary_aware_dotted_anchor_match(self) -> None:
+        visible, exact_anchors, matched_exact_anchors, matched_terms = packets.request_anchor_evidence(
+            "Please keep `module.helper` aligned with the new contract.",
+            snippet="module.helper_extra(context)\n",
+            diff_snippet=None,
+        )
+
+        self.assertFalse(visible)
+        self.assertEqual(exact_anchors, ["module.helper"])
+        self.assertEqual(matched_exact_anchors, [])
+        self.assertEqual(matched_terms, [])
+
+    def test_request_anchor_evidence_requires_all_exact_anchors(self) -> None:
+        visible, exact_anchors, matched_exact_anchors, matched_terms = packets.request_anchor_evidence(
+            "Please rename `old_name` to `new_name` before merging.",
+            snippet="old_name = current_value\n",
+            diff_snippet=None,
+        )
+
+        self.assertFalse(visible)
+        self.assertEqual(exact_anchors, ["oldname", "newname"])
+        self.assertEqual(matched_exact_anchors, ["oldname"])
         self.assertEqual(matched_terms, [])
 
     def test_delta_request_anchor_evidence_matches_canonical_identifier_terms(self) -> None:
@@ -119,6 +159,190 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertEqual(matched_exact_anchors, [])
         self.assertEqual(identifier_anchors, ["module", "helper"])
         self.assertEqual(matched_identifier_anchors, ["module", "helper"])
+
+    def test_delta_request_anchor_evidence_requires_boundary_aware_dotted_anchor_match(self) -> None:
+        visible, matched_exact_anchors, identifier_anchors, matched_identifier_anchors = (
+            packets.delta_request_anchor_evidence(
+                "Please update `module.helper` to match the renamed parameter.",
+                diff_snippet=(
+                    "@@ -1,1 +1,1 @@\n"
+                    "-module.helper(old)\n"
+                    "+module.helper_extra(context)\n"
+                ),
+            )
+        )
+
+        self.assertFalse(visible)
+        self.assertEqual(matched_exact_anchors, [])
+        self.assertEqual(identifier_anchors, ["module", "helper"])
+        self.assertEqual(matched_identifier_anchors, ["module"])
+
+    def test_grounding_diagnostics_marks_near_match_as_mismatch(self) -> None:
+        grounding = build_grounding_diagnostics(
+            "Please update `module.helper()` to match the renamed parameter.",
+            path="src/app.py",
+            path_exists=True,
+            snippet="   10: module = helper\n",
+            diff_snippet=None,
+        )
+
+        self.assertTrue(grounding["has_explicit_anchor"])
+        self.assertFalse(grounding["exact_anchor_match"])
+        self.assertFalse(grounding["structural_anchor_match"])
+        self.assertTrue(grounding["grounding_mismatch"])
+        self.assertEqual(grounding["mapped_escape_reason"], "missing_required_evidence")
+
+    def test_grounding_diagnostics_rejects_structural_substring_false_positive(self) -> None:
+        grounding = build_grounding_diagnostics(
+            "Please update `module.helper` to match the renamed parameter.",
+            path="src/app.py",
+            path_exists=True,
+            snippet="   10: module.helper_extra(context)\n",
+            diff_snippet=None,
+        )
+
+        self.assertTrue(grounding["has_explicit_anchor"])
+        self.assertFalse(grounding["exact_anchor_match"])
+        self.assertFalse(grounding["structural_anchor_match"])
+        self.assertTrue(grounding["grounding_mismatch"])
+        self.assertEqual(grounding["mapped_escape_reason"], "missing_required_evidence")
+
+    def test_grounding_diagnostics_marks_partial_multi_anchor_match_as_mismatch(self) -> None:
+        grounding = build_grounding_diagnostics(
+            "Please rename `old_name` to `new_name` before merging.",
+            path="src/app.py",
+            path_exists=True,
+            snippet="   10: old_name = current_value\n",
+            diff_snippet=None,
+        )
+
+        self.assertTrue(grounding["has_explicit_anchor"])
+        self.assertEqual(grounding["matched_exact_request_anchors"], ["oldname"])
+        self.assertFalse(grounding["exact_anchor_match"])
+        self.assertTrue(grounding["structural_anchor_match"])
+        self.assertTrue(grounding["grounding_mismatch"])
+        self.assertEqual(grounding["mapped_escape_reason"], "missing_required_evidence")
+
+    def test_grounding_diagnostics_ignores_broad_natural_language_requests(self) -> None:
+        grounding = build_grounding_diagnostics(
+            "Please clarify this flow before merging.",
+            path="src/app.py",
+            path_exists=True,
+            snippet="   10: return current_flow\n",
+            diff_snippet=None,
+        )
+
+        self.assertFalse(grounding["has_explicit_anchor"])
+        self.assertFalse(grounding["grounding_mismatch"])
+        self.assertIsNone(grounding["mapped_escape_reason"])
+
+    def test_grounding_diagnostics_ignores_removed_diff_lines_for_exact_anchor_match(self) -> None:
+        grounding = build_grounding_diagnostics(
+            "Please keep `build_global_packet()` aligned with the new contract.",
+            path="src/app.py",
+            path_exists=True,
+            snippet=None,
+            diff_snippet=(
+                "@@ -1,2 +1,2 @@\n"
+                "-def build_global_packet(report):\n"
+                "+def build_packet(context):\n"
+            ),
+        )
+
+        self.assertTrue(grounding["has_explicit_anchor"])
+        self.assertFalse(grounding["exact_anchor_match"])
+        self.assertFalse(grounding["structural_anchor_match"])
+        self.assertTrue(grounding["grounding_mismatch"])
+        self.assertEqual(grounding["mapped_escape_reason"], "missing_required_evidence")
+
+    def test_candidate_decision_defers_partial_multi_anchor_match(self) -> None:
+        grounding = build_grounding_diagnostics(
+            "Please rename `old_name` to `new_name` before merging.",
+            path="src/app.py",
+            path_exists=True,
+            snippet="   10: old_name = current_value\n",
+            diff_snippet=None,
+        )
+        quality_basis = packets.packet_quality_basis(
+            reviewer_bodies=["Please rename `old_name` to `new_name` before merging."],
+            path="src/app.py",
+            path_exists=True,
+            snippet="   10: old_name = current_value\n",
+            diff_snippet=None,
+            grounding=grounding,
+        )
+
+        self.assertTrue(quality_basis["grounding_mismatch"])
+        self.assertEqual(
+            packets.candidate_decision({"is_outdated": False}, quality_basis=quality_basis),
+            "defer",
+        )
+
+    def test_diff_snippet_cache_keys_hunks_by_line_number(self) -> None:
+        cache: dict[packets.DiffCacheKey, str | None] = {}
+        diff_output = (
+            "@@ -1,1 +5,1 @@\n"
+            "+module.helper()\n"
+            "@@ -20,1 +40,1 @@\n"
+            "+other.call()\n"
+        )
+
+        with patch.object(packets, "run_git", return_value=diff_output), patch.object(
+            packets,
+            "DIFF_SNIPPET_CHAR_LIMIT",
+            40,
+        ):
+            first = packets.diff_snippet_for_path(
+                Path("C:/repo"),
+                "master",
+                "issue_20",
+                "src/app.py",
+                5,
+                cache,
+            )
+            second = packets.diff_snippet_for_path(
+                Path("C:/repo"),
+                "master",
+                "issue_20",
+                "src/app.py",
+                40,
+                cache,
+            )
+
+        self.assertIn("module.helper()", first)
+        self.assertNotIn("other.call()", first)
+        self.assertIn("other.call()", second)
+        self.assertNotIn("module.helper()", second)
+
+    def test_diff_snippet_reuses_full_diff_cache_when_full_diff_fits_limit(self) -> None:
+        cache: dict[packets.DiffCacheKey, str | None] = {}
+        diff_output = "@@ -1,1 +5,1 @@\n+module.helper()\n"
+
+        with patch.object(packets, "run_git", return_value=diff_output) as run_git_mock, patch.object(
+            packets,
+            "DIFF_SNIPPET_CHAR_LIMIT",
+            200,
+        ):
+            first = packets.diff_snippet_for_path(
+                Path("C:/repo"),
+                "master",
+                "issue_20",
+                "src/app.py",
+                5,
+                cache,
+            )
+            second = packets.diff_snippet_for_path(
+                Path("C:/repo"),
+                "master",
+                "issue_20",
+                "src/app.py",
+                40,
+                cache,
+            )
+
+        self.assertEqual(first, diff_output.rstrip())
+        self.assertEqual(second, diff_output.rstrip())
+        run_git_mock.assert_called_once()
 
     def _run_estimated_savings_observation_case(
         self,
@@ -382,6 +606,201 @@ class BuildReviewPacketsTests(unittest.TestCase):
             )
             self.assertEqual(thread_packet["marker_conflicts"][0]["severity"], "warning")
             self.assertEqual(thread_packet["marker_conflicts"][1]["severity"], "hard-stop")
+
+    def test_main_defaults_singleton_explicit_anchor_mismatch_to_defer(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            threads = [
+                review_thread(
+                    thread_id="t-1",
+                    path="src/app.py",
+                    line=10,
+                    reviewer_login="reviewer-a",
+                    reviewer_body="Please update `module.helper()` to match the renamed parameter.",
+                )
+            ]
+            context = context_with_threads(tmp, threads)
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            context_path = tmp / "context.json"
+            output_dir = tmp / "packets"
+            build_result_path = tmp / "build-result.json"
+            write_json(context_path, context)
+
+            argv = [
+                "build_review_packets.py",
+                "--context",
+                str(context_path),
+                "--repo-root",
+                context["repo_root"],
+                "--output-dir",
+                str(output_dir),
+                "--result-output",
+                str(build_result_path),
+            ]
+            with patch.object(sys, "argv", argv), patch.object(packets, "diff_snippet_for_path", return_value=None):
+                self.assertEqual(packets.main(), 0)
+
+            thread_packet = json.loads((output_dir / "thread-01.json").read_text(encoding="utf-8"))
+            build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
+
+            self.assertTrue(thread_packet["grounding"]["grounding_mismatch"])
+            self.assertEqual(thread_packet["grounding"]["mapped_escape_reason"], "missing_required_evidence")
+            self.assertEqual(thread_packet["thread"]["default_decision_candidate"], "defer")
+            self.assertEqual(thread_packet["applicability"]["default_decision_candidate"], "defer")
+            self.assertFalse(thread_packet["adjudication_basis"]["common_path_sufficient"])
+            self.assertFalse(build_result["common_path_sufficient"])
+
+    def test_main_lowers_batch_shared_default_without_overwriting_thread_defaults(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            threads = [
+                review_thread(
+                    thread_id="t-1",
+                    path="src/app.py",
+                    line=10,
+                    reviewer_login="reviewer-a",
+                    reviewer_body="Please tighten naming.",
+                ),
+                review_thread(
+                    thread_id="t-2",
+                    path="src/app.py",
+                    line=18,
+                    reviewer_login="reviewer-a",
+                    reviewer_body="Please update `module.helper()` to match the renamed parameter.",
+                ),
+            ]
+            context = context_with_threads(tmp, threads)
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            context_path = tmp / "context.json"
+            output_dir = tmp / "packets"
+            build_result_path = tmp / "build-result.json"
+            write_json(context_path, context)
+
+            argv = [
+                "build_review_packets.py",
+                "--context",
+                str(context_path),
+                "--repo-root",
+                context["repo_root"],
+                "--output-dir",
+                str(output_dir),
+                "--result-output",
+                str(build_result_path),
+            ]
+            with patch.object(sys, "argv", argv), patch.object(packets, "diff_snippet_for_path", return_value=None):
+                self.assertEqual(packets.main(), 0)
+
+            batch_packet = json.loads((output_dir / "thread-batch-01.json").read_text(encoding="utf-8"))
+            thread_defaults = {item["thread_id"]: item for item in batch_packet["threads"]}
+
+            self.assertEqual(batch_packet["shared_fix_surface"]["default_decision_candidate"], "defer")
+            self.assertEqual(thread_defaults["t-1"]["default_decision_candidate"], "accept")
+            self.assertFalse(thread_defaults["t-1"]["grounding"]["grounding_mismatch"])
+            self.assertEqual(thread_defaults["t-2"]["default_decision_candidate"], "defer")
+            self.assertTrue(thread_defaults["t-2"]["grounding"]["grounding_mismatch"])
+
+    def test_main_grounds_batched_threads_with_their_own_line_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            context = context_with_threads(
+                tmp,
+                [
+                    review_thread(
+                        thread_id="t-1",
+                        path="src/app.py",
+                        line=5,
+                        reviewer_login="reviewer-a",
+                        reviewer_body="Please revisit this.\n`module.helper()` should stay aligned.",
+                    ),
+                    review_thread(
+                        thread_id="t-2",
+                        path="src/app.py",
+                        line=40,
+                        reviewer_login="reviewer-b",
+                        reviewer_body="Please revisit this.\n`other.call()` should stay aligned.",
+                    ),
+                ],
+            )
+            repo_root = Path(context["repo_root"])
+            (repo_root / "src" / "app.py").write_text(
+                "\n".join(
+                    [
+                        "line 1",
+                        "line 2",
+                        "line 3",
+                        "line 4",
+                        "module.helper()",
+                        "line 6",
+                        "line 7",
+                        "line 8",
+                        "line 9",
+                        "line 10",
+                        "line 11",
+                        "line 12",
+                        "line 13",
+                        "line 14",
+                        "line 15",
+                        "line 16",
+                        "line 17",
+                        "line 18",
+                        "line 19",
+                        "line 20",
+                        "line 21",
+                        "line 22",
+                        "line 23",
+                        "line 24",
+                        "line 25",
+                        "line 26",
+                        "line 27",
+                        "line 28",
+                        "line 29",
+                        "line 30",
+                        "line 31",
+                        "line 32",
+                        "line 33",
+                        "line 34",
+                        "line 35",
+                        "line 36",
+                        "line 37",
+                        "line 38",
+                        "line 39",
+                        "other.call()",
+                        "line 41",
+                        "line 42",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            context_path = tmp / "context.json"
+            output_dir = tmp / "packets"
+            build_result_path = tmp / "build-result.json"
+            write_json(context_path, context)
+
+            argv = [
+                "build_review_packets.py",
+                "--context",
+                str(context_path),
+                "--repo-root",
+                context["repo_root"],
+                "--output-dir",
+                str(output_dir),
+                "--result-output",
+                str(build_result_path),
+            ]
+            with patch.object(sys, "argv", argv), patch.object(packets, "diff_snippet_for_path", return_value=None):
+                self.assertEqual(packets.main(), 0)
+
+            batch_packet = json.loads((output_dir / "thread-batch-01.json").read_text(encoding="utf-8"))
+            thread_defaults = {item["thread_id"]: item for item in batch_packet["threads"]}
+
+            self.assertFalse(thread_defaults["t-1"]["grounding"]["grounding_mismatch"])
+            self.assertFalse(thread_defaults["t-2"]["grounding"]["grounding_mismatch"])
+            self.assertEqual(thread_defaults["t-1"]["default_decision_candidate"], "accept")
+            self.assertEqual(thread_defaults["t-2"]["default_decision_candidate"], "accept")
+            self.assertEqual(batch_packet["shared_fix_surface"]["default_decision_candidate"], "accept")
+            self.assertTrue(batch_packet["adjudication_basis"]["common_path_sufficient"])
 
     def test_review_mode_override_does_not_upgrade_missing_evidence_to_common_path_sufficient(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
