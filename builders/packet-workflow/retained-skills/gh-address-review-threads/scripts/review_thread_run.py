@@ -74,15 +74,23 @@ def normalize_status_path(path: str) -> str:
     return path.replace("\\", "/")
 
 
+def decode_porcelain_quoted_path(path: str) -> str:
+    try:
+        decoded = ast.literal_eval(path)
+    except (SyntaxError, ValueError):
+        return path[1:-1]
+    if not isinstance(decoded, str):
+        return str(decoded)
+    try:
+        return decoded.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return decoded
+
+
 def decode_status_path_component(path: str) -> str:
     candidate = str(path).strip()
     if len(candidate) >= 2 and candidate[:1] == '"' and candidate[-1:] == '"':
-        try:
-            decoded = ast.literal_eval(candidate)
-        except (SyntaxError, ValueError):
-            decoded = candidate[1:-1]
-        if isinstance(decoded, str):
-            candidate = decoded
+        candidate = decode_porcelain_quoted_path(candidate)
     return normalize_status_path(candidate)
 
 

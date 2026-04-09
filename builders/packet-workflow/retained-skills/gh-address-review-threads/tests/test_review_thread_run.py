@@ -46,6 +46,7 @@ def init_repo(repo_root: Path) -> None:
 
 class ReviewThreadRunTests(unittest.TestCase):
     def test_status_entry_paths_decodes_porcelain_quoted_paths(self) -> None:
+        non_ascii_name = bytes([0xE4, 0xBD, 0xA0]).decode("utf-8") + ".txt"
         self.assertEqual(
             run_support.status_entry_paths(' M "src/quoted path.py"'),
             ["src/quoted path.py"],
@@ -62,6 +63,10 @@ class ReviewThreadRunTests(unittest.TestCase):
             run_support.status_entry_paths(' M "trailing.txt "'),
             ["trailing.txt "],
         )
+        self.assertEqual(
+            run_support.status_entry_paths(' M "\\344\\275\\240.txt"'),
+            [non_ascii_name],
+        )
 
     def test_worktree_content_fingerprint_preserves_quoted_path_edge_whitespace(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -72,6 +77,19 @@ class ReviewThreadRunTests(unittest.TestCase):
             baseline = run_support.worktree_content_fingerprint(repo_root, [' M " leading.txt"'])
             leading_space_path.write_text("after\n", encoding="utf-8")
             updated = run_support.worktree_content_fingerprint(repo_root, [' M " leading.txt"'])
+
+            self.assertNotEqual(baseline, updated)
+
+    def test_worktree_content_fingerprint_decodes_porcelain_non_ascii_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo_root = Path(tmp_dir)
+            non_ascii_name = bytes([0xE4, 0xBD, 0xA0]).decode("utf-8") + ".txt"
+            non_ascii_path = repo_root / non_ascii_name
+            non_ascii_path.write_text("before\n", encoding="utf-8")
+
+            baseline = run_support.worktree_content_fingerprint(repo_root, [' M "\\344\\275\\240.txt"'])
+            non_ascii_path.write_text("after\n", encoding="utf-8")
+            updated = run_support.worktree_content_fingerprint(repo_root, [' M "\\344\\275\\240.txt"'])
 
             self.assertNotEqual(baseline, updated)
 

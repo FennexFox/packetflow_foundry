@@ -314,6 +314,36 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertIn("other.call()", second)
         self.assertNotIn("module.helper()", second)
 
+    def test_diff_snippet_reuses_full_diff_cache_when_full_diff_fits_limit(self) -> None:
+        cache: dict[packets.DiffCacheKey, str | None] = {}
+        diff_output = "@@ -1,1 +5,1 @@\n+module.helper()\n"
+
+        with patch.object(packets, "run_git", return_value=diff_output) as run_git_mock, patch.object(
+            packets,
+            "DIFF_SNIPPET_CHAR_LIMIT",
+            200,
+        ):
+            first = packets.diff_snippet_for_path(
+                Path("C:/repo"),
+                "master",
+                "issue_20",
+                "src/app.py",
+                5,
+                cache,
+            )
+            second = packets.diff_snippet_for_path(
+                Path("C:/repo"),
+                "master",
+                "issue_20",
+                "src/app.py",
+                40,
+                cache,
+            )
+
+        self.assertEqual(first, diff_output.rstrip())
+        self.assertEqual(second, diff_output.rstrip())
+        run_git_mock.assert_called_once()
+
     def _run_estimated_savings_observation_case(
         self,
     ) -> tuple[

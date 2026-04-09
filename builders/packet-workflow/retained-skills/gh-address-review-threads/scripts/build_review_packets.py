@@ -47,7 +47,8 @@ from review_thread_packet_contract import (
 SNIPPET_RADIUS = 12
 DIFF_SNIPPET_CHAR_LIMIT = 2200
 DIFF_HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@", re.MULTILINE)
-DiffCacheKey = tuple[str, str, str, int | None]
+FullDiffCacheKey = tuple[str, str, str]
+DiffCacheKey = FullDiffCacheKey | tuple[str, str, str, int | None]
 GENERATED_FILE_PATTERNS = (
     re.compile(r"(^|/)(bin|obj|dist|build|coverage|generated|gen)/"),
     re.compile(r"\.(g|generated)\.[^.]+$"),
@@ -251,21 +252,27 @@ def diff_snippet_for_path(
     cache: dict[DiffCacheKey, str | None],
 ) -> str | None:
     normalized_path = path.replace("\\", "/")
-    normalized_line = int(line_number) if line_number is not None else None
-    cache_key = (
+    full_diff_cache_key: FullDiffCacheKey = (
         str(base_ref or "").strip(),
         str(head_ref or "").strip(),
         normalized_path,
+    )
+    normalized_line = int(line_number) if line_number is not None else None
+    cache_key = (
+        *full_diff_cache_key,
         normalized_line,
     )
     if cache_key in cache:
         return cache[cache_key]
-    full_diff = None
-    for revision_range in diff_range_candidates(base_ref, head_ref):
-        output = run_git(repo_root, ["diff", "-U3", revision_range, "--", normalized_path])
-        if output.strip():
-            full_diff = output
-            break
+    full_diff = cache.get(full_diff_cache_key)
+    if full_diff_cache_key not in cache:
+        full_diff = None
+        for revision_range in diff_range_candidates(base_ref, head_ref):
+            output = run_git(repo_root, ["diff", "-U3", revision_range, "--", normalized_path])
+            if output.strip():
+                full_diff = output
+                break
+        cache[full_diff_cache_key] = full_diff
     if not full_diff:
         cache[cache_key] = None
         return None
