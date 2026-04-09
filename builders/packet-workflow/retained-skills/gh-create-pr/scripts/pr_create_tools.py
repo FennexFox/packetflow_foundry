@@ -152,6 +152,10 @@ def normalize_path(path: str) -> str:
     return path.replace("\\", "/")
 
 
+def canonical_issue_number(number: str) -> str:
+    return str(int(number))
+
+
 def infer_repo_slug(repo_root: Path) -> str | None:
     try:
         remote = run_git(["config", "--get", "remote.origin.url"], cwd=repo_root).strip()
@@ -405,7 +409,7 @@ def extract_issue_numbers(text: str | None) -> list[str]:
         return []
     seen: list[str] = []
     for match in ISSUE_REF_PATTERN.finditer(text):
-        number = match.group("number")
+        number = canonical_issue_number(match.group("number"))
         if number not in seen:
             seen.append(number)
     return seen
@@ -422,7 +426,7 @@ def normalize_explicit_issue_hints(values: Iterable[Any] | None) -> list[str]:
         if not match:
             invalid.append(text)
             continue
-        number = match.group("number")
+        number = canonical_issue_number(match.group("number"))
         if number not in normalized:
             normalized.append(number)
     if invalid:

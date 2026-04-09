@@ -170,6 +170,35 @@ class PrCreateToolsTests(unittest.TestCase):
             self.assertEqual(context["issue_reference_hints"]["commit_numbers"], [])
             self.assertEqual(context["issue_reference_hints"]["operator_supplied"], ["15"])
 
+    def test_build_context_canonicalizes_issue_hints_before_dedupe(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            origin_root = root / "origin.git"
+            repo_root.mkdir()
+            init_repo(repo_root, origin_root)
+
+            run_git(repo_root, ["checkout", "main"])
+            run_git(repo_root, ["checkout", "-b", "feature/pr-create-leading-zero"])
+            run_git(repo_root, ["config", "branch.feature/pr-create-leading-zero.gh-merge-base", "main"])
+            write_text(repo_root / "src" / "feature.py", "VALUE = 3\n")
+            run_git(repo_root, ["add", "."])
+            run_git(repo_root, ["commit", "-m", "feat(pr-create): add guarded creator #01"])
+            run_git(repo_root, ["push", "-u", "origin", "feature/pr-create-leading-zero"])
+
+            context = tools.build_context(
+                repo_root=repo_root,
+                repo_slug="owner/repo",
+                base_ref="main",
+                head_ref="feature/pr-create-leading-zero",
+                issue_hints=["#1"],
+            )
+
+            self.assertEqual(context["issue_reference_hints"]["numbers"], ["1"])
+            self.assertEqual(context["issue_reference_hints"]["branch_numbers"], [])
+            self.assertEqual(context["issue_reference_hints"]["commit_numbers"], ["1"])
+            self.assertEqual(context["issue_reference_hints"]["operator_supplied"], ["1"])
+
     def test_build_context_accepts_explicit_test_commands(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
