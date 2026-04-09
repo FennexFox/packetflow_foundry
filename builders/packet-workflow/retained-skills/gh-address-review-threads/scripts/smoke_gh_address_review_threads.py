@@ -19,7 +19,11 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
-from thread_action_contract import build_context_fingerprint, exact_managed_target_id
+from thread_action_contract import (
+    build_context_fingerprint,
+    exact_managed_target,
+    managed_ack_decision,
+)
 
 
 SCRIPT_DIR = Path(__file__).resolve().parent
@@ -445,13 +449,21 @@ def build_safe_plan(
         is_accepted = phase == "ack" and thread_id in accepted
         if phase == "ack":
             decision = "accept" if is_accepted else ("defer-outdated" if thread.get("is_outdated") else "defer")
-            exact_ack_target = exact_managed_target_id(thread, "ack")
+            exact_ack_comment = exact_managed_target(thread, "ack")
+            exact_ack_target = str((exact_ack_comment or {}).get("id") or "").strip() or None
+            existing_ack_decision = managed_ack_decision(exact_ack_comment)
             action = {
                 "thread_id": thread_id,
                 "decision": decision,
-                "ack_mode": "skip" if exact_ack_target else "add",
             }
-            if not exact_ack_target:
+            if exact_ack_target and existing_ack_decision == decision:
+                action["ack_mode"] = "skip"
+            elif exact_ack_target:
+                action["ack_mode"] = "update"
+                action["ack_comment_id"] = exact_ack_target
+                action["ack_body"] = safe_ack_body(decision=decision)
+            else:
+                action["ack_mode"] = "add"
                 action["ack_body"] = safe_ack_body(decision=decision)
         else:
             action = {
