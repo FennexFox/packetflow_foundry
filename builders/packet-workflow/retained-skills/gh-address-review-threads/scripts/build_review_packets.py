@@ -47,7 +47,7 @@ from review_thread_packet_contract import (
 SNIPPET_RADIUS = 12
 DIFF_SNIPPET_CHAR_LIMIT = 2200
 DIFF_HUNK_HEADER_RE = re.compile(r"^@@ -\d+(?:,\d+)? \+(?P<start>\d+)(?:,(?P<count>\d+))? @@", re.MULTILINE)
-DiffCacheKey = tuple[str, str, str]
+DiffCacheKey = tuple[str, str, str, int | None]
 GENERATED_FILE_PATTERNS = (
     re.compile(r"(^|/)(bin|obj|dist|build|coverage|generated|gen)/"),
     re.compile(r"\.(g|generated)\.[^.]+$"),
@@ -250,10 +250,16 @@ def diff_snippet_for_path(
     line_number: int | None,
     cache: dict[DiffCacheKey, str | None],
 ) -> str | None:
-    cache_key = (str(base_ref or "").strip(), str(head_ref or "").strip(), path.replace("\\", "/"))
+    normalized_path = path.replace("\\", "/")
+    normalized_line = int(line_number) if line_number is not None else None
+    cache_key = (
+        str(base_ref or "").strip(),
+        str(head_ref or "").strip(),
+        normalized_path,
+        normalized_line,
+    )
     if cache_key in cache:
         return cache[cache_key]
-    normalized_path = path.replace("\\", "/")
     full_diff = None
     for revision_range in diff_range_candidates(base_ref, head_ref):
         output = run_git(repo_root, ["diff", "-U3", revision_range, "--", normalized_path])
@@ -263,7 +269,7 @@ def diff_snippet_for_path(
     if not full_diff:
         cache[cache_key] = None
         return None
-    if line_number is None or len(full_diff) <= DIFF_SNIPPET_CHAR_LIMIT:
+    if normalized_line is None or len(full_diff) <= DIFF_SNIPPET_CHAR_LIMIT:
         cache[cache_key] = full_diff[:DIFF_SNIPPET_CHAR_LIMIT].rstrip()
         return cache[cache_key]
     matches = list(DIFF_HUNK_HEADER_RE.finditer(full_diff))
@@ -272,7 +278,7 @@ def diff_snippet_for_path(
         start = int(match.group("start"))
         count = int(match.group("count") or "1")
         end = start + max(count, 1) + 3
-        if start - 3 <= line_number <= end:
+        if start - 3 <= normalized_line <= end:
             next_start = matches[index + 1].start() if index + 1 < len(matches) else len(full_diff)
             selected = full_diff[match.start():next_start].strip()
             break
@@ -1247,8 +1253,7 @@ def main() -> int:
         }
         for thread_detail in batch_thread_details:
             thread_id = str(thread_detail["thread_id"])
-            thread = next(item for item in batch["threads"] if str(item["thread_id"]) == thread_id)
-            thread_to_batch[str(thread["thread_id"])] = batch_id
+            thread_to_batch[thread_id] = batch_id
             batch_payload["threads"].append(thread_detail)
         write_json(output_dir / batch_file, batch_payload)
         runtime_payloads[batch_file] = batch_payload

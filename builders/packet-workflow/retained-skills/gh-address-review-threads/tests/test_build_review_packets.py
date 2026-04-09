@@ -148,6 +148,42 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertFalse(grounding["grounding_mismatch"])
         self.assertIsNone(grounding["mapped_escape_reason"])
 
+    def test_diff_snippet_cache_keys_hunks_by_line_number(self) -> None:
+        cache: dict[packets.DiffCacheKey, str | None] = {}
+        diff_output = (
+            "@@ -1,1 +5,1 @@\n"
+            "+module.helper()\n"
+            "@@ -20,1 +40,1 @@\n"
+            "+other.call()\n"
+        )
+
+        with patch.object(packets, "run_git", return_value=diff_output), patch.object(
+            packets,
+            "DIFF_SNIPPET_CHAR_LIMIT",
+            40,
+        ):
+            first = packets.diff_snippet_for_path(
+                Path("C:/repo"),
+                "master",
+                "issue_20",
+                "src/app.py",
+                5,
+                cache,
+            )
+            second = packets.diff_snippet_for_path(
+                Path("C:/repo"),
+                "master",
+                "issue_20",
+                "src/app.py",
+                40,
+                cache,
+            )
+
+        self.assertIn("module.helper()", first)
+        self.assertNotIn("other.call()", first)
+        self.assertIn("other.call()", second)
+        self.assertNotIn("module.helper()", second)
+
     def _run_estimated_savings_observation_case(
         self,
     ) -> tuple[
