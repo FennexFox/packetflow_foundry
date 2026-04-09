@@ -355,10 +355,10 @@ def maybe_apply_delegation_savings_floor(
     packet_metrics: dict[str, Any],
     adjustments: list[str],
 ) -> tuple[str, int, list[str]]:
-    estimated_savings = int(packet_metrics.get("estimated_delegation_savings", 0) or 0)
+    savings_tokens = int(packet_metrics.get("savings_tokens", 0) or 0)
     if (
         review_mode == "local-only"
-        and estimated_savings >= DELEGATION_SAVINGS_FLOOR
+        and savings_tokens >= DELEGATION_SAVINGS_FLOOR
         and "delegation_savings_floor" not in adjustments
     ):
         return "targeted-delegation", max(worker_count, 2), [*adjustments, "delegation_savings_floor"]

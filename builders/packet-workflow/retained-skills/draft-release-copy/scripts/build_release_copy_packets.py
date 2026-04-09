@@ -147,10 +147,10 @@ def maybe_apply_delegation_savings_floor(
     packet_metrics: dict[str, Any],
     adjustments: list[str],
 ) -> tuple[str, int, list[str]]:
-    estimated_savings = int(packet_metrics.get("estimated_delegation_savings", 0) or 0)
+    savings_tokens = int(packet_metrics.get("savings_tokens", 0) or 0)
     if (
         mode == "local-only"
-        and estimated_savings >= DELEGATION_SAVINGS_FLOOR
+        and savings_tokens >= DELEGATION_SAVINGS_FLOOR
         and "delegation_savings_floor" not in adjustments
     ):
         return "targeted-delegation", max(worker_count, 2), [*adjustments, "delegation_savings_floor"]
@@ -210,9 +210,9 @@ def build_packet_metrics(
         },
         "largest_packet_bytes": packet_sizes["largest_packet_bytes"],
         "largest_two_packets_bytes": packet_sizes["largest_two_packets_bytes"],
-        "estimated_local_only_tokens": packet_sizes["estimated_local_only_tokens"],
-        "estimated_packet_tokens": packet_sizes["estimated_packet_tokens"],
-        "estimated_delegation_savings": packet_sizes["estimated_delegation_savings"],
+        "local_only_tokens": packet_sizes["local_only_tokens"],
+        "packet_tokens": packet_sizes["packet_tokens"],
+        "savings_tokens": packet_sizes["savings_tokens"],
         "estimated_raw_source_tokens": packet_sizes["estimated_raw_source_tokens"],
         "raw_reread_allowed_reasons": contract.RAW_REREAD_ALLOWED_REASONS,
         "synthesis_packet_sufficient_for_common_path": synthesis_packet_common_path_ready(synthesis_packet),
@@ -935,9 +935,9 @@ def build_result_payload(
         "packet_count": packet_metrics["packet_count"],
         "largest_packet_bytes": packet_metrics["largest_packet_bytes"],
         "largest_two_packets_bytes": packet_metrics["largest_two_packets_bytes"],
-        "estimated_local_only_tokens": packet_metrics["estimated_local_only_tokens"],
-        "estimated_packet_tokens": packet_metrics["estimated_packet_tokens"],
-        "estimated_delegation_savings": packet_metrics["estimated_delegation_savings"],
+        "local_only_tokens": packet_metrics["local_only_tokens"],
+        "packet_tokens": packet_metrics["packet_tokens"],
+        "savings_tokens": packet_metrics["savings_tokens"],
         "packet_size_bytes": packet_metrics["packet_size_bytes"],
         "common_path_sufficient": packet_metrics["synthesis_packet_sufficient_for_common_path"],
         "synthesis_packet_sufficient_for_common_path": packet_metrics["synthesis_packet_sufficient_for_common_path"],

@@ -52,10 +52,10 @@ Every evaluation log should contain:
 
 - `baseline.method`: `none | heuristic_local_only | paired_run | historical_cohort`
 - default: `none`
-- include estimate fields only when they actually exist:
-  - `estimated_local_only_tokens`
-  - `estimated_token_savings`
-  - `estimated_delegation_savings`
+- include packet-compaction fields only when they actually exist:
+  - `local_only_tokens`
+  - `packet_tokens`
+  - `savings_tokens`
 - keep `baseline.confidence` explicit when a heuristic or historical estimate is used
 
 ## Measurement

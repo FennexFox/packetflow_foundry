@@ -282,9 +282,9 @@ The written marker should capture:
 - `packet_size_bytes`
 - `largest_packet_bytes`
 - `largest_two_packets_bytes`
-- `estimated_local_only_tokens`
-- `estimated_packet_tokens`
-- `estimated_delegation_savings`
+- `local_only_tokens`
+- `packet_tokens`
+- `savings_tokens`
 
 These numbers support regression tracking and evaluation logging. The raw counters do not appear in runtime packet metadata, but build-time review-mode selection may derive a `delegation_savings_floor` adjustment from them.
 

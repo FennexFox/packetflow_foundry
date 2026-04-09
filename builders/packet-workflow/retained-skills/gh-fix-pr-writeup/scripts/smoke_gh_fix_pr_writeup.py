@@ -317,9 +317,9 @@ def main() -> int:
         assert build_result["common_path_sufficient"] is True
         assert validation["qa_required"] is False
         assert apply_result["apply_succeeded"] is True
-        assert packet_metrics["estimated_packet_tokens"] < packet_metrics["estimated_local_only_tokens"]
-        assert packet_metrics["estimated_delegation_savings"] > 0
-        assert "estimated_packet_tokens" not in orchestrator
+        assert packet_metrics["packet_tokens"] < packet_metrics["local_only_tokens"]
+        assert packet_metrics["savings_tokens"] > 0
+        assert "packet_tokens" not in orchestrator
         assert eval_log["skill_specific"]["data"]["common_path_sufficient"] is True
         assert eval_log["skill_specific"]["data"]["raw_reread_count"] == 0
 
@@ -330,9 +330,9 @@ def main() -> int:
                     "qa_required": build_result["qa_required"],
                     "raw_reread_count": build_result["raw_reread_count"],
                     "common_path_sufficient": build_result["common_path_sufficient"],
-                    "estimated_local_only_tokens": packet_metrics["estimated_local_only_tokens"],
-                    "estimated_packet_tokens": packet_metrics["estimated_packet_tokens"],
-                    "estimated_delegation_savings": packet_metrics["estimated_delegation_savings"],
+                    "local_only_tokens": packet_metrics["local_only_tokens"],
+                    "packet_tokens": packet_metrics["packet_tokens"],
+                    "savings_tokens": packet_metrics["savings_tokens"],
                 },
                 indent=2,
                 ensure_ascii=True,

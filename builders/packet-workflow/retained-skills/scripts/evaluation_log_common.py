@@ -664,6 +664,30 @@ def normalize_packet_sizing(packet_metrics: dict[str, Any] | None) -> dict[str, 
     }
 
 
+def packet_compaction_metrics(packet_metrics: dict[str, Any] | None) -> dict[str, int | None]:
+    metrics = packet_metrics if isinstance(packet_metrics, dict) else {}
+    local_only_tokens = safe_int(metrics.get("local_only_tokens"))
+    if local_only_tokens is None:
+        local_only_tokens = safe_int(metrics.get("estimated_local_only_tokens"))
+    packet_tokens = safe_int(metrics.get("packet_tokens"))
+    if packet_tokens is None:
+        packet_tokens = safe_int(metrics.get("estimated_packet_tokens"))
+    savings_tokens = safe_int(metrics.get("savings_tokens"))
+    if savings_tokens is None:
+        savings_tokens = safe_int(metrics.get("estimated_delegation_savings"))
+    if (
+        savings_tokens is None
+        and local_only_tokens is not None
+        and packet_tokens is not None
+    ):
+        savings_tokens = max(0, local_only_tokens - packet_tokens)
+    return {
+        "local_only_tokens": local_only_tokens,
+        "packet_tokens": packet_tokens,
+        "savings_tokens": savings_tokens,
+    }
+
+
 def find_pricing_entry(model_name: Any) -> dict[str, Any] | None:
     model = str(model_name or "").strip()
     if not model:
@@ -780,16 +804,10 @@ def packet_compaction_efficiency(
     *,
     main_model_name: str = DEFAULT_MAIN_MODEL,
 ) -> dict[str, Any]:
-    metrics = packet_metrics if isinstance(packet_metrics, dict) else {}
-    local_only_tokens = safe_int(metrics.get("estimated_local_only_tokens"))
-    packet_tokens = safe_int(metrics.get("estimated_packet_tokens"))
-    savings_tokens = safe_int(metrics.get("estimated_delegation_savings"))
-    if (
-        savings_tokens is None
-        and local_only_tokens is not None
-        and packet_tokens is not None
-    ):
-        savings_tokens = max(0, local_only_tokens - packet_tokens)
+    compaction = packet_compaction_metrics(packet_metrics)
+    local_only_tokens = compaction.get("local_only_tokens")
+    packet_tokens = compaction.get("packet_tokens")
+    savings_tokens = compaction.get("savings_tokens")
     price = find_pricing_entry(main_model_name)
     input_rate = safe_int((price or {}).get("input_nanousd_per_token"))
     main_model_input_cost = (
@@ -1032,6 +1050,9 @@ LEGACY_BUILD_RESULT_FIELDS = {
     "packet_metrics",
     "packet_metrics_file",
     "packet_count",
+    "local_only_tokens",
+    "packet_tokens",
+    "savings_tokens",
     "largest_packet_bytes",
     "largest_two_packets_bytes",
     "estimated_local_only_tokens",

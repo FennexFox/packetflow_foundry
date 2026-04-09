@@ -15,8 +15,8 @@ Use the shared envelope in [`evaluation-log-contract.md`](evaluation-log-contrac
 - `edited_pr_url`
 - `common_path_sufficient`
 - `raw_reread_count`
-- `estimated_packet_tokens`
-- `estimated_delegation_savings`
+- `packet_tokens`
+- `savings_tokens`
 - `unsupported_claim_categories`
 - `evidence_gap_categories`
 
@@ -29,13 +29,13 @@ Build-phase merge should populate:
 - `qa_reason`
 - `common_path_sufficient`
 - `raw_reread_count`
-- `estimated_packet_tokens`
-- `estimated_delegation_savings`
+- `packet_tokens`
+- `savings_tokens`
 
-It should also update baseline byte-proxy fields when `packet_metrics.json` is available:
-- `baseline.estimated_local_only_tokens`
-- `baseline.estimated_token_savings`
-- `baseline.estimated_delegation_savings`
+It should also update packet-compaction proxy fields when `packet_metrics.json` is available:
+- `efficiency.packet_compaction.local_only_tokens`
+- `efficiency.packet_compaction.packet_tokens`
+- `efficiency.packet_compaction.savings_tokens`
 
 ## Validation / Apply Signals
 

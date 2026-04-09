@@ -55,7 +55,7 @@ class BuildPublicDocsSyncPacketsContractTests(unittest.TestCase):
         self.assertEqual(
             packets.maybe_apply_delegation_savings_floor(
                 "local-only",
-                {"estimated_delegation_savings": 249},
+                {"savings_tokens": 249},
                 [],
             ),
             ("local-only", []),
@@ -63,7 +63,7 @@ class BuildPublicDocsSyncPacketsContractTests(unittest.TestCase):
         self.assertEqual(
             packets.maybe_apply_delegation_savings_floor(
                 "local-only",
-                {"estimated_delegation_savings": 250},
+                {"savings_tokens": 250},
                 [],
             ),
             ("targeted-delegation", ["delegation_savings_floor"]),
@@ -342,7 +342,7 @@ class BuildPublicDocsSyncPacketsContractTests(unittest.TestCase):
             self.assertEqual(packet_sizing["packet_size_bytes"], recomputed_metrics["packet_size_bytes"])
             self.assertEqual(
                 build_result["efficiency"]["packet_compaction"]["local_only_tokens"],
-                recomputed_metrics["estimated_local_only_tokens"],
+                recomputed_metrics["local_only_tokens"],
             )
             self.assertEqual(build_result["auto_apply_candidate_count"], 2)
             self.assertEqual(build_result["packet_sizing"]["largest_packet_bytes"], packet_sizing["largest_packet_bytes"])

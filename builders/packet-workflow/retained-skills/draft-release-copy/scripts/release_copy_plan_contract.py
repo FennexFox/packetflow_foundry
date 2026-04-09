@@ -277,9 +277,9 @@ def packet_size_summary(packet_payloads: dict[str, dict[str, Any]]) -> dict[str,
         "largest_packet_bytes": largest,
         "largest_two_packets_bytes": largest_two,
         "packet_count": len(packet_payloads),
-        "estimated_packet_tokens": estimate_token_proxy(worker_facing_total),
-        "estimated_local_only_tokens": estimate_token_proxy(total),
-        "estimated_delegation_savings": max(0, estimate_token_proxy(total) - estimate_token_proxy(worker_facing_total)),
+        "packet_tokens": estimate_token_proxy(worker_facing_total),
+        "local_only_tokens": estimate_token_proxy(total),
+        "savings_tokens": max(0, estimate_token_proxy(total) - estimate_token_proxy(worker_facing_total)),
     }
 
 

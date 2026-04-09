@@ -34,8 +34,8 @@ Recommended fields:
 - `resolve_after_complete_count`
 - `validation_commands`
 - `final_pr_url`
-- `estimated_packet_tokens`
-- `estimated_delegation_savings`
+- `packet_tokens`
+- `savings_tokens`
 
 ## Thread Decision Metrics
 

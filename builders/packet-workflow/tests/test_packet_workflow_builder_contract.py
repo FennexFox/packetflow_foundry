@@ -1359,7 +1359,7 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 orchestrator["shared_local_packet"], "synthesis_packet.json"
             )
             self.assertIn("common_path_contract", orchestrator)
-            self.assertNotIn("estimated_local_only_tokens", orchestrator)
+            self.assertNotIn("local_only_tokens", orchestrator)
             self.assertIn("review_mode_baseline", orchestrator)
             self.assertIn("review_mode_adjustments", orchestrator)
             self.assertTrue((packets_dir / "synthesis_packet.json").exists())
@@ -1490,7 +1490,7 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 orchestrator["review_mode_adjustments"],
                 ["delegation_savings_floor"],
             )
-            self.assertNotIn("estimated_delegation_savings", orchestrator)
+            self.assertNotIn("savings_tokens", orchestrator)
             self.assertGreater(
                 packet_sizing["packet_size_breakdown"]["orchestrator.json"], 0
             )

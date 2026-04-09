@@ -203,7 +203,7 @@ class BuildPrReviewPacketsTests(unittest.TestCase):
         self.assertEqual(orchestrator["routing_contract"], packets.contract.ROUTING_CONTRACT)
         self.assertEqual(global_packet["routing_contract"], packets.contract.ROUTING_CONTRACT)
         self.assertNotIn("packet_size_bytes", orchestrator)
-        self.assertNotIn("estimated_packet_tokens", orchestrator)
+        self.assertNotIn("packet_tokens", orchestrator)
         self.assertNotIn("review_mode_baseline", orchestrator)
         self.assertNotIn("review_mode_adjustments", orchestrator)
         self.assertNotIn("recommended_workers", orchestrator)

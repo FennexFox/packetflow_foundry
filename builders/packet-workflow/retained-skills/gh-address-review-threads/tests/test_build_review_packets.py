@@ -487,7 +487,7 @@ class BuildReviewPacketsTests(unittest.TestCase):
                 "review_mode_overrides",
                 global_packet["common_path_contract"]["override_policy"],
             )
-            self.assertNotIn("estimated_packet_tokens", orchestrator)
+            self.assertNotIn("packet_tokens", orchestrator)
             self.assertEqual(orchestrator["context_fingerprint"], context["context_fingerprint"])
             self.assertEqual(global_packet["context_fingerprint"], context["context_fingerprint"])
             self.assertEqual(global_packet["orchestrator_profile"], "standard")
@@ -544,7 +544,7 @@ class BuildReviewPacketsTests(unittest.TestCase):
             )
             self.assertTrue(build_result["common_path_sufficient"])
             self.assertEqual(packet_sizing["packet_count"], len(orchestrator["packet_files"]))
-            self.assertNotIn("estimated_packet_tokens", build_result)
+            self.assertNotIn("packet_tokens", build_result)
 
     def test_main_propagates_structured_marker_conflict_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

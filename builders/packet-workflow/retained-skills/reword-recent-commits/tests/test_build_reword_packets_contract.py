@@ -197,7 +197,7 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
         )
         self.assertEqual(
             result["efficiency"]["packet_compaction"]["savings_tokens"],
-            expected_metrics["estimated_delegation_savings"],
+            expected_metrics["savings_tokens"],
         )
 
     def test_local_review_mode_preserves_minimal_local_only_path(self) -> None:

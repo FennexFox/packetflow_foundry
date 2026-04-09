@@ -120,10 +120,10 @@ def maybe_apply_delegation_savings_floor(
     packet_metrics: dict,
     adjustments: list[str],
 ) -> tuple[str, list[str]]:
-    estimated_savings = int(packet_metrics.get("estimated_delegation_savings", 0) or 0)
+    savings_tokens = int(packet_metrics.get("savings_tokens", 0) or 0)
     if (
         review_mode == "local-only"
-        and estimated_savings >= DELEGATION_SAVINGS_FLOOR
+        and savings_tokens >= DELEGATION_SAVINGS_FLOOR
         and "delegation_savings_floor" not in adjustments
     ):
         return "targeted-delegation", [*adjustments, "delegation_savings_floor"]
@@ -347,18 +347,16 @@ def packet_metrics_payload(context: dict, lint: dict, packet_payloads: dict[str,
     local_only_bytes = dump_json_bytes(context)
     if lint:
         local_only_bytes += dump_json_bytes(lint)
-    estimated_local_only_tokens = estimate_tokens(local_only_bytes)
-    estimated_packet_tokens = estimate_tokens(worker_facing_bytes)
+    local_only_tokens = estimate_tokens(local_only_bytes)
+    packet_tokens = estimate_tokens(worker_facing_bytes)
     return {
         "packet_count": len(packet_sizes),
         "packet_size_bytes": packet_sizes,
         "largest_packet_bytes": ordered_sizes[0] if ordered_sizes else 0,
         "largest_two_packets_bytes": sum(ordered_sizes[:2]),
-        "estimated_local_only_tokens": estimated_local_only_tokens,
-        "estimated_packet_tokens": estimated_packet_tokens,
-        "estimated_delegation_savings": max(
-            0, estimated_local_only_tokens - estimated_packet_tokens
-        ),
+        "local_only_tokens": local_only_tokens,
+        "packet_tokens": packet_tokens,
+        "savings_tokens": max(0, local_only_tokens - packet_tokens),
     }
 
 

@@ -247,7 +247,7 @@ def main() -> int:
             raise RuntimeError("Smoke fixture should be common-path sufficient.")
         if build_result.get("raw_reread_count") != 0:
             raise RuntimeError("Smoke fixture unexpectedly requires raw rereads.")
-        if packet_metrics.get("estimated_packet_tokens", 0) >= packet_metrics.get("estimated_local_only_tokens", 0):
+        if packet_metrics.get("packet_tokens", 0) >= packet_metrics.get("local_only_tokens", 0):
             raise RuntimeError("Packet tokens should remain below local-only tokens for the smoke fixture.")
 
         summary = {
@@ -258,7 +258,7 @@ def main() -> int:
             "evaluation_log": {
                 "result_status": (eval_log.get("quality") or {}).get("result_status"),
                 "common_path_sufficient": ((eval_log.get("skill_specific") or {}).get("data") or {}).get("common_path_sufficient"),
-                "estimated_delegation_savings": (eval_log.get("baseline") or {}).get("estimated_delegation_savings"),
+                "packet_compaction_savings_tokens": (((eval_log.get("efficiency") or {}).get("packet_compaction") or {}).get("savings_tokens")),
             },
         }
         print(json.dumps(summary, indent=2, ensure_ascii=True))

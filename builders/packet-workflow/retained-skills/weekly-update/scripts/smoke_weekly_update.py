@@ -261,7 +261,7 @@ def main() -> int:
         if not (packet_dir / "global_packet.json").is_file():
             raise RuntimeError("global_packet.json was not written")
         orchestrator = read_json(packet_dir / "orchestrator.json")
-        if "estimated_packet_tokens" in orchestrator or "packet_size_bytes" in orchestrator:
+        if "packet_tokens" in orchestrator or "packet_size_bytes" in orchestrator:
             raise RuntimeError("orchestrator.json unexpectedly contains token-efficiency counters")
         if packet_compaction.get("packet_tokens", 0) >= packet_compaction.get("local_only_tokens", 0):
             raise RuntimeError("build-result efficiency did not report packet-compaction savings")

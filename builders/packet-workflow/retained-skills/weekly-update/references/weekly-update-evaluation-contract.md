@@ -21,8 +21,8 @@ Recommended fields:
 - `proposal_override_count`
 - `coverage_gap_count`
 - `packet_count`
-- `estimated_packet_tokens`
-- `estimated_delegation_savings`
+- `packet_tokens`
+- `savings_tokens`
 - `common_path_sufficient`
 - `stop_reasons`
 - `plan_overall_confidence`
@@ -80,4 +80,4 @@ If marker update is skipped, capture the reason in `stop_reasons` or a short wor
 - Keep `coverage_gap_count` focused on unread or insufficiently verified scope, not on ordinary low-priority follow-ups.
 - Keep the evaluation contract aligned with the worker proposal model, packet membership tracking, and the plan-driven apply gate.
 - `scripts/apply_weekly_update.py` should read only `weekly-update-plan.json` fields `overall_confidence`, `stop_reasons`, and `allow_marker_update`, not worker footers.
-- Keep `estimated_packet_tokens` and `estimated_delegation_savings` out of runtime packet metadata. Build-time review-mode selection may still derive a `delegation_savings_floor` adjustment from them, and evaluation logs should preserve that provenance.
+- Keep `packet_tokens` and `savings_tokens` out of runtime packet metadata. Build-time review-mode selection may still derive a `delegation_savings_floor` adjustment from them, and evaluation logs should preserve that provenance.

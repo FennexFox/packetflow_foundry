@@ -35,8 +35,8 @@ Keep these values in `skill_specific.data` when they are available:
 - `commits_rewritten`
 - `cleanup_succeeded`
 - `packet_count`
-- `estimated_packet_tokens`
-- `estimated_delegation_savings`
+- `packet_tokens`
+- `savings_tokens`
 - `common_path_sufficient`
 - `raw_reread_count`
 - `raw_reread_reasons`

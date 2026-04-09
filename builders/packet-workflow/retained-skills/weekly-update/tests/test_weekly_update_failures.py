@@ -134,11 +134,11 @@ class WeeklyUpdateFailurePathTests(unittest.TestCase):
         self.assertEqual(artifacts["packet_sizing"]["packet_size_bytes"], recomputed["packet_size_bytes"])
         self.assertEqual(
             artifacts["efficiency"]["packet_compaction"]["local_only_tokens"],
-            recomputed["estimated_local_only_tokens"],
+            recomputed["local_only_tokens"],
         )
         self.assertEqual(
             artifacts["efficiency"]["packet_compaction"]["packet_tokens"],
-            recomputed["estimated_packet_tokens"],
+            recomputed["packet_tokens"],
         )
         self.assertEqual(artifacts["build_result"]["packet_sizing"], artifacts["packet_sizing"])
         self.assertEqual(

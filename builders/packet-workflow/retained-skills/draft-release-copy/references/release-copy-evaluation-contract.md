@@ -28,9 +28,9 @@ Keep these values in `skill_specific.data` when they are available:
 - `packet_count`
 - `largest_packet_bytes`
 - `largest_two_packets_bytes`
-- `estimated_local_only_tokens`
-- `estimated_packet_tokens`
-- `estimated_delegation_savings`
+- `local_only_tokens`
+- `packet_tokens`
+- `savings_tokens`
 - `qa_required`
 - `qa_reason`
 - `qa_ran`

@@ -314,7 +314,7 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
             packets.maybe_apply_delegation_savings_floor(
                 "local-only",
                 0,
-                {"estimated_delegation_savings": 250},
+                {"savings_tokens": 250},
                 [],
             ),
             ("targeted-delegation", 2, ["delegation_savings_floor"]),
@@ -482,8 +482,8 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
             contract.COMMON_PATH_MAX_FOCUSED_PACKETS,
         )
         self.assertEqual(orchestrator["raw_reread_allowed_reasons"], contract.RAW_REREAD_ALLOWED_REASONS)
-        self.assertNotIn("estimated_packet_tokens", orchestrator)
-        self.assertNotIn("estimated_delegation_savings", orchestrator)
+        self.assertNotIn("packet_tokens", orchestrator)
+        self.assertNotIn("savings_tokens", orchestrator)
 
         self.assertEqual(packet_sizing["packet_count"], len(orchestrator["packet_files"]))
         self.assertEqual(packet_sizing["packet_count"], len(expected_files) - 1)

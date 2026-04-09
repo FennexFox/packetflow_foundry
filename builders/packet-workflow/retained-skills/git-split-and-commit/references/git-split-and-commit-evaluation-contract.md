@@ -27,8 +27,8 @@ Keep these values in `skill_specific.data` when they are available:
 - `raw_reread_reasons`
 - `delegation_non_use_cases`
 - `packet_count`
-- `estimated_packet_tokens`
-- `estimated_delegation_savings`
+- `packet_tokens`
+- `savings_tokens`
 - Derive fallback packet counts from the file-oriented `packet_order` or `packet_files` list when explicit packet metrics are absent.
 - `validation_commands`
 - `targeted_checks`

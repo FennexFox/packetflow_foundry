@@ -121,9 +121,9 @@ PACKET_METRIC_FIELDS = [
     "packet_size_bytes",
     "largest_packet_bytes",
     "largest_two_packets_bytes",
-    "estimated_local_only_tokens",
-    "estimated_packet_tokens",
-    "estimated_delegation_savings",
+    "local_only_tokens",
+    "packet_tokens",
+    "savings_tokens",
 ]
 DELEGATION_SAVINGS_FLOOR = 250
 CANDIDATE_REQUIRED_FIELDS = [
@@ -1807,10 +1807,10 @@ def maybe_apply_delegation_savings_floor(
     packet_metrics: dict[str, Any],
     adjustments: list[str],
 ) -> tuple[str, list[str]]:
-    estimated_savings = int(packet_metrics.get("estimated_delegation_savings", 0) or 0)
+    savings_tokens = int(packet_metrics.get("savings_tokens", 0) or 0)
     if (
         review_mode == "local-only"
-        and estimated_savings >= DELEGATION_SAVINGS_FLOOR
+        and savings_tokens >= DELEGATION_SAVINGS_FLOOR
         and "delegation_savings_floor" not in adjustments
     ):
         return "targeted-delegation", [*adjustments, "delegation_savings_floor"]
@@ -2029,16 +2029,16 @@ def compute_packet_metrics(packet_payloads: dict[str, Any], *, raw_local_sources
     common_path_bytes = packet_sizes.get("global_packet.json", 0) + packet_sizes.get("mapping_packet.json", 0)
     common_path_bytes += max((packet_sizes.get(name, 0) for name in focused_packet_files), default=0)
     local_only_bytes = sum(json_bytes(payload) for payload in raw_local_sources.values())
-    estimated_local_only_tokens = estimate_tokens_from_bytes(local_only_bytes)
-    estimated_packet_tokens = estimate_tokens_from_bytes(common_path_bytes)
+    local_only_tokens = estimate_tokens_from_bytes(local_only_bytes)
+    packet_tokens = estimate_tokens_from_bytes(common_path_bytes)
     return {
         "packet_count": len(packet_payloads),
         "packet_size_bytes": total_packet_bytes,
         "largest_packet_bytes": largest_sizes[0] if largest_sizes else 0,
         "largest_two_packets_bytes": sum(largest_sizes[:2]),
-        "estimated_local_only_tokens": estimated_local_only_tokens,
-        "estimated_packet_tokens": estimated_packet_tokens,
-        "estimated_delegation_savings": max(0, estimated_local_only_tokens - estimated_packet_tokens),
+        "local_only_tokens": local_only_tokens,
+        "packet_tokens": packet_tokens,
+        "savings_tokens": max(0, local_only_tokens - packet_tokens),
     }
 
 

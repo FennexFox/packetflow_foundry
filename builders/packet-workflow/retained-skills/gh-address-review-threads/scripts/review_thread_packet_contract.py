@@ -73,9 +73,9 @@ PACKET_METRIC_FIELDS = [
     "packet_size_bytes",
     "largest_packet_bytes",
     "largest_two_packets_bytes",
-    "estimated_local_only_tokens",
-    "estimated_packet_tokens",
-    "estimated_delegation_savings",
+    "local_only_tokens",
+    "packet_tokens",
+    "savings_tokens",
 ]
 
 SMOKE_OUTPUT_FIELDS = ["status", "reason", "thread_counts", "next_action"]
@@ -465,16 +465,16 @@ def compute_packet_metrics(
     largest_two = sum(sorted(packet_sizes, reverse=True)[:2])
     common_path_bytes = sum(packet_sizes_by_name.get(name, 0) for name in common_path_packet_names)
     local_only_bytes = sum(packet_size_bytes(payload) for payload in local_only_sources.values())
-    estimated_local_only_tokens = estimate_tokens_from_bytes(local_only_bytes)
-    estimated_packet_tokens = estimate_tokens_from_bytes(common_path_bytes)
+    local_only_tokens = estimate_tokens_from_bytes(local_only_bytes)
+    packet_tokens = estimate_tokens_from_bytes(common_path_bytes)
     return {
         "packet_count": len(runtime_payloads),
         "packet_size_bytes": total_packet_bytes,
         "largest_packet_bytes": largest,
         "largest_two_packets_bytes": largest_two,
-        "estimated_local_only_tokens": estimated_local_only_tokens,
-        "estimated_packet_tokens": estimated_packet_tokens,
-        "estimated_delegation_savings": max(estimated_local_only_tokens - estimated_packet_tokens, 0),
+        "local_only_tokens": local_only_tokens,
+        "packet_tokens": packet_tokens,
+        "savings_tokens": max(local_only_tokens - packet_tokens, 0),
     }
 
 

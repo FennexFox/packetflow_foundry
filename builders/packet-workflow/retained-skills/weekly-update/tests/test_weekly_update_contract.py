@@ -368,7 +368,7 @@ class WeeklyUpdateContractTests(unittest.TestCase):
         self.assertEqual(orchestrator["worker_output_shape"], "hierarchical")
         self.assertEqual(orchestrator["packet_worker_map"], wl.PACKET_WORKER_MAP)
         self.assertIn("common_path_contract", orchestrator)
-        self.assertNotIn("estimated_packet_tokens", orchestrator)
+        self.assertNotIn("packet_tokens", orchestrator)
         self.assertNotIn("packet_size_bytes", orchestrator)
         self.assertNotIn("review_mode_baseline", orchestrator)
         self.assertNotIn("review_mode_adjustments", orchestrator)
@@ -451,7 +451,7 @@ class WeeklyUpdateContractTests(unittest.TestCase):
             self.assertEqual(orchestrator["orchestrator_profile"], "standard")
             self.assertEqual(orchestrator["repo_profile_name"], "default")
             self.assertEqual(build_result["repo_profile_name"], "default")
-            self.assertNotIn("estimated_packet_tokens", orchestrator)
+            self.assertNotIn("packet_tokens", orchestrator)
 
     def test_packet_membership_is_consistent_across_packets(self) -> None:
         mapping_index = {item["candidate_id"]: item for item in self.packets["mapping_packet.json"]["candidate_inventory_index"]}

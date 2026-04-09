@@ -168,9 +168,9 @@ PACKET_METRIC_FIELDS = [
     "packet_size_bytes",
     "largest_packet_bytes",
     "largest_two_packets_bytes",
-    "estimated_local_only_tokens",
-    "estimated_packet_tokens",
-    "estimated_delegation_savings",
+    "local_only_tokens",
+    "packet_tokens",
+    "savings_tokens",
 ]
 
 LOCAL_ONLY_PACKETS = {"synthesis_packet.json", "orchestrator.json"}
@@ -225,9 +225,9 @@ def compute_packet_metrics(
         "largest_two_packets_bytes": sum(sorted_sizes[:2]),
         "common_path_packet_bytes": common_path_bytes,
         "raw_local_source_bytes": raw_local_bytes,
-        "estimated_local_only_tokens": estimate_tokens_from_bytes(raw_local_bytes),
-        "estimated_packet_tokens": estimate_tokens_from_bytes(common_path_bytes),
-        "estimated_delegation_savings": max(
+        "local_only_tokens": estimate_tokens_from_bytes(raw_local_bytes),
+        "packet_tokens": estimate_tokens_from_bytes(common_path_bytes),
+        "savings_tokens": max(
             0,
             estimate_tokens_from_bytes(raw_local_bytes) - estimate_tokens_from_bytes(common_path_bytes),
         ),
