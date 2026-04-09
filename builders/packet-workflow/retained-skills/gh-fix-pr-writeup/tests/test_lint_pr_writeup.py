@@ -172,6 +172,32 @@ class LintPrWriteupTests(unittest.TestCase):
             self.assertNotIn("audit_report", payload)
             self.assertEqual(payload["url"], "https://example.invalid/pr/7")
 
+    def test_main_accepts_bom_prefixed_candidate_body_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            context_path = tmp / "context.json"
+            candidate_body_path = tmp / "candidate.md"
+            output_path = tmp / "lint.json"
+            context_path.write_text(json.dumps(clean_context()), encoding="utf-8")
+            candidate_body_path.write_text(clean_context()["pr"]["body"], encoding="utf-8-sig")
+
+            argv = [
+                "lint_pr_writeup.py",
+                "--context",
+                str(context_path),
+                "--candidate-body-file",
+                str(candidate_body_path),
+                "--output",
+                str(output_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                self.assertEqual(lint.main(), 0)
+
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertEqual(payload["mode"], "candidate")
+            self.assertEqual(payload["findings"]["errors"], [])
+            self.assertEqual(payload["findings"]["detected"]["actual_sections"][0], "Why")
+
 
 if __name__ == "__main__":
     unittest.main()

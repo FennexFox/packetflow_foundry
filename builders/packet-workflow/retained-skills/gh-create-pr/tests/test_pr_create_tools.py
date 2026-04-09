@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
@@ -80,6 +82,16 @@ def init_repo(repo_root: Path, origin_root: Path) -> None:
 
 
 class PrCreateToolsTests(unittest.TestCase):
+    def test_read_utf8_text_accepts_bom_prefixed_markdown(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "body.md"
+            path.write_text("## Why\nOpen the PR safely.\n", encoding="utf-8-sig")
+
+            text = tools.read_utf8_text(path)
+
+        self.assertEqual(text.splitlines()[0], "## Why")
+        self.assertFalse(text.startswith("\ufeff"))
+
     def test_infer_repo_slug_accepts_dotted_repo_names(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -133,6 +145,47 @@ class PrCreateToolsTests(unittest.TestCase):
 
             self.assertEqual(selection["status"], "ambiguous")
             self.assertGreaterEqual(len(selection["all_candidates"]), 2)
+
+    def test_stubbed_gh_pr_create_reads_bom_prefixed_body_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            state_path = tmp_path / "state.json"
+            body_path = tmp_path / "body.md"
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "repo_slug": "owner/repo",
+                        "default_branch": "main",
+                        "existing_prs": [],
+                        "next_pr_number": 101,
+                    }
+                ),
+                encoding="utf-8",
+            )
+            body_path.write_text("## Why\nOpen safely.\n", encoding="utf-8-sig")
+
+            with mock.patch.dict(tools.os.environ, {tools.GH_STUB_STATE_ENV: str(state_path)}):
+                output = tools.run_command(
+                    [
+                        "gh",
+                        "pr",
+                        "create",
+                        "--title",
+                        "feat(pr-create): open guarded PRs",
+                        "--body-file",
+                        str(body_path),
+                        "--base",
+                        "main",
+                        "--head",
+                        "feature/pr-create",
+                    ],
+                    cwd=tmp_path,
+                )
+
+            updated = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertIn("/pull/101", output)
+            self.assertEqual(updated["existing_prs"][0]["body"].splitlines()[0], "## Why")
+            self.assertFalse(updated["existing_prs"][0]["body"].startswith("\ufeff"))
 
 
 if __name__ == "__main__":

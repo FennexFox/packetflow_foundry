@@ -28,7 +28,7 @@ Use this skill to repair one PR title/body with a guarded `collect -> lint -> bu
 3. Run lint and packet build with `lint_pr_writeup.py` and `build_pr_review_packets.py`.
 4. Initialize the evaluation log, then merge the build result.
 5. Read `orchestrator.json` first, then `rules_packet.json`, then `synthesis_packet.json`, then at most one focused packet.
-6. Draft the final title/body locally, validate with `validate_pr_writeup_edit.py [--qa-result <qa-json>]`, and run `apply_pr_writeup.py` only from validator output.
+6. Draft the final title/body locally, validate with `validate_pr_writeup_edit.py [--qa-result <qa-json>]`, and run `apply_pr_writeup.py` only from validator output. Candidate markdown inputs may be UTF-8 with or without BOM; do not add manual BOM-stripping side steps.
 7. Record validation/apply phases and finalize the evaluation log after the last result.
 
 ## Continue Only If

@@ -455,7 +455,7 @@ def validate_pr_create(context: dict[str, Any], title: str, body: str) -> dict[s
 def main() -> int:
     args = parse_args()
     context = load_json(Path(args.context).resolve())
-    body = Path(args.body_file).resolve().read_text(encoding="utf-8")
+    body = tools.read_utf8_text(Path(args.body_file).resolve())
     payload = validate_pr_create(context, args.title, body)
     if args.output:
         write_json(Path(args.output).resolve(), payload)

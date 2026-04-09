@@ -5,7 +5,7 @@ import json
 import re
 from pathlib import Path
 
-from pr_writeup_tools import PR_TITLE_RE, build_context
+from pr_writeup_tools import PR_TITLE_RE, build_context, read_utf8_text
 
 
 PLACEHOLDER_PATTERNS = [
@@ -449,7 +449,7 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.context:
-        context = json.loads(Path(args.context).read_text(encoding="utf-8"))
+        context = json.loads(read_utf8_text(Path(args.context)))
     else:
         if args.pr_number is None:
             parser.error("Provide either <pr_number> or --context.")
@@ -464,7 +464,7 @@ def main() -> int:
     if args.candidate_title is not None or args.candidate_body_file is not None:
         candidate_title = args.candidate_title if args.candidate_title is not None else str(context["pr"].get("title") or "")
         candidate_body = (
-            Path(args.candidate_body_file).read_text(encoding="utf-8")
+            read_utf8_text(Path(args.candidate_body_file))
             if args.candidate_body_file
             else str(context["pr"].get("body") or "")
         )

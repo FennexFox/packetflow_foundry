@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -420,6 +422,56 @@ class ValidatePrCreateTests(unittest.TestCase):
         self.assertFalse(payload["valid"])
         self.assertIn("stale_snapshot", payload["stop_reasons"])
         self.assertEqual(payload["stale_fields"][0]["field"], "changed_files_fingerprint")
+
+    def test_main_accepts_bom_prefixed_body_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            context = collected_context(tmp)
+            context_path = tmp / "context.json"
+            body_path = tmp / "candidate.md"
+            output_path = tmp / "validation.json"
+            context_path.write_text(json.dumps(context), encoding="utf-8")
+            body_path.write_text(valid_body(), encoding="utf-8-sig")
+
+            with (
+                mock.patch.object(validator.tools, "run_command", return_value="Logged in to github.com"),
+                mock.patch.object(validator.tools, "local_head_oid", return_value="abc123"),
+                mock.patch.object(validator.tools, "remote_head_oid", return_value="abc123"),
+                mock.patch.object(validator.tools, "load_changed_files_between", return_value=context["changed_files"]),
+                mock.patch.object(validator.tools, "select_pr_template", return_value=context["template_selection"]),
+                mock.patch.object(
+                    validator.tools,
+                    "duplicate_check_summary",
+                    return_value={
+                        "status": "clear",
+                        "matched_repo_slug": "owner/repo",
+                        "matched_head": "feature/pr-create",
+                        "existing_pr_count": 0,
+                    },
+                ),
+                mock.patch.object(
+                    sys,
+                    "argv",
+                    [
+                        "validate_pr_create.py",
+                        "--context",
+                        str(context_path),
+                        "--title",
+                        "feat(pr-create): create guarded PRs",
+                        "--body-file",
+                        str(body_path),
+                        "--output",
+                        str(output_path),
+                    ],
+                ),
+            ):
+                self.assertEqual(validator.main(), 0)
+
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertTrue(payload["valid"])
+            self.assertTrue(payload["can_apply"])
+            self.assertFalse(payload["normalized_create_request"]["body"].startswith("\ufeff"))
+            self.assertEqual(payload["normalized_create_request"]["body"].splitlines()[0], "## Why")
 
 
 if __name__ == "__main__":

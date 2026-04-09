@@ -16,13 +16,17 @@ GROUP_SAMPLE_LIMIT = 16
 GH_STUB_STATE_ENV = "GH_FIX_PR_WRITEUP_GH_STUB_STATE"
 
 
+def read_utf8_text(path: Path) -> str:
+    return Path(path).read_text(encoding="utf-8-sig")
+
+
 def maybe_run_stubbed_gh(args: list[str]) -> str | None:
     if not args or args[0] != "gh":
         return None
     state_path = os.environ.get(GH_STUB_STATE_ENV)
     if not state_path:
         return None
-    state = json.loads(Path(state_path).read_text(encoding="utf-8"))
+    state = json.loads(read_utf8_text(Path(state_path)))
     command = args[1:]
     if command[:2] == ["auth", "status"]:
         return "Logged in to github.com\n"
@@ -34,7 +38,7 @@ def maybe_run_stubbed_gh(args: list[str]) -> str | None:
         title = command[command.index("--title") + 1]
         body_file = command[command.index("--body-file") + 1]
         state["pr"]["title"] = title
-        state["pr"]["body"] = Path(body_file).read_text(encoding="utf-8")
+        state["pr"]["body"] = read_utf8_text(Path(body_file))
         Path(state_path).write_text(json.dumps(state, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
         return ""
     raise subprocess.CalledProcessError(returncode=1, cmd=args, output="", stderr="unsupported stubbed gh command")
@@ -62,7 +66,7 @@ def run_command(args: list[str], cwd: Path) -> str:
 def read_text_if_exists(path: Path) -> str | None:
     if not path.is_file():
         return None
-    return path.read_text(encoding="utf-8")
+    return read_utf8_text(path)
 
 
 def infer_repo_slug(repo_root: Path) -> str | None:

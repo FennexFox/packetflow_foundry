@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import sys
+import tempfile
 import unittest
 from pathlib import Path
 from unittest import mock
@@ -209,6 +210,47 @@ class ValidatePrWriteupEditTests(unittest.TestCase):
             sorted(payload["normalized_edit"]["validated_snapshot"].keys()),
             sorted(["title", "body", "url", "headRefName", "headRefOid", "baseRefName", "changed_files"]),
         )
+
+    def test_main_accepts_bom_prefixed_body_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            context = collected_context(tmp)
+            context_path = tmp / "context.json"
+            body_path = tmp / "candidate.md"
+            output_path = tmp / "validation.json"
+            context_path.write_text(json.dumps(context), encoding="utf-8")
+            body_path.write_text(valid_candidate_body(), encoding="utf-8-sig")
+
+            def fake_run_command(args: list[str], cwd: Path) -> str:
+                if args[:3] == ["gh", "auth", "status"]:
+                    return "Logged in to github.com"
+                if args[:3] == ["gh", "pr", "view"]:
+                    return json.dumps(context["pr"])
+                if args[:4] == ["gh", "pr", "diff", "7"]:
+                    return "\n".join(context["changed_files"])
+                raise AssertionError(f"Unexpected command: {args}")
+
+            argv = [
+                "validate_pr_writeup_edit.py",
+                "--context",
+                str(context_path),
+                "--title",
+                "docs(pr-writeup): add guarded validator flow",
+                "--body-file",
+                str(body_path),
+                "--output",
+                str(output_path),
+            ]
+            with mock.patch.object(validator.tools, "run_command", side_effect=fake_run_command), mock.patch.object(
+                sys, "argv", argv
+            ):
+                self.assertEqual(validator.main(), 0)
+
+            payload = json.loads(output_path.read_text(encoding="utf-8"))
+            self.assertTrue(payload["valid"])
+            self.assertTrue(payload["can_apply"])
+            self.assertFalse(payload["normalized_edit"]["body"].startswith("\ufeff"))
+            self.assertEqual(payload["normalized_edit"]["body"].splitlines()[0], "## Why")
 
     def test_broad_full_rewrite_requires_qa_clear(self) -> None:
         context = collected_context(Path.cwd(), broad=True)

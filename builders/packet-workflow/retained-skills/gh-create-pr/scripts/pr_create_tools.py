@@ -29,13 +29,17 @@ NAMED_TEMPLATE_GLOBS = [
 ISSUE_REF_PATTERN = re.compile(r"#(?P<number>\d+)")
 
 
+def read_utf8_text(path: Path) -> str:
+    return Path(path).read_text(encoding="utf-8-sig")
+
+
 def maybe_run_stubbed_gh(args: list[str]) -> str | None:
     if not args or args[0] != "gh":
         return None
     state_path = os.environ.get(GH_STUB_STATE_ENV)
     if not state_path:
         return None
-    state = json.loads(Path(state_path).read_text(encoding="utf-8"))
+    state = json.loads(read_utf8_text(Path(state_path)))
     command = args[1:]
     if command[:2] == ["auth", "status"]:
         return "Logged in to github.com\n"
@@ -99,7 +103,7 @@ def maybe_run_stubbed_gh(args: list[str]) -> str | None:
         created = {
             "number": number,
             "title": title,
-            "body": body_file.read_text(encoding="utf-8").rstrip(),
+            "body": read_utf8_text(body_file).rstrip(),
             "headRefName": head,
             "baseRefName": base,
             "url": f"https://example.invalid/{repo_slug}/pull/{number}",
@@ -139,7 +143,7 @@ def run_git(args: list[str], cwd: Path) -> str:
 def read_text_if_exists(path: Path) -> str | None:
     if not path.is_file():
         return None
-    return path.read_text(encoding="utf-8")
+    return read_utf8_text(path)
 
 
 def normalize_path(path: str) -> str:
