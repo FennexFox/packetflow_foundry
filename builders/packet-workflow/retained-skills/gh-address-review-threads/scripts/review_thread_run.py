@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 import subprocess
@@ -86,6 +87,50 @@ def is_runtime_status_entry(entry: str) -> bool:
     return bool(paths) and all(path.startswith(".codex/tmp/") for path in paths)
 
 
+def sha256_hexdigest(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def path_content_token(path: Path) -> str:
+    try:
+        if not path.exists():
+            return "missing"
+        if path.is_symlink():
+            return f"symlink:{path.readlink().as_posix()}"
+        if path.is_file():
+            return f"file:sha256:{sha256_hexdigest(path.read_bytes())}"
+        if path.is_dir():
+            child_names = sorted(child.name for child in path.iterdir())
+            encoded = json.dumps(child_names, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+            return f"dir:sha256:{sha256_hexdigest(encoded)}"
+        stat = path.stat()
+        return f"other:{stat.st_mode}:{stat.st_size}"
+    except OSError as exc:
+        return f"error:{type(exc).__name__}:{exc}"
+
+
+def worktree_content_fingerprint(repo_root: Path, entries: list[str]) -> str:
+    states: list[dict[str, str]] = []
+    seen_paths: set[str] = set()
+    for entry in entries:
+        for rel_path in status_entry_paths(entry):
+            if not rel_path or rel_path in seen_paths:
+                continue
+            seen_paths.add(rel_path)
+            states.append(
+                {
+                    "path": rel_path,
+                    "token": path_content_token(repo_root / Path(rel_path)),
+                }
+            )
+    encoded = json.dumps(
+        sorted(states, key=lambda item: item["path"]),
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return f"sha256:{sha256_hexdigest(encoded)}"
+
+
 def repo_worktree_snapshot(repo_root: Path) -> dict[str, Any]:
     result = subprocess.run(
         WORKTREE_STATUS_COMMAND,
@@ -114,6 +159,7 @@ def repo_worktree_snapshot(repo_root: Path) -> dict[str, Any]:
         "available": True,
         "status_command": " ".join(WORKTREE_STATUS_COMMAND),
         "entries": entries,
+        "content_fingerprint": worktree_content_fingerprint(repo_root, entries),
     }
 
 
@@ -346,12 +392,23 @@ def require_pre_ack_worktree_unchanged(
         raise RuntimeError(f"{action_label} could not refresh the git worktree status: {detail}")
     current_entries = [str(entry) for entry in current_snapshot.get("entries", []) if str(entry).strip()]
     normalized_baseline = [str(entry) for entry in baseline_entries if str(entry).strip()]
-    if current_entries == normalized_baseline:
+    baseline_content_fingerprint = str(snapshot.get("content_fingerprint") or "").strip()
+    current_content_fingerprint = str(current_snapshot.get("content_fingerprint") or "").strip()
+    if current_entries == normalized_baseline and (
+        not baseline_content_fingerprint or current_content_fingerprint == baseline_content_fingerprint
+    ):
         return
+    detail_parts = [
+        f"baseline={summarize_worktree_entries(normalized_baseline)}",
+        f"current={summarize_worktree_entries(current_entries)}",
+    ]
+    if current_entries == normalized_baseline:
+        detail_parts.append("content-sensitive comparison detected additional edits to already-dirty paths")
+        detail_parts.append(f"baseline_content={baseline_content_fingerprint or '<unknown>'}")
+        detail_parts.append(f"current_content={current_content_fingerprint or '<unknown>'}")
     raise RuntimeError(
         f"{action_label} blocked because the git worktree changed after run start and before ack-applied; "
-        f"baseline={summarize_worktree_entries(normalized_baseline)}; "
-        f"current={summarize_worktree_entries(current_entries)}"
+        + "; ".join(detail_parts)
     )
 
 
