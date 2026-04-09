@@ -72,6 +72,7 @@ def run_python(
         encoding="utf-8",
         errors="replace",
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         check=False,
     )
     if result.returncode not in allowed:

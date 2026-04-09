@@ -54,6 +54,7 @@ def run_command(args: list[str], cwd: Path) -> str:
             cwd=str(cwd),
             check=True,
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
         )

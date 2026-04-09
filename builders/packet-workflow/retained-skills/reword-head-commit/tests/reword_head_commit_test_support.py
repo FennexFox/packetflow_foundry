@@ -42,6 +42,7 @@ def run_git(
         cwd=repo,
         text=True,
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         check=False,
         env=env,
     )

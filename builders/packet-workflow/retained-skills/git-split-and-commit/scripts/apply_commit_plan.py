@@ -37,16 +37,18 @@ def run_git(
     check: bool = True,
     input_text: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    result = subprocess.run(
-        ["git", *args],
-        cwd=repo,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        input=input_text,
-        capture_output=True,
-        check=False,
-    )
+    run_kwargs: dict[str, Any] = {
+        "cwd": repo,
+        "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
+        "input": input_text,
+        "capture_output": True,
+        "check": False,
+    }
+    if input_text is None:
+        run_kwargs["stdin"] = subprocess.DEVNULL
+    result = subprocess.run(["git", *args], **run_kwargs)
     if check and result.returncode != 0:
         raise RuntimeError(result.stderr.strip() or result.stdout.strip() or "git failed")
     return result

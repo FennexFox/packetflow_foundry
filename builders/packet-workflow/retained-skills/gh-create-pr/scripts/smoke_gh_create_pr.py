@@ -74,6 +74,7 @@ def run_python(args: list[str], *, cwd: Path, env: dict[str, str]) -> subprocess
         text=True,
         encoding="utf-8",
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         check=False,
     )
     if result.returncode != 0:
@@ -89,6 +90,7 @@ def run_git(repo_root: Path, args: list[str]) -> None:
         text=True,
         encoding="utf-8",
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         check=False,
     )
     if result.returncode != 0:
@@ -108,6 +110,7 @@ def init_repo(repo_root: Path, origin_root: Path) -> None:
         text=True,
         encoding="utf-8",
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         check=False,
     )
     if result.returncode != 0:

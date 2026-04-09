@@ -328,16 +328,18 @@ def run_command(
     check: bool = True,
     stdin_text: str | None = None,
 ) -> str:
-    result = subprocess.run(
-        args,
-        cwd=cwd,
-        input=stdin_text,
-        text=True,
-        encoding="utf-8",
-        errors="replace",
-        capture_output=True,
-        check=False,
-    )
+    run_kwargs: dict[str, Any] = {
+        "cwd": cwd,
+        "input": stdin_text,
+        "text": True,
+        "encoding": "utf-8",
+        "errors": "replace",
+        "capture_output": True,
+        "check": False,
+    }
+    if stdin_text is None:
+        run_kwargs["stdin"] = subprocess.DEVNULL
+    result = subprocess.run(args, **run_kwargs)
     if check and result.returncode != 0:
         detail = result.stderr.strip() or result.stdout.strip() or f"{args[0]} failed"
         raise RuntimeError(detail)
@@ -649,6 +651,7 @@ def git_ref_exists(repo_root: Path, ref: str) -> bool:
         encoding="utf-8",
         errors="replace",
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         check=False,
     )
     return result.returncode == 0
@@ -669,6 +672,7 @@ def commit_exists(repo_root: Path, commit: str) -> bool:
         encoding="utf-8",
         errors="replace",
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         check=False,
     )
     return result.returncode == 0
@@ -682,6 +686,7 @@ def commit_is_ancestor(repo_root: Path, older: str, newer: str) -> bool:
         encoding="utf-8",
         errors="replace",
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         check=False,
     )
     return result.returncode == 0
@@ -917,6 +922,7 @@ def ensure_gh_auth(repo_root: Path) -> dict[str, Any]:
             encoding="utf-8",
             errors="replace",
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             check=False,
         )
     except FileNotFoundError:

@@ -81,6 +81,7 @@ class RewordWorkflowSmokeTests(unittest.TestCase):
             [sys.executable, "-B", str(script_path)],
             text=True,
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             check=False,
         )
 

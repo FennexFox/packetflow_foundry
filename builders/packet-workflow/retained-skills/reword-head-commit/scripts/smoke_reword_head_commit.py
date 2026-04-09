@@ -21,6 +21,7 @@ def run_git(repo: Path, *args: str, check: bool = True) -> str:
         cwd=repo,
         text=True,
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         check=False,
     )
     if check and result.returncode != 0:
@@ -74,6 +75,7 @@ def main() -> int:
             [sys.executable, "-B", str(DRIVER_PATH), "--repo", str(repo), "--message-file", str(message_path), "--apply"],
             text=True,
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             check=False,
         )
         if result.returncode != 0:

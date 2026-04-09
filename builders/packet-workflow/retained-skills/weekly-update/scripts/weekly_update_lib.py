@@ -327,6 +327,7 @@ def run_command(args: list[str], cwd: Path, *, check: bool = True) -> str:
             args,
             cwd=cwd,
             capture_output=True,
+            stdin=subprocess.DEVNULL,
             text=True,
             encoding="utf-8",
             errors="replace",

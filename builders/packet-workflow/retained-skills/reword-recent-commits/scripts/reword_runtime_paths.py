@@ -25,6 +25,7 @@ def run_git(repo: Path, args: list[str]) -> str:
         cwd=repo,
         text=True,
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         check=False,
     )
     if result.returncode != 0:
