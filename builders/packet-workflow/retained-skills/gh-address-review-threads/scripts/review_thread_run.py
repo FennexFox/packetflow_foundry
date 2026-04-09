@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import ast
 import hashlib
 import json
 import re
@@ -73,13 +74,69 @@ def normalize_status_path(path: str) -> str:
     return path.replace("\\", "/").strip()
 
 
+def decode_status_path_component(path: str) -> str:
+    candidate = str(path).strip()
+    if len(candidate) >= 2 and candidate[:1] == '"' and candidate[-1:] == '"':
+        try:
+            decoded = ast.literal_eval(candidate)
+        except (SyntaxError, ValueError):
+            decoded = candidate[1:-1]
+        if isinstance(decoded, str):
+            candidate = decoded
+    return normalize_status_path(candidate)
+
+
+def split_status_path_payload(payload: str) -> list[str]:
+    remaining = str(payload).strip()
+    parts: list[str] = []
+    while remaining:
+        if remaining[:1] == '"':
+            index = 1
+            escaped = False
+            while index < len(remaining):
+                char = remaining[index]
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    index += 1
+                    break
+                index += 1
+            parts.append(remaining[:index])
+            remaining = remaining[index:].lstrip()
+        else:
+            arrow_index = remaining.find(" -> ")
+            if arrow_index < 0:
+                parts.append(remaining)
+                remaining = ""
+            else:
+                parts.append(remaining[:arrow_index])
+                remaining = remaining[arrow_index + 4 :].lstrip()
+        if remaining.startswith("-> "):
+            remaining = remaining[3:].lstrip()
+    decoded_parts: list[str] = []
+    for part in parts:
+        decoded = decode_status_path_component(part)
+        if decoded:
+            decoded_parts.append(decoded)
+    return decoded_parts
+
+
 def status_entry_paths(entry: str) -> list[str]:
     payload = str(entry)[3:].strip() if len(str(entry)) > 3 else str(entry).strip()
     if not payload:
         return []
-    if " -> " in payload:
-        return [normalize_status_path(part) for part in payload.split(" -> ") if normalize_status_path(part)]
-    return [normalize_status_path(payload)]
+    return split_status_path_payload(payload)
+
+
+def canonicalize_status_entry(entry: str) -> str:
+    text = str(entry)
+    prefix = text[:2] if len(text) >= 2 else text.strip()
+    paths = status_entry_paths(text)
+    if not paths:
+        return text.strip()
+    return f"{prefix} {' -> '.join(paths)}"
 
 
 def is_runtime_status_entry(entry: str) -> bool:
@@ -392,17 +449,19 @@ def require_pre_ack_worktree_unchanged(
         raise RuntimeError(f"{action_label} could not refresh the git worktree status: {detail}")
     current_entries = [str(entry) for entry in current_snapshot.get("entries", []) if str(entry).strip()]
     normalized_baseline = [str(entry) for entry in baseline_entries if str(entry).strip()]
+    current_canonical_entries = sorted(canonicalize_status_entry(entry) for entry in current_entries)
+    baseline_canonical_entries = sorted(canonicalize_status_entry(entry) for entry in normalized_baseline)
     baseline_content_fingerprint = str(snapshot.get("content_fingerprint") or "").strip()
     current_content_fingerprint = str(current_snapshot.get("content_fingerprint") or "").strip()
-    if current_entries == normalized_baseline and (
+    if current_canonical_entries == baseline_canonical_entries and (
         not baseline_content_fingerprint or current_content_fingerprint == baseline_content_fingerprint
     ):
         return
     detail_parts = [
-        f"baseline={summarize_worktree_entries(normalized_baseline)}",
-        f"current={summarize_worktree_entries(current_entries)}",
+        f"baseline={summarize_worktree_entries(baseline_canonical_entries)}",
+        f"current={summarize_worktree_entries(current_canonical_entries)}",
     ]
-    if current_entries == normalized_baseline:
+    if current_canonical_entries == baseline_canonical_entries:
         detail_parts.append("content-sensitive comparison detected additional edits to already-dirty paths")
         detail_parts.append(f"baseline_content={baseline_content_fingerprint or '<unknown>'}")
         detail_parts.append(f"current_content={current_content_fingerprint or '<unknown>'}")

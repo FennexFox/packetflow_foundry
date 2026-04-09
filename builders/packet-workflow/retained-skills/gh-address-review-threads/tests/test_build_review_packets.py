@@ -50,6 +50,18 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertEqual(matched_exact_anchors, [])
         self.assertEqual(matched_terms, [])
 
+    def test_request_anchor_evidence_requires_boundary_aware_dotted_anchor_match(self) -> None:
+        visible, exact_anchors, matched_exact_anchors, matched_terms = packets.request_anchor_evidence(
+            "Please keep `module.helper` aligned with the new contract.",
+            snippet="module.helper_extra(context)\n",
+            diff_snippet=None,
+        )
+
+        self.assertFalse(visible)
+        self.assertEqual(exact_anchors, ["module.helper"])
+        self.assertEqual(matched_exact_anchors, [])
+        self.assertEqual(matched_terms, [])
+
     def test_delta_request_anchor_evidence_matches_canonical_identifier_terms(self) -> None:
         visible, matched_exact_anchors, identifier_anchors, matched_identifier_anchors = (
             packets.delta_request_anchor_evidence(
@@ -136,12 +148,44 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertEqual(identifier_anchors, ["module", "helper"])
         self.assertEqual(matched_identifier_anchors, ["module", "helper"])
 
+    def test_delta_request_anchor_evidence_requires_boundary_aware_dotted_anchor_match(self) -> None:
+        visible, matched_exact_anchors, identifier_anchors, matched_identifier_anchors = (
+            packets.delta_request_anchor_evidence(
+                "Please update `module.helper` to match the renamed parameter.",
+                diff_snippet=(
+                    "@@ -1,1 +1,1 @@\n"
+                    "-module.helper(old)\n"
+                    "+module.helper_extra(context)\n"
+                ),
+            )
+        )
+
+        self.assertFalse(visible)
+        self.assertEqual(matched_exact_anchors, [])
+        self.assertEqual(identifier_anchors, ["module", "helper"])
+        self.assertEqual(matched_identifier_anchors, ["module"])
+
     def test_grounding_diagnostics_marks_near_match_as_mismatch(self) -> None:
         grounding = build_grounding_diagnostics(
             "Please update `module.helper()` to match the renamed parameter.",
             path="src/app.py",
             path_exists=True,
             snippet="   10: module = helper\n",
+            diff_snippet=None,
+        )
+
+        self.assertTrue(grounding["has_explicit_anchor"])
+        self.assertFalse(grounding["exact_anchor_match"])
+        self.assertFalse(grounding["structural_anchor_match"])
+        self.assertTrue(grounding["grounding_mismatch"])
+        self.assertEqual(grounding["mapped_escape_reason"], "missing_required_evidence")
+
+    def test_grounding_diagnostics_rejects_structural_substring_false_positive(self) -> None:
+        grounding = build_grounding_diagnostics(
+            "Please update `module.helper` to match the renamed parameter.",
+            path="src/app.py",
+            path_exists=True,
+            snippet="   10: module.helper_extra(context)\n",
             diff_snippet=None,
         )
 
