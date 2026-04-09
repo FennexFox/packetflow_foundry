@@ -293,6 +293,70 @@ class ReviewThreadRunTests(unittest.TestCase):
                 ):
                     manage_run.main()
 
+    def test_record_ack_plan_requires_pre_ack_manifest_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            context = context_with_threads(
+                tmp,
+                [
+                    review_thread(
+                        thread_id="t-1",
+                        path="src/app.py",
+                        line=10,
+                        reviewer_login="reviewer-a",
+                        reviewer_body="Please rename this.",
+                    )
+                ],
+            )
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            repo_root = Path(context["repo_root"])
+            init_repo(repo_root)
+
+            context_path = tmp / "context.json"
+            validated_plan_path = tmp / "ack-plan.json"
+            write_json(context_path, context)
+            write_json(
+                validated_plan_path,
+                {
+                    "phase": "ack",
+                    "valid": True,
+                    "normalized_thread_actions": [
+                        {
+                            "thread_id": "t-1",
+                            "decision": "accept",
+                            "ack_mode": "add",
+                            "ack_body": ack_reply_body(decision="accept", detail="Will fix this."),
+                        }
+                    ],
+                },
+            )
+            manifest = run_support.create_run(
+                repo_root,
+                context_path,
+                run_id="test-run",
+                evaluation_log_path=tmp / "eval-log.json",
+            )
+            manifest_path = Path(manifest["paths"]["manifest"])
+            manifest["state"]["last_completed_phase"] = "ack-applied"
+            run_support.write_manifest(manifest_path, manifest)
+
+            argv = [
+                "manage_review_thread_run.py",
+                "record-plan",
+                "--manifest",
+                str(manifest_path),
+                "--phase",
+                "ack",
+                "--validated-plan",
+                str(validated_plan_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "record-plan --phase ack requires manifest state",
+                ):
+                    manage_run.main()
+
     def test_record_apply_cli_records_phase_result_and_advances_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)

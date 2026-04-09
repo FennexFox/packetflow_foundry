@@ -228,7 +228,8 @@ def request_anchor_evidence(
     snippet: str | None,
     diff_snippet: str | None,
 ) -> tuple[bool, list[str], list[str], list[str]]:
-    evidence_text = normalize_text_for_matching("\n".join(part for part in (snippet, diff_snippet) if part))
+    visible_line_texts = _visible_evidence_line_texts(snippet=snippet, diff_snippet=diff_snippet)
+    evidence_text = normalize_text_for_matching("\n".join(visible_line_texts))
     if not evidence_text:
         return False, [], [], []
 

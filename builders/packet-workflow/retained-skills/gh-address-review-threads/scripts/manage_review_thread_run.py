@@ -107,6 +107,11 @@ def main() -> int:
                 allowed={"post-prepared"},
             )
         else:
+            run_support.require_last_completed_phase(
+                manifest,
+                action_label="record-plan --phase ack",
+                allowed={"start", "ack-validated"},
+            )
             run_support.require_pre_ack_worktree_unchanged(
                 manifest,
                 action_label="record-plan --phase ack",

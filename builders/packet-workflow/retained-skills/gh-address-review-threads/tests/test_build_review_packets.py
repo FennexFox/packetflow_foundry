@@ -34,6 +34,22 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertEqual(matched_exact_anchors, [])
         self.assertEqual(matched_terms, [])
 
+    def test_request_anchor_evidence_ignores_removed_diff_lines_for_exact_anchors(self) -> None:
+        visible, exact_anchors, matched_exact_anchors, matched_terms = packets.request_anchor_evidence(
+            "Please keep `build_global_packet()` aligned with the new contract.",
+            snippet=None,
+            diff_snippet=(
+                "@@ -1,2 +1,2 @@\n"
+                "-def build_global_packet(report):\n"
+                "+def build_packet(context):\n"
+            ),
+        )
+
+        self.assertFalse(visible)
+        self.assertEqual(exact_anchors, ["buildglobalpacket()"])
+        self.assertEqual(matched_exact_anchors, [])
+        self.assertEqual(matched_terms, [])
+
     def test_delta_request_anchor_evidence_matches_canonical_identifier_terms(self) -> None:
         visible, matched_exact_anchors, identifier_anchors, matched_identifier_anchors = (
             packets.delta_request_anchor_evidence(
@@ -147,6 +163,25 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertFalse(grounding["has_explicit_anchor"])
         self.assertFalse(grounding["grounding_mismatch"])
         self.assertIsNone(grounding["mapped_escape_reason"])
+
+    def test_grounding_diagnostics_ignores_removed_diff_lines_for_exact_anchor_match(self) -> None:
+        grounding = build_grounding_diagnostics(
+            "Please keep `build_global_packet()` aligned with the new contract.",
+            path="src/app.py",
+            path_exists=True,
+            snippet=None,
+            diff_snippet=(
+                "@@ -1,2 +1,2 @@\n"
+                "-def build_global_packet(report):\n"
+                "+def build_packet(context):\n"
+            ),
+        )
+
+        self.assertTrue(grounding["has_explicit_anchor"])
+        self.assertFalse(grounding["exact_anchor_match"])
+        self.assertFalse(grounding["structural_anchor_match"])
+        self.assertTrue(grounding["grounding_mismatch"])
+        self.assertEqual(grounding["mapped_escape_reason"], "missing_required_evidence")
 
     def test_diff_snippet_cache_keys_hunks_by_line_number(self) -> None:
         cache: dict[packets.DiffCacheKey, str | None] = {}
