@@ -119,10 +119,18 @@ def _decision_mentions(line: str) -> list[str]:
 
 
 def _explicit_decision_line(line: str) -> str | None:
-    lowered = _stringify(line).lower()
-    if lowered in DECISIONS:
-        return lowered
-    return None
+    cleaned = _stringify(line)
+    if not cleaned:
+        return None
+    match = re.match(
+        r"^(?:decision\s*[:\-]\s*)?(?P<decision>defer-outdated|accept|reject|defer)\b",
+        cleaned,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    decision = _stringify(match.group("decision")).lower()
+    return decision if decision in DECISIONS else None
 
 
 def thread_sort_key(thread: dict[str, Any]) -> tuple[str, int, str]:

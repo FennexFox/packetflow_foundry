@@ -26,7 +26,8 @@ For the rationale behind keeping the workflow flat/generic, read [`architecture-
   - `skip`: ignore explicit id and preserve only the latest exact managed `ack` reply target
 - extra rules:
   - `skip` is valid only when the thread already has a latest exact managed `ack` reply
-  - the current exact managed `ack` reply must already encode the same decision as the plan on an explicit decision line; otherwise use `update`
+  - the current exact managed `ack` reply must already encode the same decision as the plan on an explicit decision line
+    such as `defer`, `defer until rerun`, or `Decision: defer until rerun`; otherwise use `update`
   - adoptable unmarked replies may be used as `update` fallback targets, but never as `skip` targets
 
 `complete`

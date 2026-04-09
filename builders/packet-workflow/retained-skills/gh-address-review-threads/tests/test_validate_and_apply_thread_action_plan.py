@@ -519,6 +519,68 @@ class ValidateAndApplyThreadActionPlanTests(unittest.TestCase):
             self.assertTrue(result["valid"])
             self.assertEqual(result["normalized_thread_actions"][0]["ack_mode"], "skip")
 
+    def test_validator_allows_skip_when_decision_line_uses_decision_prefix(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            thread = review_thread(
+                thread_id="t-1",
+                path="src/app.py",
+                line=10,
+                reviewer_login="reviewer-a",
+                reviewer_body="Please rename this.",
+                reply_candidates={
+                    "ack": reply_candidate(
+                        mode="update",
+                        comment_id="self-7",
+                        reason="exact_managed_reply",
+                        managed=True,
+                        adopted_unmarked_reply=False,
+                    ),
+                    "complete": reply_candidate(
+                        mode="add",
+                        comment_id=None,
+                        reason="complete_never_adopts_unmarked_reply",
+                        managed=False,
+                        adopted_unmarked_reply=False,
+                    ),
+                },
+                comments=[
+                    comment(
+                        comment_id="self-7",
+                        author_login="codex",
+                        body=(
+                            "<!-- codex:review-thread v1 phase=ack thread=t-1 -->\n"
+                            "Reviewer asked to rename this.\n"
+                            "Decision: defer until the current packet evidence is re-grounded.\n"
+                            "Waiting for clearer grounding before changing behavior."
+                        ),
+                        created_at="2026-03-01T00:05:00Z",
+                        managed_phase="ack",
+                        managed_thread_id="t-1",
+                        has_exact_managed_marker=True,
+                    )
+                ],
+            )
+            context = context_with_threads(tmp, [thread])
+            context["context_fingerprint"] = build_context_fingerprint(context)
+
+            result = validate_thread_action_payload(
+                context,
+                {
+                    "thread_actions": [
+                        {
+                            "thread_id": "t-1",
+                            "decision": "defer",
+                            "ack_mode": "skip",
+                        }
+                    ]
+                },
+                "ack",
+            )
+
+            self.assertTrue(result["valid"])
+            self.assertEqual(result["normalized_thread_actions"][0]["ack_mode"], "skip")
+
     def test_validator_allows_adoptable_ack_reply_update_fallback(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)

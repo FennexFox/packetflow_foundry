@@ -1150,19 +1150,33 @@ def main() -> int:
         batch_thread_reasons: list[str] = []
         batch_has_grounding_mismatch = False
         for thread in batch["threads"]:
+            thread_line = thread.get("line") or thread.get("original_line")
+            thread_context = {
+                "path": path,
+                "path_exists": (repo_root / path).is_file(),
+                "snippet": make_line_snippet(repo_root / path, int(thread_line) if thread_line else None),
+                "diff_snippet": diff_snippet_for_path(
+                    repo_root,
+                    str(pr.get("baseRefName") or ""),
+                    str(pr.get("headRefName") or ""),
+                    path,
+                    int(thread_line) if thread_line else None,
+                    diff_cache,
+                ),
+            }
             grounding = contract_build_grounding_diagnostics(
                 str((thread.get("reviewer_comment") or {}).get("body") or ""),
                 path=path,
-                path_exists=bool(common_context["path_exists"]),
-                snippet=common_context["snippet"],
-                diff_snippet=common_context["diff_snippet"],
+                path_exists=bool(thread_context["path_exists"]),
+                snippet=thread_context["snippet"],
+                diff_snippet=thread_context["diff_snippet"],
             )
             thread_quality = packet_quality_basis(
                 reviewer_bodies=[str((thread.get("reviewer_comment") or {}).get("body") or "")],
                 path=path,
-                path_exists=bool(common_context["path_exists"]),
-                snippet=common_context["snippet"],
-                diff_snippet=common_context["diff_snippet"],
+                path_exists=bool(thread_context["path_exists"]),
+                snippet=thread_context["snippet"],
+                diff_snippet=thread_context["diff_snippet"],
                 grounding=grounding,
             )
             thread_default = candidate_decision(thread, quality_basis=thread_quality)

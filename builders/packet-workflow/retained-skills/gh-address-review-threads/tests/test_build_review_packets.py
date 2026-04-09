@@ -503,6 +503,109 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertEqual(thread_defaults["t-2"]["default_decision_candidate"], "defer")
             self.assertTrue(thread_defaults["t-2"]["grounding"]["grounding_mismatch"])
 
+    def test_main_grounds_batched_threads_with_their_own_line_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            context = context_with_threads(
+                tmp,
+                [
+                    review_thread(
+                        thread_id="t-1",
+                        path="src/app.py",
+                        line=5,
+                        reviewer_login="reviewer-a",
+                        reviewer_body="Please revisit this.\n`module.helper()` should stay aligned.",
+                    ),
+                    review_thread(
+                        thread_id="t-2",
+                        path="src/app.py",
+                        line=40,
+                        reviewer_login="reviewer-b",
+                        reviewer_body="Please revisit this.\n`other.call()` should stay aligned.",
+                    ),
+                ],
+            )
+            repo_root = Path(context["repo_root"])
+            (repo_root / "src" / "app.py").write_text(
+                "\n".join(
+                    [
+                        "line 1",
+                        "line 2",
+                        "line 3",
+                        "line 4",
+                        "module.helper()",
+                        "line 6",
+                        "line 7",
+                        "line 8",
+                        "line 9",
+                        "line 10",
+                        "line 11",
+                        "line 12",
+                        "line 13",
+                        "line 14",
+                        "line 15",
+                        "line 16",
+                        "line 17",
+                        "line 18",
+                        "line 19",
+                        "line 20",
+                        "line 21",
+                        "line 22",
+                        "line 23",
+                        "line 24",
+                        "line 25",
+                        "line 26",
+                        "line 27",
+                        "line 28",
+                        "line 29",
+                        "line 30",
+                        "line 31",
+                        "line 32",
+                        "line 33",
+                        "line 34",
+                        "line 35",
+                        "line 36",
+                        "line 37",
+                        "line 38",
+                        "line 39",
+                        "other.call()",
+                        "line 41",
+                        "line 42",
+                    ]
+                )
+                + "\n",
+                encoding="utf-8",
+            )
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            context_path = tmp / "context.json"
+            output_dir = tmp / "packets"
+            build_result_path = tmp / "build-result.json"
+            write_json(context_path, context)
+
+            argv = [
+                "build_review_packets.py",
+                "--context",
+                str(context_path),
+                "--repo-root",
+                context["repo_root"],
+                "--output-dir",
+                str(output_dir),
+                "--result-output",
+                str(build_result_path),
+            ]
+            with patch.object(sys, "argv", argv), patch.object(packets, "diff_snippet_for_path", return_value=None):
+                self.assertEqual(packets.main(), 0)
+
+            batch_packet = json.loads((output_dir / "thread-batch-01.json").read_text(encoding="utf-8"))
+            thread_defaults = {item["thread_id"]: item for item in batch_packet["threads"]}
+
+            self.assertFalse(thread_defaults["t-1"]["grounding"]["grounding_mismatch"])
+            self.assertFalse(thread_defaults["t-2"]["grounding"]["grounding_mismatch"])
+            self.assertEqual(thread_defaults["t-1"]["default_decision_candidate"], "accept")
+            self.assertEqual(thread_defaults["t-2"]["default_decision_candidate"], "accept")
+            self.assertEqual(batch_packet["shared_fix_surface"]["default_decision_candidate"], "accept")
+            self.assertTrue(batch_packet["adjudication_basis"]["common_path_sufficient"])
+
     def test_review_mode_override_does_not_upgrade_missing_evidence_to_common_path_sufficient(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
