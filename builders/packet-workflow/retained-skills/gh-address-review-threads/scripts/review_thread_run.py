@@ -71,7 +71,7 @@ def repo_head_sha(repo_root: Path) -> str | None:
 
 
 def normalize_status_path(path: str) -> str:
-    return path.replace("\\", "/").strip()
+    return path.replace("\\", "/")
 
 
 def decode_status_path_component(path: str) -> str:

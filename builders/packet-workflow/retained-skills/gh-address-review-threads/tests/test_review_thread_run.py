@@ -54,6 +54,26 @@ class ReviewThreadRunTests(unittest.TestCase):
             run_support.status_entry_paths('R  "old name.py" -> "new name.py"'),
             ["old name.py", "new name.py"],
         )
+        self.assertEqual(
+            run_support.status_entry_paths(' M " leading.txt"'),
+            [" leading.txt"],
+        )
+        self.assertEqual(
+            run_support.status_entry_paths(' M "trailing.txt "'),
+            ["trailing.txt "],
+        )
+
+    def test_worktree_content_fingerprint_preserves_quoted_path_edge_whitespace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo_root = Path(tmp_dir)
+            leading_space_path = repo_root / " leading.txt"
+            leading_space_path.write_text("before\n", encoding="utf-8")
+
+            baseline = run_support.worktree_content_fingerprint(repo_root, [' M " leading.txt"'])
+            leading_space_path.write_text("after\n", encoding="utf-8")
+            updated = run_support.worktree_content_fingerprint(repo_root, [' M " leading.txt"'])
+
+            self.assertNotEqual(baseline, updated)
 
     def test_create_run_writes_manifest_pre_context_and_latest_pointer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
