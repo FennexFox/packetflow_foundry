@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import io
 import json
+import subprocess
 import sys
 import tempfile
 import unittest
@@ -18,6 +19,10 @@ for candidate in (str(TEST_DIR), str(SCRIPT_DIR)):
 import smoke_gh_address_review_threads as smoke  # type: ignore  # noqa: E402
 from review_thread_test_support import comment, context_with_threads, reply_candidate, review_thread, write_json  # noqa: E402
 from thread_action_contract import build_context_fingerprint  # type: ignore  # noqa: E402
+
+
+def init_repo(repo_root: Path) -> None:
+    subprocess.run(["git", "init"], cwd=repo_root, capture_output=True, text=True, check=True)
 
 
 class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
@@ -220,6 +225,7 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
             tmp_dir = Path(tmp_dir_name)
             repo_holder = tmp_dir / "repo-holder"
             repo_holder.mkdir()
+            init_repo(repo_holder)
             context = context_with_threads(
                 tmp_dir,
                 [
@@ -367,6 +373,7 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
             tmp_dir = Path(tmp_dir_name)
             repo_holder = tmp_dir / "repo-holder"
             repo_holder.mkdir()
+            init_repo(repo_holder)
             context = context_with_threads(tmp_dir, [])
             context["context_fingerprint"] = build_context_fingerprint(context)
 

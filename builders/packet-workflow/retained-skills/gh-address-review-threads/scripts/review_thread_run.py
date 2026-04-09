@@ -441,7 +441,11 @@ def require_pre_ack_worktree_unchanged(
             f"{action_label} requires a valid run-start pre-ack worktree snapshot; start a new run"
         )
     if snapshot.get("available") is not True:
-        return
+        detail = str(snapshot.get("error") or "git status failed").strip()
+        raise RuntimeError(
+            f"{action_label} requires a usable run-start pre-ack worktree snapshot; "
+            f"initial git worktree status was unavailable: {detail}"
+        )
     repo_root = Path(str(manifest.get("repo_root") or ".")).resolve()
     current_snapshot = repo_worktree_snapshot(repo_root)
     if current_snapshot.get("available") is not True:

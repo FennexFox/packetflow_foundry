@@ -779,6 +779,27 @@ class ReviewThreadRunTests(unittest.TestCase):
                 action_label="record-plan --phase ack",
             )
 
+    def test_require_pre_ack_worktree_unchanged_rejects_unavailable_baseline_snapshot(self) -> None:
+        manifest = {
+            "repo_root": "C:/repo",
+            "state": {
+                "pre_ack_worktree": {
+                    "available": False,
+                    "entries": [],
+                    "error": "git status failed",
+                }
+            },
+        }
+
+        with self.assertRaisesRegex(
+            RuntimeError,
+            "initial git worktree status was unavailable: git status failed",
+        ):
+            run_support.require_pre_ack_worktree_unchanged(
+                manifest,
+                action_label="record-plan --phase ack",
+            )
+
     def test_record_apply_rejects_dry_run_live_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)

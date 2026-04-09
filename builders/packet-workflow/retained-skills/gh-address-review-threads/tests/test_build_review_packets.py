@@ -62,6 +62,18 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertEqual(matched_exact_anchors, [])
         self.assertEqual(matched_terms, [])
 
+    def test_request_anchor_evidence_requires_all_exact_anchors(self) -> None:
+        visible, exact_anchors, matched_exact_anchors, matched_terms = packets.request_anchor_evidence(
+            "Please rename `old_name` to `new_name` before merging.",
+            snippet="old_name = current_value\n",
+            diff_snippet=None,
+        )
+
+        self.assertFalse(visible)
+        self.assertEqual(exact_anchors, ["oldname", "newname"])
+        self.assertEqual(matched_exact_anchors, ["oldname"])
+        self.assertEqual(matched_terms, [])
+
     def test_delta_request_anchor_evidence_matches_canonical_identifier_terms(self) -> None:
         visible, matched_exact_anchors, identifier_anchors, matched_identifier_anchors = (
             packets.delta_request_anchor_evidence(
@@ -195,6 +207,22 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertTrue(grounding["grounding_mismatch"])
         self.assertEqual(grounding["mapped_escape_reason"], "missing_required_evidence")
 
+    def test_grounding_diagnostics_marks_partial_multi_anchor_match_as_mismatch(self) -> None:
+        grounding = build_grounding_diagnostics(
+            "Please rename `old_name` to `new_name` before merging.",
+            path="src/app.py",
+            path_exists=True,
+            snippet="   10: old_name = current_value\n",
+            diff_snippet=None,
+        )
+
+        self.assertTrue(grounding["has_explicit_anchor"])
+        self.assertEqual(grounding["matched_exact_request_anchors"], ["oldname"])
+        self.assertFalse(grounding["exact_anchor_match"])
+        self.assertTrue(grounding["structural_anchor_match"])
+        self.assertTrue(grounding["grounding_mismatch"])
+        self.assertEqual(grounding["mapped_escape_reason"], "missing_required_evidence")
+
     def test_grounding_diagnostics_ignores_broad_natural_language_requests(self) -> None:
         grounding = build_grounding_diagnostics(
             "Please clarify this flow before merging.",
@@ -226,6 +254,29 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertFalse(grounding["structural_anchor_match"])
         self.assertTrue(grounding["grounding_mismatch"])
         self.assertEqual(grounding["mapped_escape_reason"], "missing_required_evidence")
+
+    def test_candidate_decision_defers_partial_multi_anchor_match(self) -> None:
+        grounding = build_grounding_diagnostics(
+            "Please rename `old_name` to `new_name` before merging.",
+            path="src/app.py",
+            path_exists=True,
+            snippet="   10: old_name = current_value\n",
+            diff_snippet=None,
+        )
+        quality_basis = packets.packet_quality_basis(
+            reviewer_bodies=["Please rename `old_name` to `new_name` before merging."],
+            path="src/app.py",
+            path_exists=True,
+            snippet="   10: old_name = current_value\n",
+            diff_snippet=None,
+            grounding=grounding,
+        )
+
+        self.assertTrue(quality_basis["grounding_mismatch"])
+        self.assertEqual(
+            packets.candidate_decision({"is_outdated": False}, quality_basis=quality_basis),
+            "defer",
+        )
 
     def test_diff_snippet_cache_keys_hunks_by_line_number(self) -> None:
         cache: dict[packets.DiffCacheKey, str | None] = {}
