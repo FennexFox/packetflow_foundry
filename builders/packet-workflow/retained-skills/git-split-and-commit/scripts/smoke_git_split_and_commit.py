@@ -242,19 +242,21 @@ def main() -> int:
 
         build_result = load_json(build_result_path)
         eval_log = load_json(eval_log_path)
-        packet_metrics = load_json(packet_dir / "packet_metrics.json")
+        packet_sizing = load_json(packet_dir / "packet_sizing.json")
+        packet_compaction = ((build_result.get("efficiency") or {}).get("packet_compaction") or {})
         if not build_result.get("common_path_sufficient"):
             raise RuntimeError("Smoke fixture should be common-path sufficient.")
         if build_result.get("raw_reread_count") != 0:
             raise RuntimeError("Smoke fixture unexpectedly requires raw rereads.")
-        if packet_metrics.get("packet_tokens", 0) >= packet_metrics.get("local_only_tokens", 0):
+        if packet_compaction.get("packet_tokens", 0) >= packet_compaction.get("local_only_tokens", 0):
             raise RuntimeError("Packet tokens should remain below local-only tokens for the smoke fixture.")
 
         summary = {
             "common_path_sufficient": build_result.get("common_path_sufficient"),
             "raw_reread_count": build_result.get("raw_reread_count"),
             "raw_reread_reasons": build_result.get("raw_reread_reasons"),
-            "packet_metrics": packet_metrics,
+            "packet_sizing": packet_sizing,
+            "packet_compaction": packet_compaction,
             "evaluation_log": {
                 "result_status": (eval_log.get("quality") or {}).get("result_status"),
                 "common_path_sufficient": ((eval_log.get("skill_specific") or {}).get("data") or {}).get("common_path_sufficient"),

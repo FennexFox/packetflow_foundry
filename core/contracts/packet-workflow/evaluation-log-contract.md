@@ -29,10 +29,11 @@ Every evaluation log should contain:
 - `request`
 - `input_size`
 - `orchestration`
-- `baseline`
 - `measurement`
 - `tokens`
 - `latency`
+- `packet_sizing`
+- `efficiency`
 - `quality`
 - `safety`
 - `outputs`
@@ -44,8 +45,9 @@ Every evaluation log should contain:
 
 - Keep only truly common fields in the shared envelope.
 - Put workflow-specific counters and mutation details in `skill_specific.data`.
-- Record observed values first. Estimated values must be labeled in `baseline` or per-component provenance fields.
-- If no baseline is available, leave savings fields null instead of inventing a comparison.
+- Record observed values first. Estimated or unavailable values must be labeled through per-component provenance fields.
+- Do not reintroduce legacy shared fields such as `baseline`, `measurement.token_source`, or `measurement.efficiency_source`.
+- Merge packet-sizing and packet-compaction telemetry from build results or finalize payloads. They are evaluation artifacts, not runtime routing inputs.
 - Scores must renormalize weights when inputs are missing.
 
 ## Orchestration
@@ -112,6 +114,7 @@ The common helper should support:
 - `init`
   - build a base log from `context`, `orchestrator`, and optional `lint`
 - `phase`
-  - merge deterministic phase outputs such as lint, validate, and apply results
+  - merge deterministic phase outputs such as build, lint, validate, and apply results
+  - build-phase merges should populate shared `packet_sizing` and `efficiency` fields, using `packet_sizing.json` only as an evaluation-side sidecar when present
 - `finalize`
   - merge agent-only observations such as token usage, actual worker mix, final usability, outputs, and notes

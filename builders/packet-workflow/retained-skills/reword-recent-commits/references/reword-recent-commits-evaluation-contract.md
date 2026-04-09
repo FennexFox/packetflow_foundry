@@ -2,59 +2,44 @@
 
 Use this file for `reword-recent-commits` evaluation logs.
 
-## Skill-Specific Focus
-
-Record the signals that matter for history rewrite safety, build efficiency, and rewrite quality:
-
-- commit count and branch identity
-- planned versus applied commit hashes
-- validation commands that actually ran
-- whether the branch ref moved cleanly
-- packet routing and flat/generic metadata
-- packet-efficiency estimates from the build phase
-
-## Skill-Specific Data
-
-Keep these values in `skill_specific.data` when they are available:
+## Recommended Skill-Specific Fields
 
 - `branch`
 - `count`
-- `commit_packet_count`
-- `decision_ready_packets`
-- `worker_return_contract`
-- `worker_output_shape`
-- `base_commit`
-- `head_commit`
-- `new_head`
-- `rewrite_mode`
-- `validation_commands`
-- `applied_commit_hashes`
 - `rules_reliability`
-- `context_fingerprint`
-- `force_push_needed`
-- `commits_rewritten`
-- `cleanup_succeeded`
-- `packet_count`
-- `packet_tokens`
-- `savings_tokens`
+- `commit_packet_count`
+- `delegation_non_use_cases`
 - `common_path_sufficient`
 - `raw_reread_count`
-- `raw_reread_reasons`
-- `delegation_non_use_cases`
+- `validation_commands`
+- `new_head`
+- `applied_commit_hashes`
+- `force_push_needed`
+- `cleanup_succeeded`
+
+## Shared Envelope Boundary
+
+Keep these shared metrics out of `skill_specific.data`:
+- `orchestration.planned_workers` and `orchestration.actual_workers`
+- `packet_sizing`
+- `efficiency.packet_compaction`
+- `efficiency.model_tier_delegation`
+- token costs under `tokens.*`
 
 ## Phase Guidance
 
-- `init`
-  - capture the collected commit plan and orchestrator snapshot
-- `phase=build`
-  - record `packet_metrics`
-  - record `common_path_sufficient`
-  - record `raw_reread_count` and `raw_reread_reasons`
-  - record record-only/fatal cases in `delegation_non_use_cases`
-  - populate baseline token estimates from the build result
-- `phase=validate`
-  - record `fingerprint_match`, stop reasons, and rules reliability
-- `phase=apply`
-  - record `new_head`, `applied_commit_hashes`, `commits_rewritten`, and cleanup outcome
-- `finalize`
-  - record the final rewritten tip and any remaining caution
+- `build`
+  - record `commit_packet_count`, `delegation_non_use_cases`,
+    `common_path_sufficient`, and `raw_reread_count`
+  - keep packet sizing and packet-compaction telemetry in shared `packet_sizing`
+    and `efficiency` fields
+- `validate`
+  - record `validation_commands` and any updated `rules_reliability`
+- `apply`
+  - record `new_head`, `applied_commit_hashes`, `force_push_needed`, and
+    `cleanup_succeeded`
+
+## Logging Rules
+
+- Keep raw commit bodies and packet bodies out of the evaluation log.
+- Prefer counts, booleans, enums, and short lists over prose summaries.

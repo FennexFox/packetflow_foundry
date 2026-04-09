@@ -1,26 +1,24 @@
 # Evaluation Log Contract
 
-Use this file for the shared evaluation-log envelope across packet-driven repo workflow skills.
+Use this file for the shared evaluation-log envelope in `public-docs-sync`.
 
 ## Purpose
 
-Track three outcomes consistently across runs:
+Track three outcomes consistently:
 - efficiency
 - quality
 - safety
 
-The log is a local operational artifact. It should default under the repo-local
-scratch tree at:
+Default repo-local log path:
 
-`<repo-root>/.codex/tmp/evaluation_logs/<skill-name>/<run-id>.json`
+`<repo-root>/.codex/tmp/evaluation_logs/public-docs-sync/<run-id>.json`
 
-An explicit override path is allowed, but the default should stay under
-`.codex/tmp/evaluation_logs/`.
+The default path should stay under `.codex/tmp/evaluation_logs/`. An explicit
+override path is allowed.
 
-## Top-Level Shape
+## Common Envelope
 
-Every evaluation log should contain:
-
+Use this top-level shape:
 - `schema_version`
 - `run_id`
 - `timestamp_utc`
@@ -29,10 +27,11 @@ Every evaluation log should contain:
 - `request`
 - `input_size`
 - `orchestration`
-- `baseline`
 - `measurement`
 - `tokens`
 - `latency`
+- `packet_sizing`
+- `efficiency`
 - `quality`
 - `safety`
 - `outputs`
@@ -42,48 +41,23 @@ Every evaluation log should contain:
 
 ## Common Rules
 
-- Keep only truly common fields in the shared envelope.
-- Put workflow-specific counters and mutation details in `skill_specific.data`.
-- Record observed values first. Estimated values must be labeled in `measurement` or `baseline`.
-- If no baseline is available, leave savings fields null instead of inventing a comparison.
-- Scores must renormalize weights when inputs are missing.
+- Keep truly common fields in the shared envelope only.
+- Put workflow-specific counters or mutation details in `skill_specific.data`.
+- Keep packet sizing and packet-compaction telemetry in shared `packet_sizing` and `efficiency` blocks, not in `skill_specific.data`.
+- Label estimated or unavailable data through shared provenance fields.
+- Do not reintroduce legacy shared fields such as `baseline`, `measurement.token_source`, or `measurement.efficiency_source`.
+- Renormalize scoring weights when a signal is missing.
 
-## Baseline
+## Helper Workflow
 
-- `baseline.method`: `none | heuristic_local_only | paired_run | historical_cohort`
-- default: `none`
-- include packet-compaction fields only when they actually exist:
-  - `local_only_tokens`
-  - `packet_tokens`
-  - `savings_tokens`
-- keep `baseline.confidence` explicit when a heuristic or historical estimate is used
-
-## Measurement
-
-At minimum record:
-- `token_source`: `measured | estimated | unavailable`
-- `latency_source`: `measured | estimated | unavailable`
-- `quality_source`: `self_assessed | human_confirmed | mixed | unavailable`
-
-## Scoring
-
-- `scoring.formula_version` is required
-- `efficiency_score` should prefer observed signals:
-  - worker fit
-  - packet use
-  - raw reread
-  - reruns
-  - token share when available
-- `quality_score` should use first-pass usability, human post-edit needs, unsupported claims, evidence gaps, template violations, and final-output stability
-- `safety_score` should use validate/apply boundaries, fingerprint checks, ambiguous matches, marker conflicts, rollback, and apply-after-failed-validation violations
-- `overall_score` should weight safety highest, then quality, then efficiency
-
-## Lifecycle
-
-The common helper should support:
+Use `scripts/write_evaluation_log.py` in three modes:
 - `init`
-  - build a base log from `context`, `orchestrator`, and optional `lint`
+  - `--context <json> --orchestrator <json> [--lint <json>] [--output <json>]`
 - `phase`
-  - merge deterministic phase outputs such as lint, validate, and apply results
+  - `--log <json> --phase build|lint|validate|apply --result <json> [--duration-seconds <float>]`
 - `finalize`
-  - merge agent-only observations such as token usage, actual worker mix, final usability, outputs, and notes
+  - `--log <json> --final <json>`
+
+Build-phase merge should populate shared `packet_sizing` and `efficiency`
+fields, using `packet_sizing.json` only as an evaluation-side sidecar when
+present.

@@ -9,8 +9,9 @@ from pathlib import Path
 TEST_DIR = Path(__file__).resolve().parent
 SCRIPT_DIR = TEST_DIR.parent / "scripts"
 for candidate in (str(TEST_DIR), str(SCRIPT_DIR)):
-    if candidate not in sys.path:
-        sys.path.insert(0, candidate)
+    while candidate in sys.path:
+        sys.path.remove(candidate)
+    sys.path.insert(0, candidate)
 
 sys.modules.pop("write_evaluation_log", None)
 import write_evaluation_log as eval_log  # noqa: E402

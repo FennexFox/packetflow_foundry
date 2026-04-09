@@ -35,8 +35,9 @@ from reword_plan_contract import (
 )
 
 BUILDER_SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
-if str(BUILDER_SCRIPTS_DIR) not in sys.path:
-    sys.path.append(str(BUILDER_SCRIPTS_DIR))
+while str(BUILDER_SCRIPTS_DIR) in sys.path:
+    sys.path.remove(str(BUILDER_SCRIPTS_DIR))
+sys.path.insert(0, str(BUILDER_SCRIPTS_DIR))
 
 import evaluation_log_common as common  # noqa: E402
 

@@ -308,17 +308,18 @@ def main() -> int:
         build_result = read_json(build_result_path)
         validation = read_json(validation_path)
         apply_result = read_json(apply_result_path)
-        packet_metrics = read_json(packet_dir / "packet_metrics.json")
+        packet_sizing = read_json(packet_dir / "packet_sizing.json")
         eval_log = read_json(eval_log_path)
         orchestrator = read_json(packet_dir / "orchestrator.json")
+        packet_compaction = ((build_result.get("efficiency") or {}).get("packet_compaction") or {})
 
         assert build_result["qa_required"] is False
         assert build_result["raw_reread_count"] == 0
         assert build_result["common_path_sufficient"] is True
         assert validation["qa_required"] is False
         assert apply_result["apply_succeeded"] is True
-        assert packet_metrics["packet_tokens"] < packet_metrics["local_only_tokens"]
-        assert packet_metrics["savings_tokens"] > 0
+        assert packet_compaction["packet_tokens"] < packet_compaction["local_only_tokens"]
+        assert packet_compaction["savings_tokens"] > 0
         assert "packet_tokens" not in orchestrator
         assert eval_log["skill_specific"]["data"]["common_path_sufficient"] is True
         assert eval_log["skill_specific"]["data"]["raw_reread_count"] == 0
@@ -330,9 +331,11 @@ def main() -> int:
                     "qa_required": build_result["qa_required"],
                     "raw_reread_count": build_result["raw_reread_count"],
                     "common_path_sufficient": build_result["common_path_sufficient"],
-                    "local_only_tokens": packet_metrics["local_only_tokens"],
-                    "packet_tokens": packet_metrics["packet_tokens"],
-                    "savings_tokens": packet_metrics["savings_tokens"],
+                    "packet_count": packet_sizing["packet_count"],
+                    "packet_size_bytes": packet_sizing["packet_size_bytes"],
+                    "local_only_tokens": packet_compaction["local_only_tokens"],
+                    "packet_tokens": packet_compaction["packet_tokens"],
+                    "savings_tokens": packet_compaction["savings_tokens"],
                 },
                 indent=2,
                 ensure_ascii=True,

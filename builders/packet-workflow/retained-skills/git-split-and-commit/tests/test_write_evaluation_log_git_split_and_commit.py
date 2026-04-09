@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
-if str(SCRIPT_DIR) in sys.path:
+while str(SCRIPT_DIR) in sys.path:
     sys.path.remove(str(SCRIPT_DIR))
 sys.path.insert(0, str(SCRIPT_DIR))
 

@@ -1043,6 +1043,7 @@ def build_result_packet_metrics(result: dict[str, Any]) -> dict[str, Any] | None
             "packet_size_bytes": packet_sizing.get("packet_size_bytes"),
             "largest_packet_bytes": packet_sizing.get("largest_packet_bytes"),
             "largest_two_packets_bytes": packet_sizing.get("largest_two_packets_bytes"),
+            "packet_size_breakdown": packet_sizing.get("packet_size_breakdown"),
             "estimated_local_only_tokens": packet_compaction.get("local_only_tokens"),
             "estimated_packet_tokens": packet_compaction.get("packet_tokens"),
             "estimated_delegation_savings": packet_compaction.get("savings_tokens"),

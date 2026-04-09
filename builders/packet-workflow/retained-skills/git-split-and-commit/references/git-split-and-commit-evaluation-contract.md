@@ -2,49 +2,42 @@
 
 Use this file for `git-split-and-commit` evaluation logs.
 
-## Skill-Specific Focus
+## Recommended Skill-Specific Fields
 
-Record the signals that matter for split planning and commit application:
-- bucket count and split confidence
-- validation commands and targeted checks
-- staged commit hashes and final head
-- hunk rematch or fingerprint failures
-- hard-stop category and rollback status when apply stops
-- dry-run versus applied-plan outcomes
-- packet routing and decision-ready metadata when available
-
-## Skill-Specific Data
-
-Keep these values in `skill_specific.data` when they are available:
 - `commit_buckets_planned`
 - `commit_buckets_applied`
 - `split_file_count`
 - `decision_ready_packets`
-- `worker_return_contract`
-- `worker_output_shape`
 - `common_path_sufficient`
 - `raw_reread_count`
-- `raw_reread_reasons`
 - `delegation_non_use_cases`
-- `packet_count`
-- `packet_tokens`
-- `savings_tokens`
-- Derive fallback packet counts from the file-oriented `packet_order` or `packet_files` list when explicit packet metrics are absent.
-- `validation_commands`
-- `targeted_checks`
-- `created_hashes`
-- `final_head`
-- `dry_run`
-- `plan_validation`
-- `apply_status`
-- `stop_categories`
-- `rollback_status`
+- `targeted_checks_failed`
+
+## Shared Envelope Boundary
+
+Keep these shared metrics out of `skill_specific.data`:
+- `orchestration.planned_workers` and `orchestration.actual_workers`
+- `packet_sizing`
+- `efficiency.packet_compaction`
+- `efficiency.model_tier_delegation`
+- token costs under `tokens.*`
 
 ## Phase Guidance
 
-- `init`
-  - capture the collected worktree and packet orchestration snapshot
-- `phase`
-  - record build-phase packet metrics, common-path sufficiency, and record-only/fatal delegation non-use metadata, then validation or apply-stage results
+- `build`
+  - update candidate-batch counts, split-file counts, `common_path_sufficient`,
+    and raw-reread counters
+  - keep packet sizing and packet-compaction telemetry in shared `packet_sizing`
+    and `efficiency` fields
+- `apply`
+  - update `commit_buckets_applied`
 - `finalize`
-  - record the created commit hashes and any remaining apply caveat
+  - record actual worker usage or final token costs only through the shared
+    envelope
+
+## Logging Rules
+
+- Keep hunk text, commit bodies, and packet bodies out of the evaluation log.
+- Prefer counters and enums over narrative summaries.
+- Derive packet counts from runtime packet order only for fallback reporting,
+  not as a replacement for shared `packet_sizing`.

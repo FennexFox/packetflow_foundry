@@ -35,8 +35,9 @@ def resolve_builder_scripts_dir() -> Path:
 
 
 BUILDER_SCRIPTS_DIR = resolve_builder_scripts_dir()
-if str(BUILDER_SCRIPTS_DIR) not in sys.path:
-    sys.path.append(str(BUILDER_SCRIPTS_DIR))
+while str(BUILDER_SCRIPTS_DIR) in sys.path:
+    sys.path.remove(str(BUILDER_SCRIPTS_DIR))
+sys.path.insert(0, str(BUILDER_SCRIPTS_DIR))
 
 import evaluation_log_common as common  # noqa: E402
 
