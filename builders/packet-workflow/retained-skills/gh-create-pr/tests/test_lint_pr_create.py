@@ -325,6 +325,28 @@ class LintPrCreateTests(unittest.TestCase):
             findings["detected"]["unsupported_claims"],
         )
 
+    def test_candidate_findings_allow_canonicalized_issue_refs(self) -> None:
+        context = collected_context()
+        context["issue_reference_hints"]["numbers"] = ["1"]
+
+        findings = lint.collect_candidate_findings(
+            context,
+            "feat(pr-create): create guarded PRs",
+            candidate_body(
+                what_changed="- Added validator/apply gates.",
+                why=["- Open a guarded PR.", "- Refs: #01", "- Fixes: #01"],
+                how="- Keep create fail-closed.",
+                risk=[
+                    "- Risk areas:",
+                    "  - Validation could drift.",
+                    "- Rollback / mitigation:",
+                    "  - Re-run validation.",
+                ],
+            ),
+        )
+
+        self.assertEqual(findings["detected"]["unsupported_claims"], [])
+
     def test_candidate_findings_allow_internal_migration_batch_wording(self) -> None:
         findings = lint.collect_candidate_findings(
             collected_context(),

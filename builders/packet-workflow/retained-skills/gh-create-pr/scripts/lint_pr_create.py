@@ -9,7 +9,7 @@ import re
 from pathlib import Path
 from typing import Any
 
-from pr_create_tools import PR_TITLE_RE
+from pr_create_tools import PR_TITLE_RE, canonical_issue_number
 
 
 PLACEHOLDER_PATTERNS = [
@@ -130,7 +130,7 @@ def parse_diff_totals(diff_stat: str | None) -> dict[str, int]:
 def referenced_issue_numbers(text: str) -> list[str]:
     seen: list[str] = []
     for match in ISSUE_REF_PATTERN.finditer(text):
-        number = match.group("number")
+        number = canonical_issue_number(match.group("number"))
         if number not in seen:
             seen.append(number)
     return seen
@@ -335,7 +335,11 @@ def collect_candidate_findings(context: dict[str, Any], title: str, body: str) -
     bodies = section_bodies(body)
     asserted_body = asserted_claim_text(body)
     asserted_bodies = section_bodies(asserted_body)
-    issue_hints = set(str(item) for item in context.get("issue_reference_hints", {}).get("numbers", []))
+    issue_hints = {
+        canonical_issue_number(str(item))
+        for item in context.get("issue_reference_hints", {}).get("numbers", [])
+        if str(item).strip()
+    }
     runtime_count = int(((context.get("changed_file_groups") or {}).get("runtime") or {}).get("count", 0))
     testing_signals = context.get("testing_signal_candidates") or {}
     allowed_commands = set(str(item).strip() for item in testing_signals.get("exact_commands", []) if str(item).strip())
@@ -370,7 +374,10 @@ def collect_candidate_findings(context: dict[str, Any], title: str, body: str) -
             )
 
     all_refs = set(referenced_issue_numbers(asserted_body))
-    closing_refs = {match.group("number") for match in CLOSING_REF_PATTERN.finditer(asserted_body)}
+    closing_refs = {
+        canonical_issue_number(match.group("number"))
+        for match in CLOSING_REF_PATTERN.finditer(asserted_body)
+    }
     if all_refs and not all_refs.issubset(issue_hints):
         unsupported_claims.append(
             "Issue references are present without matching issue hints from the process packet."

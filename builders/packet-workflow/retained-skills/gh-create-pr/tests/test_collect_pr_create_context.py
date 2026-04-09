@@ -166,8 +166,12 @@ class CollectPrCreateContextTests(unittest.TestCase):
                 sys.argv[:] = original_argv
                 if original_pr_create_tools is not None:
                     sys.modules["pr_create_tools"] = original_pr_create_tools
+                else:
+                    sys.modules.pop("pr_create_tools", None)
                 if original_versioning is not None:
                     sys.modules["packet_workflow_versioning"] = original_versioning
+                else:
+                    sys.modules.pop("packet_workflow_versioning", None)
                 sys.modules.pop(module_name, None)
 
             payload = json.loads(output_path.read_text(encoding="utf-8"))

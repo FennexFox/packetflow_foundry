@@ -35,7 +35,7 @@ Resolution rules:
 - base resolution order is `--base`, `branch.<current>.gh-merge-base`, remote default branch
 - head resolution order is `--head`, current branch
 - explicit issue hints must come from repeated `--issue-hint` inputs and normalize only exact `15` / `#15` values
-- explicit testing evidence must come from repeated `--test-command` inputs and normalize only exact single-line commands
+- explicit testing evidence must come from repeated `--test-command` inputs and normalize only exact single-line commands without backticks
 - collected issue-reference hints merge branch metadata, commit-subject metadata, and trusted explicit issue hints
 - v1 stops closed when the resolved remote head does not exist
 
