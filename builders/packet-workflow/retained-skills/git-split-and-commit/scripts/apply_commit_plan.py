@@ -17,6 +17,7 @@ from validate_commit_plan import (
     json_fingerprint,
     load_json,
     normalize_body,
+    normalize_footer,
     string_list,
     validate_plan_against_worktree,
 )
@@ -57,9 +58,14 @@ def build_commit_message(commit: dict[str, Any]) -> str:
     subject = str(commit.get("subject", "")).strip()
     first_line = f"{message_type}({scope}): {subject}" if scope else f"{message_type}: {subject}"
     body_lines = normalize_body(commit.get("body"))
-    if not body_lines:
-        return first_line + "\n"
-    return first_line + "\n\n" + "\n".join(body_lines) + "\n"
+    footer_lines = normalize_footer(commit.get("footer"))
+
+    sections = [first_line]
+    if body_lines:
+        sections.append("\n".join(body_lines))
+    if footer_lines:
+        sections.append("\n".join(footer_lines))
+    return "\n\n".join(sections) + "\n"
 
 
 def build_hunk_lookup(worktree: dict[str, Any]) -> dict[str, dict[str, Any]]:

@@ -33,6 +33,7 @@ Use this skill to turn one working tree into logical commits with a guarded `col
 - Read `orchestrator.json` first, then `global_packet.json`, then `rules_packet.json` and `worktree_packet.json`, then at most one focused packet at a time on the common path.
 3. Draft and validate the local commit plan.
 - Draft `commit-plan.json` against `references/commit-plan-contract.md`.
+- Keep `body` bullet lines and `footer` trailer lines in separate fields; use `footer: []` when the repo does not require a footer.
 - Run `<python-bin> -B <skill-dir>/scripts/validate_commit_plan.py --worktree <worktree-json> --plan <commit-plan-json> --output <validation-json>`.
 - Run `<python-bin> -B <skill-dir>/scripts/apply_commit_plan.py --worktree <worktree-json> --validation <validation-json> [--dry-run] --result-output <apply-result-json>` only after local review of the validator output.
 4. If `orchestrator.json` sets a delegated review mode, follow `packet_worker_map` per focused packet and keep `apply_commit_plan.py` local.

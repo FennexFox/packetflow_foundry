@@ -58,6 +58,7 @@ Commit-entry fields:
   - `scope`
   - `subject`
   - `body`
+  - `footer`
   - `whole_file_paths`
   - `untracked_paths`
   - `split_paths`
@@ -115,6 +116,7 @@ Each item in `commits` must include:
 - `scope`
 - `subject`
 - `body`
+- `footer`
 - `whole_file_paths`
 - `untracked_paths`
 - `split_paths`
@@ -145,6 +147,7 @@ Validator warning codes:
 - `W_PLAN_UNKNOWN_TOP_LEVEL_FIELD`
 - `W_PLAN_UNKNOWN_COMMIT_FIELD`
 - `W_PLAN_BODY_STRING_NORMALIZED`
+- `W_PLAN_FOOTER_STRING_NORMALIZED`
 - `W_PLAN_COMMIT_INDEX_NON_SEQUENTIAL`
 - `W_PLAN_EMPTY_SCOPE`
 - `W_PLAN_NON_BULLET_BODY`
@@ -189,6 +192,9 @@ Apply and local validation must preserve explicit hard-stop categories for opera
 - Compose the final subject as `<type>(<scope>): <subject>` unless the collected rules explicitly say otherwise.
 - Keep `subject` to the human-readable summary fragment only, not the full Conventional Commit line.
 - Keep `body` as a list of bullet lines or an empty list.
+- Keep `footer` as a list of normalized footer lines or an empty list.
+- Use `footer: []` when the repo does not require a footer, and do not move footer trailers into `body`.
+- Render the final commit message as subject, optional body, and optional footer separated by blank lines.
 
 Example shape:
 
@@ -214,6 +220,9 @@ Example shape:
       "body": [
         "- update telemetry automation to accept one known fix-toggle delta",
         "- add tests and reporting guidance for the new comparison rule"
+      ],
+      "footer": [
+        "Refs: #123"
       ],
       "whole_file_paths": [
         ".github/scripts/perf_telemetry_automation.py",

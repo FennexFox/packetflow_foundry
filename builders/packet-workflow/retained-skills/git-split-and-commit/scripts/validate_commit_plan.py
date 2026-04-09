@@ -41,6 +41,7 @@ PLAN_PHASE_FIELD_TABLES = {
                 "scope",
                 "subject",
                 "body",
+                "footer",
                 "whole_file_paths",
                 "untracked_paths",
                 "split_paths",
@@ -77,6 +78,7 @@ PLAN_PHASE_FIELD_TABLES = {
                 "scope",
                 "subject",
                 "body",
+                "footer",
                 "whole_file_paths",
                 "untracked_paths",
                 "split_paths",
@@ -118,6 +120,7 @@ VALIDATION_WARNING_CODES = {
     "unknown_top_level_field": "W_PLAN_UNKNOWN_TOP_LEVEL_FIELD",
     "unknown_commit_field": "W_PLAN_UNKNOWN_COMMIT_FIELD",
     "body_string_normalized": "W_PLAN_BODY_STRING_NORMALIZED",
+    "footer_string_normalized": "W_PLAN_FOOTER_STRING_NORMALIZED",
     "commit_index_non_sequential": "W_PLAN_COMMIT_INDEX_NON_SEQUENTIAL",
     "empty_scope": "W_PLAN_EMPTY_SCOPE",
     "non_bullet_body": "W_PLAN_NON_BULLET_BODY",
@@ -268,7 +271,7 @@ def command_strings(value: Any) -> list[str]:
     return []
 
 
-def normalize_body(value: Any) -> list[str]:
+def normalize_message_lines(value: Any) -> list[str]:
     if value is None:
         return []
     if isinstance(value, list):
@@ -276,6 +279,14 @@ def normalize_body(value: Any) -> list[str]:
     if isinstance(value, str):
         return [line for line in value.splitlines() if line.strip()]
     return [str(value)]
+
+
+def normalize_body(value: Any) -> list[str]:
+    return normalize_message_lines(value)
+
+
+def normalize_footer(value: Any) -> list[str]:
+    return normalize_message_lines(value)
 
 
 def normalize_path_string(value: Any) -> str:
@@ -502,6 +513,7 @@ def normalize_commit(
         "scope": str(commit.get("scope", "")).strip(),
         "subject": str(commit.get("subject", "")).strip(),
         "body": normalize_body(commit.get("body")),
+        "footer": normalize_footer(commit.get("footer")),
         "whole_file_paths": string_list(commit.get("whole_file_paths")),
         "untracked_paths": string_list(commit.get("untracked_paths")),
         "split_paths": string_list(commit.get("split_paths")),
@@ -517,6 +529,15 @@ def normalize_commit(
             code=VALIDATION_WARNING_CODES["body_string_normalized"],
             message=f"Commit {commit_index} normalized string `body` into bullet lines.",
             field="body",
+            commit_index=commit_index,
+        )
+    if isinstance(commit.get("footer"), str):
+        push_issue(
+            warnings,
+            warning_details,
+            code=VALIDATION_WARNING_CODES["footer_string_normalized"],
+            message=f"Commit {commit_index} normalized string `footer` into footer lines.",
+            field="footer",
             commit_index=commit_index,
         )
     return normalized

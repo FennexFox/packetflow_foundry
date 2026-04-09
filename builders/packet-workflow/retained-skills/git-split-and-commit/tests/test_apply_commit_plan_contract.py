@@ -16,10 +16,21 @@ if str(SCRIPT_DIR) not in sys.path:
 import apply_commit_plan as apply_commit  # noqa: E402
 import validate_commit_plan as validator  # noqa: E402
 
+REPO_ROOT = Path(__file__).resolve().parents[5]
+TEST_REPO_ROOT = (
+    REPO_ROOT
+    / ".codex"
+    / "tmp"
+    / "packet-workflow"
+    / "git-split-and-commit"
+    / "contract-tests"
+    / "repo"
+).resolve()
+
 
 def sample_worktree() -> dict[str, object]:
     return {
-        "repo_root": "C:/repo",
+        "repo_root": str(TEST_REPO_ROOT),
         "pathspecs": [],
         "head_commit": "abc123",
         "worktree_fingerprint": "sha256:worktree",
@@ -29,7 +40,7 @@ def sample_worktree() -> dict[str, object]:
 
 def sample_validation_payload() -> dict[str, object]:
     normalized_plan = {
-        "repo_root": "C:/repo",
+        "repo_root": str(TEST_REPO_ROOT),
         "base_head": "abc123",
         "worktree_fingerprint": "sha256:worktree",
         "input_scope": "all-local-changes",
@@ -45,6 +56,7 @@ def sample_validation_payload() -> dict[str, object]:
                 "scope": "core",
                 "subject": "normalized subject",
                 "body": ["- keep normalized output"],
+                "footer": ["Refs: #22"],
                 "whole_file_paths": ["src/app.py"],
                 "untracked_paths": [],
                 "split_paths": [],
@@ -83,6 +95,7 @@ def sample_multi_commit_validation_payload() -> dict[str, object]:
                 "scope": "core",
                 "subject": "second normalized subject",
                 "body": ["- follow up"],
+                "footer": [],
                 "whole_file_paths": ["src/other.py"],
                 "untracked_paths": [],
                 "split_paths": [],
@@ -128,6 +141,22 @@ class ApplyCommitPlanContractTests(unittest.TestCase):
         self.assertEqual(payload["apply_status"]["status"], "dry_run")
         self.assertIsNone(payload["apply_status"]["stop_category"])
 
+    def test_build_commit_message_renders_footer_as_separate_section(self) -> None:
+        message = apply_commit.build_commit_message(
+            {
+                "type": "fix",
+                "scope": "core",
+                "subject": "normalized subject",
+                "body": ["- keep normalized output"],
+                "footer": ["Refs: #22"],
+            }
+        )
+
+        self.assertEqual(
+            message,
+            "fix(core): normalized subject\n\n- keep normalized output\n\nRefs: #22\n",
+        )
+
     def test_apply_rejects_mismatched_normalized_plan_fingerprint(self) -> None:
         worktree = sample_worktree()
         validation_payload = sample_validation_payload()
@@ -161,7 +190,7 @@ class ApplyCommitPlanContractTests(unittest.TestCase):
             "detail": "command executable `missing-tool` is unavailable on PATH",
         }]):
             with self.assertRaises(apply_commit.ApplyHardStop) as caught:
-                apply_commit.run_targeted_checks(Path("C:/repo"), ["missing-tool --version"], {})
+                apply_commit.run_targeted_checks(TEST_REPO_ROOT, ["missing-tool --version"], {})
 
         self.assertEqual(caught.exception.category, "targeted_check_unavailable")
 
@@ -186,7 +215,7 @@ class ApplyCommitPlanContractTests(unittest.TestCase):
                 return_value=CompletedProcess(["python"], 0, stdout="", stderr=""),
             ) as mocked_run,
         ):
-            apply_commit.run_targeted_checks(Path("C:/repo"), [command], {command: argv})
+            apply_commit.run_targeted_checks(TEST_REPO_ROOT, [command], {command: argv})
 
         mocked_run.assert_called_once()
         self.assertEqual(
@@ -241,7 +270,7 @@ class ApplyCommitPlanContractTests(unittest.TestCase):
                 return_value=CompletedProcess(["python"], 0, stdout="", stderr=""),
             ) as mocked_run,
         ):
-            apply_commit.run_targeted_checks(Path("C:/repo"), [equivalent_command], {collected_command: argv})
+            apply_commit.run_targeted_checks(TEST_REPO_ROOT, [equivalent_command], {collected_command: argv})
 
         mocked_run.assert_called_once()
         self.assertEqual(mocked_run.call_args.args[0], argv)
@@ -281,7 +310,7 @@ class ApplyCommitPlanContractTests(unittest.TestCase):
                 return_value=CompletedProcess(["python"], 0, stdout="", stderr=""),
             ) as mocked_run,
         ):
-            apply_commit.run_targeted_checks(Path("C:/repo"), [command], {})
+            apply_commit.run_targeted_checks(TEST_REPO_ROOT, [command], {})
 
         mocked_run.assert_called_once()
         self.assertEqual(mocked_run.call_args.args[0], argv)
@@ -295,7 +324,7 @@ class ApplyCommitPlanContractTests(unittest.TestCase):
             patch.object(apply_commit.subprocess, "run") as mocked_run,
         ):
             with self.assertRaises(apply_commit.ApplyHardStop) as caught:
-                apply_commit.run_targeted_checks(Path("C:/repo"), [command], {})
+                apply_commit.run_targeted_checks(TEST_REPO_ROOT, [command], {})
 
         self.assertEqual(caught.exception.category, "targeted_check_unavailable")
         self.assertIn("shell-control syntax", str(caught.exception))
@@ -309,7 +338,7 @@ class ApplyCommitPlanContractTests(unittest.TestCase):
             patch.object(apply_commit.subprocess, "run") as mocked_run,
         ):
             with self.assertRaises(apply_commit.ApplyHardStop) as caught:
-                apply_commit.run_targeted_checks(Path("C:/repo"), [command], {})
+                apply_commit.run_targeted_checks(TEST_REPO_ROOT, [command], {})
 
         self.assertEqual(caught.exception.category, "targeted_check_unavailable")
         self.assertIn("shell-control syntax", str(caught.exception))
@@ -321,7 +350,7 @@ class ApplyCommitPlanContractTests(unittest.TestCase):
 
         with patch.object(apply_commit.subprocess, "run") as mocked_run:
             with self.assertRaises(apply_commit.ApplyHardStop) as caught:
-                apply_commit.run_targeted_checks(Path("C:/repo"), [command], {})
+                apply_commit.run_targeted_checks(TEST_REPO_ROOT, [command], {})
 
         self.assertEqual(caught.exception.category, "targeted_check_unavailable")
         self.assertIn("shell builtin", str(caught.exception))
@@ -336,7 +365,7 @@ class ApplyCommitPlanContractTests(unittest.TestCase):
             patch.object(apply_commit.subprocess, "run", side_effect=PermissionError("access denied")) as mocked_run,
         ):
             with self.assertRaises(apply_commit.ApplyHardStop) as caught:
-                apply_commit.run_targeted_checks(Path("C:/repo"), [command], {command: argv})
+                apply_commit.run_targeted_checks(TEST_REPO_ROOT, [command], {command: argv})
 
         self.assertEqual(caught.exception.category, "targeted_check_failed")
         self.assertIn("failed to launch", str(caught.exception))
@@ -393,7 +422,7 @@ class ApplyCommitPlanContractTests(unittest.TestCase):
             with self.assertRaisesRegex(apply_commit.ApplyHardStop, "second commit failed"):
                 apply_commit.apply_validated_plan(worktree, validation_payload, dry_run=False)
 
-        mocked_rollback.assert_called_once_with(Path("C:/repo"), "abc123")
+        mocked_rollback.assert_called_once_with(TEST_REPO_ROOT, "abc123")
 
     def test_stage_commit_does_not_stage_supporting_paths(self) -> None:
         commit = {
@@ -405,7 +434,7 @@ class ApplyCommitPlanContractTests(unittest.TestCase):
         }
 
         with patch.object(apply_commit, "run_git") as mocked_run_git:
-            apply_commit.stage_commit(Path("C:/repo"), commit, {})
+            apply_commit.stage_commit(TEST_REPO_ROOT, commit, {})
 
         self.assertEqual(
             [call.args[1] for call in mocked_run_git.call_args_list],
