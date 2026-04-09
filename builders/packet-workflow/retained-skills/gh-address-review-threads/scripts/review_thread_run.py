@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import ast
+import hashlib
 import json
 import re
 import subprocess
@@ -13,6 +15,7 @@ RUN_MANIFEST_VERSION = 1
 SKILL_NAME = "gh-address-review-threads"
 RUNTIME_BASE_RELATIVE = Path(".codex/tmp/packet-workflow") / SKILL_NAME
 LATEST_POINTER_NAME = "latest.json"
+WORKTREE_STATUS_COMMAND = ["git", "status", "--porcelain=v1", "--untracked-files=all"]
 
 
 def isoformat_utc() -> str:
@@ -65,6 +68,177 @@ def repo_head_sha(repo_root: Path) -> str | None:
     if result.returncode != 0:
         return None
     return result.stdout.strip()
+
+
+def normalize_status_path(path: str) -> str:
+    return path.replace("\\", "/")
+
+
+def decode_porcelain_quoted_path(path: str) -> str:
+    try:
+        decoded = ast.literal_eval(path)
+    except (SyntaxError, ValueError):
+        return path[1:-1]
+    if not isinstance(decoded, str):
+        return str(decoded)
+    try:
+        return decoded.encode("latin-1").decode("utf-8")
+    except (UnicodeEncodeError, UnicodeDecodeError):
+        return decoded
+
+
+def decode_status_path_component(path: str) -> str:
+    candidate = str(path).strip()
+    if len(candidate) >= 2 and candidate[:1] == '"' and candidate[-1:] == '"':
+        candidate = decode_porcelain_quoted_path(candidate)
+    return normalize_status_path(candidate)
+
+
+def split_status_path_payload(payload: str) -> list[str]:
+    remaining = str(payload).strip()
+    parts: list[str] = []
+    while remaining:
+        if remaining[:1] == '"':
+            index = 1
+            escaped = False
+            while index < len(remaining):
+                char = remaining[index]
+                if escaped:
+                    escaped = False
+                elif char == "\\":
+                    escaped = True
+                elif char == '"':
+                    index += 1
+                    break
+                index += 1
+            parts.append(remaining[:index])
+            remaining = remaining[index:].lstrip()
+        else:
+            arrow_index = remaining.find(" -> ")
+            if arrow_index < 0:
+                parts.append(remaining)
+                remaining = ""
+            else:
+                parts.append(remaining[:arrow_index])
+                remaining = remaining[arrow_index + 4 :].lstrip()
+        if remaining.startswith("-> "):
+            remaining = remaining[3:].lstrip()
+    decoded_parts: list[str] = []
+    for part in parts:
+        decoded = decode_status_path_component(part)
+        if decoded:
+            decoded_parts.append(decoded)
+    return decoded_parts
+
+
+def status_entry_paths(entry: str) -> list[str]:
+    payload = str(entry)[3:].strip() if len(str(entry)) > 3 else str(entry).strip()
+    if not payload:
+        return []
+    return split_status_path_payload(payload)
+
+
+def canonicalize_status_entry(entry: str) -> str:
+    text = str(entry)
+    prefix = text[:2] if len(text) >= 2 else text.strip()
+    paths = status_entry_paths(text)
+    if not paths:
+        return text.strip()
+    return f"{prefix} {' -> '.join(paths)}"
+
+
+def is_runtime_status_entry(entry: str) -> bool:
+    paths = status_entry_paths(entry)
+    return bool(paths) and all(path.startswith(".codex/tmp/") for path in paths)
+
+
+def sha256_hexdigest(payload: bytes) -> str:
+    return hashlib.sha256(payload).hexdigest()
+
+
+def path_content_token(path: Path) -> str:
+    try:
+        if not path.exists():
+            return "missing"
+        if path.is_symlink():
+            return f"symlink:{path.readlink().as_posix()}"
+        if path.is_file():
+            return f"file:sha256:{sha256_hexdigest(path.read_bytes())}"
+        if path.is_dir():
+            child_names = sorted(child.name for child in path.iterdir())
+            encoded = json.dumps(child_names, separators=(",", ":"), ensure_ascii=True).encode("utf-8")
+            return f"dir:sha256:{sha256_hexdigest(encoded)}"
+        stat = path.stat()
+        return f"other:{stat.st_mode}:{stat.st_size}"
+    except OSError as exc:
+        return f"error:{type(exc).__name__}:{exc}"
+
+
+def worktree_content_fingerprint(repo_root: Path, entries: list[str]) -> str:
+    states: list[dict[str, str]] = []
+    seen_paths: set[str] = set()
+    for entry in entries:
+        for rel_path in status_entry_paths(entry):
+            if not rel_path or rel_path in seen_paths:
+                continue
+            seen_paths.add(rel_path)
+            states.append(
+                {
+                    "path": rel_path,
+                    "token": path_content_token(repo_root / Path(rel_path)),
+                }
+            )
+    encoded = json.dumps(
+        sorted(states, key=lambda item: item["path"]),
+        separators=(",", ":"),
+        ensure_ascii=True,
+    ).encode("utf-8")
+    return f"sha256:{sha256_hexdigest(encoded)}"
+
+
+def repo_worktree_snapshot(repo_root: Path) -> dict[str, Any]:
+    result = subprocess.run(
+        WORKTREE_STATUS_COMMAND,
+        cwd=str(repo_root),
+        stdin=subprocess.DEVNULL,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "git status failed"
+        return {
+            "available": False,
+            "status_command": " ".join(WORKTREE_STATUS_COMMAND),
+            "entries": [],
+            "error": detail,
+        }
+    entries = [
+        line.rstrip("\n")
+        for line in result.stdout.splitlines()
+        if line.strip() and not is_runtime_status_entry(line)
+    ]
+    return {
+        "available": True,
+        "status_command": " ".join(WORKTREE_STATUS_COMMAND),
+        "entries": entries,
+        "content_fingerprint": worktree_content_fingerprint(repo_root, entries),
+    }
+
+
+def pre_ack_worktree_snapshot(repo_root: Path) -> dict[str, Any]:
+    return repo_worktree_snapshot(repo_root)
+
+
+def summarize_worktree_entries(entries: list[str], limit: int = 4) -> str:
+    sample = [str(entry) for entry in entries[:limit] if str(entry).strip()]
+    if not sample:
+        return "<clean>"
+    if len(entries) > limit:
+        sample.append(f"... (+{len(entries) - limit} more)")
+    return "; ".join(sample)
 
 
 def resolved_head_identity(repo_root: Path, context: dict[str, Any]) -> str:
@@ -175,6 +349,9 @@ def initialize_run_manifest(
             # provenance together with validation commands and HEAD SHAs.
             "accepted_threads": [],
             "validation_commands": [],
+            # Freeze the run-start worktree until ack is both posted and
+            # recorded so accepted changes cannot start ahead of ack-applied.
+            "pre_ack_worktree": pre_ack_worktree_snapshot(repo_root),
             "latest_context_fingerprint": context.get("context_fingerprint"),
             "phase_apply_results": {},
             "last_completed_phase": "start",
@@ -251,6 +428,59 @@ def require_post_push_validation_provenance(manifest: dict[str, Any]) -> None:
         raise RuntimeError(
             "post-push requires recorded validation commands when accepted threads are present"
         )
+
+
+def require_pre_ack_worktree_unchanged(
+    manifest: dict[str, Any],
+    *,
+    action_label: str,
+) -> None:
+    state = manifest.get("state")
+    if not isinstance(state, dict):
+        raise RuntimeError("Malformed review-thread run manifest: missing state.")
+    snapshot = state.get("pre_ack_worktree")
+    if not isinstance(snapshot, dict):
+        raise RuntimeError(
+            f"{action_label} requires a run-start pre-ack worktree snapshot; start a new run"
+        )
+    baseline_entries = snapshot.get("entries")
+    if not isinstance(baseline_entries, list):
+        raise RuntimeError(
+            f"{action_label} requires a valid run-start pre-ack worktree snapshot; start a new run"
+        )
+    if snapshot.get("available") is not True:
+        detail = str(snapshot.get("error") or "git status failed").strip()
+        raise RuntimeError(
+            f"{action_label} requires a usable run-start pre-ack worktree snapshot; "
+            f"initial git worktree status was unavailable: {detail}"
+        )
+    repo_root = Path(str(manifest.get("repo_root") or ".")).resolve()
+    current_snapshot = repo_worktree_snapshot(repo_root)
+    if current_snapshot.get("available") is not True:
+        detail = str(current_snapshot.get("error") or "git status failed").strip()
+        raise RuntimeError(f"{action_label} could not refresh the git worktree status: {detail}")
+    current_entries = [str(entry) for entry in current_snapshot.get("entries", []) if str(entry).strip()]
+    normalized_baseline = [str(entry) for entry in baseline_entries if str(entry).strip()]
+    current_canonical_entries = sorted(canonicalize_status_entry(entry) for entry in current_entries)
+    baseline_canonical_entries = sorted(canonicalize_status_entry(entry) for entry in normalized_baseline)
+    baseline_content_fingerprint = str(snapshot.get("content_fingerprint") or "").strip()
+    current_content_fingerprint = str(current_snapshot.get("content_fingerprint") or "").strip()
+    if current_canonical_entries == baseline_canonical_entries and (
+        not baseline_content_fingerprint or current_content_fingerprint == baseline_content_fingerprint
+    ):
+        return
+    detail_parts = [
+        f"baseline={summarize_worktree_entries(baseline_canonical_entries)}",
+        f"current={summarize_worktree_entries(current_canonical_entries)}",
+    ]
+    if current_canonical_entries == baseline_canonical_entries:
+        detail_parts.append("content-sensitive comparison detected additional edits to already-dirty paths")
+        detail_parts.append(f"baseline_content={baseline_content_fingerprint or '<unknown>'}")
+        detail_parts.append(f"current_content={current_content_fingerprint or '<unknown>'}")
+    raise RuntimeError(
+        f"{action_label} blocked because the git worktree changed after run start and before ack-applied; "
+        + "; ".join(detail_parts)
+    )
 
 
 def create_run(
@@ -343,14 +573,27 @@ def copy_apply_result_into_manifest(
         manifest["state"]["latest_context_fingerprint"] = fingerprint
     if phase == "ack":
         actions = payload.get("normalized_thread_actions")
-        accepted = sorted(
-            {
-                str(item.get("thread_id") or "").strip()
-                for item in actions or []
-                if isinstance(item, dict) and str(item.get("decision") or "").strip() == "accept"
-            }
-        )
-        manifest["state"]["accepted_threads"] = [thread_id for thread_id in accepted if thread_id]
+        if not isinstance(actions, list):
+            if not dry_run:
+                raise RuntimeError("ack apply result must include normalized_thread_actions as a list")
+        else:
+            invalid_actions = [
+                item
+                for item in actions
+                if not isinstance(item, dict)
+                or not str(item.get("thread_id") or "").strip()
+                or not str(item.get("decision") or "").strip()
+            ]
+            if invalid_actions:
+                raise RuntimeError("ack apply result contains malformed normalized_thread_actions entries")
+            accepted = sorted(
+                {
+                    str(item.get("thread_id") or "").strip()
+                    for item in actions
+                    if str(item.get("decision") or "").strip() == "accept"
+                }
+            )
+            manifest["state"]["accepted_threads"] = [thread_id for thread_id in accepted if thread_id]
     manifest["state"]["last_completed_phase"] = f"{phase}-applied"
     return payload
 

@@ -45,6 +45,54 @@ def init_repo(repo_root: Path) -> None:
 
 
 class ReviewThreadRunTests(unittest.TestCase):
+    def test_status_entry_paths_decodes_porcelain_quoted_paths(self) -> None:
+        non_ascii_name = bytes([0xE4, 0xBD, 0xA0]).decode("utf-8") + ".txt"
+        self.assertEqual(
+            run_support.status_entry_paths(' M "src/quoted path.py"'),
+            ["src/quoted path.py"],
+        )
+        self.assertEqual(
+            run_support.status_entry_paths('R  "old name.py" -> "new name.py"'),
+            ["old name.py", "new name.py"],
+        )
+        self.assertEqual(
+            run_support.status_entry_paths(' M " leading.txt"'),
+            [" leading.txt"],
+        )
+        self.assertEqual(
+            run_support.status_entry_paths(' M "trailing.txt "'),
+            ["trailing.txt "],
+        )
+        self.assertEqual(
+            run_support.status_entry_paths(' M "\\344\\275\\240.txt"'),
+            [non_ascii_name],
+        )
+
+    def test_worktree_content_fingerprint_preserves_quoted_path_edge_whitespace(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo_root = Path(tmp_dir)
+            leading_space_path = repo_root / " leading.txt"
+            leading_space_path.write_text("before\n", encoding="utf-8")
+
+            baseline = run_support.worktree_content_fingerprint(repo_root, [' M " leading.txt"'])
+            leading_space_path.write_text("after\n", encoding="utf-8")
+            updated = run_support.worktree_content_fingerprint(repo_root, [' M " leading.txt"'])
+
+            self.assertNotEqual(baseline, updated)
+
+    def test_worktree_content_fingerprint_decodes_porcelain_non_ascii_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            repo_root = Path(tmp_dir)
+            non_ascii_name = bytes([0xE4, 0xBD, 0xA0]).decode("utf-8") + ".txt"
+            non_ascii_path = repo_root / non_ascii_name
+            non_ascii_path.write_text("before\n", encoding="utf-8")
+
+            baseline = run_support.worktree_content_fingerprint(repo_root, [' M "\\344\\275\\240.txt"'])
+            non_ascii_path.write_text("after\n", encoding="utf-8")
+            updated = run_support.worktree_content_fingerprint(repo_root, [' M "\\344\\275\\240.txt"'])
+
+            self.assertNotEqual(baseline, updated)
+
     def test_create_run_writes_manifest_pre_context_and_latest_pointer(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
@@ -229,6 +277,137 @@ class ReviewThreadRunTests(unittest.TestCase):
             self.assertEqual(manifest["state"]["last_completed_phase"], "ack-validated")
             self.assertTrue(Path(manifest["paths"]["ack"]["validated_plan"]).is_file())
 
+    def test_record_ack_plan_rejects_content_drift_for_porcelain_quoted_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            context = context_with_threads(
+                tmp,
+                [
+                    review_thread(
+                        thread_id="t-1",
+                        path="src/quoted path.py",
+                        line=10,
+                        reviewer_login="reviewer-a",
+                        reviewer_body="Please rename this.",
+                    )
+                ],
+            )
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            repo_root = Path(context["repo_root"])
+            tracked_path = repo_root / "src" / "quoted path.py"
+            tracked_path.parent.mkdir(parents=True, exist_ok=True)
+            tracked_path.write_text("baseline\n", encoding="utf-8")
+            init_repo(repo_root)
+            tracked_path.write_text("dirty-before-run\n", encoding="utf-8")
+
+            context_path = tmp / "context.json"
+            validated_plan_path = tmp / "ack-plan.json"
+            write_json(context_path, context)
+            write_json(
+                validated_plan_path,
+                {
+                    "phase": "ack",
+                    "valid": True,
+                    "normalized_thread_actions": [
+                        {
+                            "thread_id": "t-1",
+                            "decision": "accept",
+                            "ack_mode": "add",
+                            "ack_body": ack_reply_body(decision="accept", detail="Will fix this."),
+                        }
+                    ],
+                },
+            )
+            manifest = run_support.create_run(
+                repo_root,
+                context_path,
+                run_id="test-run",
+                evaluation_log_path=tmp / "eval-log.json",
+            )
+            manifest_path = Path(manifest["paths"]["manifest"])
+            tracked_path.write_text("dirty-after-run\n", encoding="utf-8")
+
+            argv = [
+                "manage_review_thread_run.py",
+                "record-plan",
+                "--manifest",
+                str(manifest_path),
+                "--phase",
+                "ack",
+                "--validated-plan",
+                str(validated_plan_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "content-sensitive comparison detected additional edits to already-dirty paths",
+                ):
+                    manage_run.main()
+
+    def test_record_ack_plan_requires_pre_ack_manifest_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            context = context_with_threads(
+                tmp,
+                [
+                    review_thread(
+                        thread_id="t-1",
+                        path="src/app.py",
+                        line=10,
+                        reviewer_login="reviewer-a",
+                        reviewer_body="Please rename this.",
+                    )
+                ],
+            )
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            repo_root = Path(context["repo_root"])
+            init_repo(repo_root)
+
+            context_path = tmp / "context.json"
+            validated_plan_path = tmp / "ack-plan.json"
+            write_json(context_path, context)
+            write_json(
+                validated_plan_path,
+                {
+                    "phase": "ack",
+                    "valid": True,
+                    "normalized_thread_actions": [
+                        {
+                            "thread_id": "t-1",
+                            "decision": "accept",
+                            "ack_mode": "add",
+                            "ack_body": ack_reply_body(decision="accept", detail="Will fix this."),
+                        }
+                    ],
+                },
+            )
+            manifest = run_support.create_run(
+                repo_root,
+                context_path,
+                run_id="test-run",
+                evaluation_log_path=tmp / "eval-log.json",
+            )
+            manifest_path = Path(manifest["paths"]["manifest"])
+            manifest["state"]["last_completed_phase"] = "ack-applied"
+            run_support.write_manifest(manifest_path, manifest)
+
+            argv = [
+                "manage_review_thread_run.py",
+                "record-plan",
+                "--manifest",
+                str(manifest_path),
+                "--phase",
+                "ack",
+                "--validated-plan",
+                str(validated_plan_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "record-plan --phase ack requires manifest state",
+                ):
+                    manage_run.main()
+
     def test_record_apply_cli_records_phase_result_and_advances_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             tmp = Path(tmp_dir)
@@ -310,6 +489,68 @@ class ReviewThreadRunTests(unittest.TestCase):
                     "result_path": updated["paths"]["ack"]["result"],
                 },
             )
+
+    def test_record_ack_apply_requires_normalized_thread_actions_list(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            tmp = Path(tmp_dir)
+            context = context_with_threads(
+                tmp,
+                [
+                    review_thread(
+                        thread_id="t-1",
+                        path="src/app.py",
+                        line=10,
+                        reviewer_login="reviewer-a",
+                        reviewer_body="Please rename this.",
+                    )
+                ],
+            )
+            context["context_fingerprint"] = build_context_fingerprint(context)
+            repo_root = Path(context["repo_root"])
+            init_repo(repo_root)
+
+            context_path = tmp / "context.json"
+            result_path = tmp / "ack-result.json"
+            write_json(context_path, context)
+            write_json(
+                result_path,
+                {
+                    "phase": "ack",
+                    "dry_run": False,
+                    "apply_succeeded": True,
+                    "fingerprint_match": True,
+                    "context_fingerprint": "updated-fingerprint",
+                    "mutation_type": "add_reply",
+                    "mutations": [{"kind": "add_reply", "thread_id": "t-1", "phase": "ack"}],
+                },
+            )
+
+            manifest = run_support.create_run(
+                repo_root,
+                context_path,
+                run_id="test-run",
+                evaluation_log_path=tmp / "eval-log.json",
+            )
+            manifest_path = Path(manifest["paths"]["manifest"])
+            manifest["state"]["last_completed_phase"] = "ack-validated"
+            run_support.write_manifest(manifest_path, manifest)
+
+            argv = [
+                "manage_review_thread_run.py",
+                "record-apply",
+                "--manifest",
+                str(manifest_path),
+                "--phase",
+                "ack",
+                "--result",
+                str(result_path),
+            ]
+            with patch.object(sys, "argv", argv):
+                with self.assertRaisesRegex(
+                    RuntimeError,
+                    "ack apply result must include normalized_thread_actions as a list",
+                ):
+                    manage_run.main()
 
     def test_record_apply_rejects_dry_run_live_result(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

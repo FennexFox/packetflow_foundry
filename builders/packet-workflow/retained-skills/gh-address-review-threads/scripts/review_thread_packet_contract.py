@@ -80,6 +80,7 @@ PACKET_METRIC_FIELDS = [
 
 SMOKE_OUTPUT_FIELDS = ["status", "reason", "thread_counts", "next_action"]
 REQUEST_ANCHOR_RE = re.compile(r"`([^`]+)`")
+IDENTIFIER_BOUNDARY_RE = r"[A-Za-z0-9_]"
 REQUEST_ANCHOR_STOPWORDS = frozenset(
     {
         "a",
@@ -222,21 +223,53 @@ def extract_exact_anchor_views(reviewer_body: str) -> list[dict[str, Any]]:
     return anchors
 
 
+def boundary_aware_anchor_pattern(anchor: str, *, call_form: bool = False) -> re.Pattern[str] | None:
+    normalized_anchor = str(anchor).strip()
+    if not normalized_anchor:
+        return None
+    if call_form:
+        callee = re.sub(r"\([^)]*\)", "", normalized_anchor).strip()
+        if not callee:
+            return None
+        return re.compile(rf"(?<!{IDENTIFIER_BOUNDARY_RE}){re.escape(callee)}\s*\(")
+    return re.compile(rf"(?<!{IDENTIFIER_BOUNDARY_RE}){re.escape(normalized_anchor)}(?!{IDENTIFIER_BOUNDARY_RE})")
+
+
+def exact_anchor_view_matches(view: dict[str, Any], *, normalized_line_texts: list[str]) -> bool:
+    normalized_anchor = str(view.get("normalized_text") or "").strip()
+    raw_anchor = str(view.get("raw") or "").strip()
+    if not normalized_anchor:
+        return False
+    if "(" in raw_anchor and ")" in raw_anchor:
+        return any(normalized_anchor in line_text for line_text in normalized_line_texts)
+    if any(separator in raw_anchor for separator in (".", "/", "::", "->")):
+        pattern = boundary_aware_anchor_pattern(normalized_anchor)
+        return bool(pattern and any(pattern.search(line_text) for line_text in normalized_line_texts))
+    return any(normalized_anchor in line_text for line_text in normalized_line_texts)
+
+
 def request_anchor_evidence(
     reviewer_body: str,
     *,
     snippet: str | None,
     diff_snippet: str | None,
 ) -> tuple[bool, list[str], list[str], list[str]]:
-    evidence_text = normalize_text_for_matching("\n".join(part for part in (snippet, diff_snippet) if part))
+    visible_line_texts = _visible_evidence_line_texts(snippet=snippet, diff_snippet=diff_snippet)
+    evidence_text = normalize_text_for_matching("\n".join(visible_line_texts))
     if not evidence_text:
         return False, [], [], []
 
     anchor_views = extract_exact_anchor_views(reviewer_body)
-    exact_anchors = [str(view["normalized_text"]) for view in anchor_views]
-    matched_exact_anchors = [anchor for anchor in exact_anchors if anchor in evidence_text]
+    exact_anchors = dedupe_preserve([str(view["normalized_text"]) for view in anchor_views])
+    matched_exact_anchors = dedupe_preserve(
+        [
+            str(view["normalized_text"])
+            for view in anchor_views
+            if exact_anchor_view_matches(view, normalized_line_texts=visible_line_texts)
+        ]
+    )
     if exact_anchors:
-        return bool(matched_exact_anchors), exact_anchors, matched_exact_anchors, []
+        return len(matched_exact_anchors) == len(exact_anchors), exact_anchors, matched_exact_anchors, []
 
     requested_terms = sorted(dict.fromkeys(match_terms(reviewer_body)))
     if len(requested_terms) < 2:
@@ -275,7 +308,7 @@ def _strong_identifier_match(
     anchor_views: list[dict[str, Any]],
     *,
     normalized_line_texts: list[str],
-) -> tuple[bool, list[str], list[str]]:
+) -> tuple[list[str], list[str], list[str]]:
     evidence_terms = set(match_terms("\n".join(normalized_line_texts), canonical=True))
     identifier_pairs = [
         pair
@@ -290,7 +323,7 @@ def _strong_identifier_match(
         if canonical_anchor in evidence_terms
     ]
     line_term_sets = [set(match_terms(line_text, canonical=True)) for line_text in normalized_line_texts]
-    strong_identifier_match = False
+    matched_structural_anchors: list[str] = []
     for view in anchor_views:
         view_identifier_pairs = [
             pair
@@ -301,26 +334,31 @@ def _strong_identifier_match(
             continue
         normalized_anchor = str(view.get("normalized_text") or "").strip()
         raw_anchor = str(view.get("raw") or "").strip()
-        call_anchor = re.sub(r"\([^)]*\)", "(", normalized_anchor)
         structural_anchor = re.sub(r"\([^)]*\)", "", normalized_anchor).strip()
+        matched = False
         if "(" in raw_anchor and ")" in raw_anchor:
-            if call_anchor and any(call_anchor in line_text for line_text in normalized_line_texts):
-                strong_identifier_match = True
-                break
+            pattern = boundary_aware_anchor_pattern(normalized_anchor, call_form=True)
+            matched = bool(pattern and any(pattern.search(line_text) for line_text in normalized_line_texts))
+            if matched:
+                matched_structural_anchors.append(normalized_anchor)
             continue
         if any(separator in raw_anchor for separator in (".", "/", "::", "->")):
-            if structural_anchor and any(structural_anchor in line_text for line_text in normalized_line_texts):
-                strong_identifier_match = True
-                break
+            pattern = boundary_aware_anchor_pattern(structural_anchor)
+            matched = bool(pattern and any(pattern.search(line_text) for line_text in normalized_line_texts))
+            if matched:
+                matched_structural_anchors.append(normalized_anchor)
             continue
         required_identifier_terms = dedupe_preserve([str(canonical_anchor) for _, canonical_anchor in view_identifier_pairs])
         if (
             len(required_identifier_terms) == 1
             and any(all(term in line_terms for term in required_identifier_terms) for line_terms in line_term_sets)
         ):
-            strong_identifier_match = True
-            break
-    return strong_identifier_match, identifier_anchors, dedupe_preserve(matched_identifier_anchors)
+            matched_structural_anchors.append(normalized_anchor)
+    return (
+        dedupe_preserve(matched_structural_anchors),
+        identifier_anchors,
+        dedupe_preserve(matched_identifier_anchors),
+    )
 
 
 def delta_request_anchor_evidence(
@@ -341,15 +379,21 @@ def delta_request_anchor_evidence(
     if not anchor_views:
         return False, [], [], []
 
-    exact_anchors = [str(view["normalized_text"]) for view in anchor_views]
-    evidence_text = "\n".join(added_line_texts)
-    matched_exact_anchors = [anchor for anchor in exact_anchors if anchor in evidence_text]
-    strong_identifier_match, identifier_anchors, matched_identifier_anchors = _strong_identifier_match(
+    exact_anchors = dedupe_preserve([str(view["normalized_text"]) for view in anchor_views])
+    matched_exact_anchors = dedupe_preserve(
+        [
+            str(view["normalized_text"])
+            for view in anchor_views
+            if exact_anchor_view_matches(view, normalized_line_texts=added_line_texts)
+        ]
+    )
+    matched_structural_anchors, identifier_anchors, matched_identifier_anchors = _strong_identifier_match(
         anchor_views,
         normalized_line_texts=added_line_texts,
     )
+    grounded_anchors = dedupe_preserve(matched_exact_anchors + matched_structural_anchors)
     return (
-        bool(matched_exact_anchors or strong_identifier_match),
+        len(grounded_anchors) == len(exact_anchors),
         matched_exact_anchors,
         identifier_anchors,
         matched_identifier_anchors,
@@ -371,11 +415,12 @@ def build_grounding_diagnostics(
         diff_snippet=diff_snippet,
     )
     visible_line_texts = _visible_evidence_line_texts(snippet=snippet, diff_snippet=diff_snippet)
-    structural_anchor_match, identifier_anchors, matched_identifier_anchors = _strong_identifier_match(
+    matched_structural_anchors, identifier_anchors, matched_identifier_anchors = _strong_identifier_match(
         anchor_views,
         normalized_line_texts=visible_line_texts,
     )
-    grounding_mismatch = bool(anchor_views) and not exact_anchor_visible and not structural_anchor_match
+    grounded_anchors = dedupe_preserve(matched_exact_anchors + matched_structural_anchors)
+    grounding_mismatch = bool(anchor_views) and len(grounded_anchors) != len(exact_anchors)
     mapped_escape_reason = None
     if grounding_mismatch:
         mapped_escape_reason = "ownership_ambiguity" if (not path.strip() or not path_exists) else "missing_required_evidence"
@@ -386,8 +431,8 @@ def build_grounding_diagnostics(
         "identifier_request_anchors": identifier_anchors,
         "matched_identifier_request_anchors": matched_identifier_anchors,
         "matched_request_terms": matched_terms,
-        "exact_anchor_match": bool(matched_exact_anchors),
-        "structural_anchor_match": structural_anchor_match,
+        "exact_anchor_match": exact_anchor_visible,
+        "structural_anchor_match": bool(matched_structural_anchors),
         "grounding_mismatch": grounding_mismatch,
         "mapped_escape_reason": mapped_escape_reason,
     }

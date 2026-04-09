@@ -34,6 +34,46 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertEqual(matched_exact_anchors, [])
         self.assertEqual(matched_terms, [])
 
+    def test_request_anchor_evidence_ignores_removed_diff_lines_for_exact_anchors(self) -> None:
+        visible, exact_anchors, matched_exact_anchors, matched_terms = packets.request_anchor_evidence(
+            "Please keep `build_global_packet()` aligned with the new contract.",
+            snippet=None,
+            diff_snippet=(
+                "@@ -1,2 +1,2 @@\n"
+                "-def build_global_packet(report):\n"
+                "+def build_packet(context):\n"
+            ),
+        )
+
+        self.assertFalse(visible)
+        self.assertEqual(exact_anchors, ["buildglobalpacket()"])
+        self.assertEqual(matched_exact_anchors, [])
+        self.assertEqual(matched_terms, [])
+
+    def test_request_anchor_evidence_requires_boundary_aware_dotted_anchor_match(self) -> None:
+        visible, exact_anchors, matched_exact_anchors, matched_terms = packets.request_anchor_evidence(
+            "Please keep `module.helper` aligned with the new contract.",
+            snippet="module.helper_extra(context)\n",
+            diff_snippet=None,
+        )
+
+        self.assertFalse(visible)
+        self.assertEqual(exact_anchors, ["module.helper"])
+        self.assertEqual(matched_exact_anchors, [])
+        self.assertEqual(matched_terms, [])
+
+    def test_request_anchor_evidence_requires_all_exact_anchors(self) -> None:
+        visible, exact_anchors, matched_exact_anchors, matched_terms = packets.request_anchor_evidence(
+            "Please rename `old_name` to `new_name` before merging.",
+            snippet="old_name = current_value\n",
+            diff_snippet=None,
+        )
+
+        self.assertFalse(visible)
+        self.assertEqual(exact_anchors, ["oldname", "newname"])
+        self.assertEqual(matched_exact_anchors, ["oldname"])
+        self.assertEqual(matched_terms, [])
+
     def test_delta_request_anchor_evidence_matches_canonical_identifier_terms(self) -> None:
         visible, matched_exact_anchors, identifier_anchors, matched_identifier_anchors = (
             packets.delta_request_anchor_evidence(
@@ -120,6 +160,23 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertEqual(identifier_anchors, ["module", "helper"])
         self.assertEqual(matched_identifier_anchors, ["module", "helper"])
 
+    def test_delta_request_anchor_evidence_requires_boundary_aware_dotted_anchor_match(self) -> None:
+        visible, matched_exact_anchors, identifier_anchors, matched_identifier_anchors = (
+            packets.delta_request_anchor_evidence(
+                "Please update `module.helper` to match the renamed parameter.",
+                diff_snippet=(
+                    "@@ -1,1 +1,1 @@\n"
+                    "-module.helper(old)\n"
+                    "+module.helper_extra(context)\n"
+                ),
+            )
+        )
+
+        self.assertFalse(visible)
+        self.assertEqual(matched_exact_anchors, [])
+        self.assertEqual(identifier_anchors, ["module", "helper"])
+        self.assertEqual(matched_identifier_anchors, ["module"])
+
     def test_grounding_diagnostics_marks_near_match_as_mismatch(self) -> None:
         grounding = build_grounding_diagnostics(
             "Please update `module.helper()` to match the renamed parameter.",
@@ -135,6 +192,37 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertTrue(grounding["grounding_mismatch"])
         self.assertEqual(grounding["mapped_escape_reason"], "missing_required_evidence")
 
+    def test_grounding_diagnostics_rejects_structural_substring_false_positive(self) -> None:
+        grounding = build_grounding_diagnostics(
+            "Please update `module.helper` to match the renamed parameter.",
+            path="src/app.py",
+            path_exists=True,
+            snippet="   10: module.helper_extra(context)\n",
+            diff_snippet=None,
+        )
+
+        self.assertTrue(grounding["has_explicit_anchor"])
+        self.assertFalse(grounding["exact_anchor_match"])
+        self.assertFalse(grounding["structural_anchor_match"])
+        self.assertTrue(grounding["grounding_mismatch"])
+        self.assertEqual(grounding["mapped_escape_reason"], "missing_required_evidence")
+
+    def test_grounding_diagnostics_marks_partial_multi_anchor_match_as_mismatch(self) -> None:
+        grounding = build_grounding_diagnostics(
+            "Please rename `old_name` to `new_name` before merging.",
+            path="src/app.py",
+            path_exists=True,
+            snippet="   10: old_name = current_value\n",
+            diff_snippet=None,
+        )
+
+        self.assertTrue(grounding["has_explicit_anchor"])
+        self.assertEqual(grounding["matched_exact_request_anchors"], ["oldname"])
+        self.assertFalse(grounding["exact_anchor_match"])
+        self.assertTrue(grounding["structural_anchor_match"])
+        self.assertTrue(grounding["grounding_mismatch"])
+        self.assertEqual(grounding["mapped_escape_reason"], "missing_required_evidence")
+
     def test_grounding_diagnostics_ignores_broad_natural_language_requests(self) -> None:
         grounding = build_grounding_diagnostics(
             "Please clarify this flow before merging.",
@@ -147,6 +235,114 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertFalse(grounding["has_explicit_anchor"])
         self.assertFalse(grounding["grounding_mismatch"])
         self.assertIsNone(grounding["mapped_escape_reason"])
+
+    def test_grounding_diagnostics_ignores_removed_diff_lines_for_exact_anchor_match(self) -> None:
+        grounding = build_grounding_diagnostics(
+            "Please keep `build_global_packet()` aligned with the new contract.",
+            path="src/app.py",
+            path_exists=True,
+            snippet=None,
+            diff_snippet=(
+                "@@ -1,2 +1,2 @@\n"
+                "-def build_global_packet(report):\n"
+                "+def build_packet(context):\n"
+            ),
+        )
+
+        self.assertTrue(grounding["has_explicit_anchor"])
+        self.assertFalse(grounding["exact_anchor_match"])
+        self.assertFalse(grounding["structural_anchor_match"])
+        self.assertTrue(grounding["grounding_mismatch"])
+        self.assertEqual(grounding["mapped_escape_reason"], "missing_required_evidence")
+
+    def test_candidate_decision_defers_partial_multi_anchor_match(self) -> None:
+        grounding = build_grounding_diagnostics(
+            "Please rename `old_name` to `new_name` before merging.",
+            path="src/app.py",
+            path_exists=True,
+            snippet="   10: old_name = current_value\n",
+            diff_snippet=None,
+        )
+        quality_basis = packets.packet_quality_basis(
+            reviewer_bodies=["Please rename `old_name` to `new_name` before merging."],
+            path="src/app.py",
+            path_exists=True,
+            snippet="   10: old_name = current_value\n",
+            diff_snippet=None,
+            grounding=grounding,
+        )
+
+        self.assertTrue(quality_basis["grounding_mismatch"])
+        self.assertEqual(
+            packets.candidate_decision({"is_outdated": False}, quality_basis=quality_basis),
+            "defer",
+        )
+
+    def test_diff_snippet_cache_keys_hunks_by_line_number(self) -> None:
+        cache: dict[packets.DiffCacheKey, str | None] = {}
+        diff_output = (
+            "@@ -1,1 +5,1 @@\n"
+            "+module.helper()\n"
+            "@@ -20,1 +40,1 @@\n"
+            "+other.call()\n"
+        )
+
+        with patch.object(packets, "run_git", return_value=diff_output), patch.object(
+            packets,
+            "DIFF_SNIPPET_CHAR_LIMIT",
+            40,
+        ):
+            first = packets.diff_snippet_for_path(
+                Path("C:/repo"),
+                "master",
+                "issue_20",
+                "src/app.py",
+                5,
+                cache,
+            )
+            second = packets.diff_snippet_for_path(
+                Path("C:/repo"),
+                "master",
+                "issue_20",
+                "src/app.py",
+                40,
+                cache,
+            )
+
+        self.assertIn("module.helper()", first)
+        self.assertNotIn("other.call()", first)
+        self.assertIn("other.call()", second)
+        self.assertNotIn("module.helper()", second)
+
+    def test_diff_snippet_reuses_full_diff_cache_when_full_diff_fits_limit(self) -> None:
+        cache: dict[packets.DiffCacheKey, str | None] = {}
+        diff_output = "@@ -1,1 +5,1 @@\n+module.helper()\n"
+
+        with patch.object(packets, "run_git", return_value=diff_output) as run_git_mock, patch.object(
+            packets,
+            "DIFF_SNIPPET_CHAR_LIMIT",
+            200,
+        ):
+            first = packets.diff_snippet_for_path(
+                Path("C:/repo"),
+                "master",
+                "issue_20",
+                "src/app.py",
+                5,
+                cache,
+            )
+            second = packets.diff_snippet_for_path(
+                Path("C:/repo"),
+                "master",
+                "issue_20",
+                "src/app.py",
+                40,
+                cache,
+            )
+
+        self.assertEqual(first, diff_output.rstrip())
+        self.assertEqual(second, diff_output.rstrip())
+        run_git_mock.assert_called_once()
 
     def _run_estimated_savings_observation_case(
         self,

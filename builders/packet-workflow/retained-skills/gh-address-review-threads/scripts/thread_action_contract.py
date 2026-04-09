@@ -108,18 +108,6 @@ def _managed_comment_content_lines(body: str | None) -> list[str]:
     ]
 
 
-def _decision_mentions(line: str) -> list[str]:
-    lowered = line.lower()
-    mentions: list[str] = []
-    if re.search(r"\bdefer-outdated\b", lowered):
-        mentions.append("defer-outdated")
-        lowered = re.sub(r"\bdefer-outdated\b", " ", lowered)
-    for decision in ("accept", "reject", "defer"):
-        if re.search(rf"\b{decision}\b", lowered):
-            mentions.append(decision)
-    return mentions
-
-
 def _explicit_decision_line(line: str) -> str | None:
     cleaned = _stringify(line)
     if not cleaned:
@@ -225,23 +213,6 @@ def reply_candidate(thread: dict[str, Any], phase: str) -> dict[str, Any]:
         "managed": bool(candidate.get("managed")),
         "adopted_unmarked_reply": bool(candidate.get("adopted_unmarked_reply")),
     }
-
-
-def exact_managed_target_id(thread: dict[str, Any], phase: str) -> str | None:
-    matches = [
-        comment
-        for comment in thread.get("comments", [])
-        if isinstance(comment, dict)
-        and bool(comment.get("is_self"))
-        and _stringify(comment.get("managed_phase")) == phase
-        and bool(comment.get("has_exact_managed_marker"))
-    ]
-    if not matches:
-        return None
-    matches.sort(key=comment_sort_key)
-    target = matches[-1]
-    target_id = _stringify(target.get("id"))
-    return target_id or None
 
 
 def exact_managed_target(thread: dict[str, Any], phase: str) -> dict[str, Any] | None:
