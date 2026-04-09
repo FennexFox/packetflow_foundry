@@ -167,6 +167,24 @@ class PacketWorkflowVersioningTests(unittest.TestCase):
             self.assertEqual(report["evaluation_schema_version"], "2.0")
             self.assertTrue(report["migration_entry_present"])
 
+    def test_canonical_pricing_snapshot_matches_openai_2026_04_09_rates(self) -> None:
+        payload = versioning.load_json_document(versioning.canonical_pricing_snapshot_path())
+        self.assertEqual(payload["snapshot_id"], "openai-2026-04-09")
+        models = {
+            item["canonical_model_id"]: item
+            for item in payload["models"]
+            if isinstance(item, dict) and item.get("canonical_model_id")
+        }
+        self.assertEqual(models["gpt-5.4"]["input_nanousd_per_token"], 2500)
+        self.assertEqual(models["gpt-5.4"]["cached_input_nanousd_per_token"], 250)
+        self.assertEqual(models["gpt-5.4"]["output_nanousd_per_token"], 15000)
+        self.assertEqual(models["gpt-5.4-mini"]["input_nanousd_per_token"], 750)
+        self.assertEqual(models["gpt-5.4-mini"]["cached_input_nanousd_per_token"], 75)
+        self.assertEqual(models["gpt-5.4-mini"]["output_nanousd_per_token"], 4500)
+        self.assertEqual(models["gpt-5.4-nano"]["input_nanousd_per_token"], 200)
+        self.assertEqual(models["gpt-5.4-nano"]["cached_input_nanousd_per_token"], 20)
+        self.assertEqual(models["gpt-5.4-nano"]["output_nanousd_per_token"], 1250)
+
     def test_evaluate_skill_dir_reports_semver_behind_compatible(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             skill_dir = write_skill_fixture(

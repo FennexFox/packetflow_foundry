@@ -170,6 +170,31 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
         self.assertEqual(log["efficiency"]["packet_compaction"]["savings_tokens"], 800)
         self.assertEqual(log["latency"]["packet_builder_seconds"], 1.5)
 
+    def test_execution_fidelity_scores_local_only_empty_run_as_one(self) -> None:
+        score = eval_log.common.execution_fidelity_score(
+            {
+                "orchestration": {
+                    "planned_workers": {"count": 0, "roles": [], "workers": []},
+                    "actual_workers": {
+                        "summary": {
+                            "materialized_count": 0,
+                            "executed_count": 0,
+                            "completed_count": 0,
+                            "failed_count": 0,
+                            "cancelled_count": 0,
+                            "planned_not_run_count": 0,
+                            "unplanned_count": 0,
+                            "capture_complete": True,
+                            "capture_incomplete_reason": None,
+                        },
+                        "workers": [],
+                    },
+                }
+            }
+        )
+
+        self.assertEqual(score, 1.0)
+
     def test_finalize_treats_unknown_planned_worker_id_as_unplanned_execution(self) -> None:
         log = {
             "skill": {"name": "weekly-update"},

@@ -1804,8 +1804,6 @@ def execution_fidelity_score(log: dict[str, Any]) -> float | None:
     rows = (actual_workers or {}).get("workers") or []
     if not isinstance(rows, list):
         rows = []
-    if not rows:
-        return None
     unplanned_total = sum(
         1
         for row in rows
@@ -1818,6 +1816,8 @@ def execution_fidelity_score(log: dict[str, Any]) -> float | None:
     ]
     if planned_total == 0 and unplanned_total == 0:
         return 1.0
+    if not rows:
+        return None
     if planned_total == 0 and unplanned_total > 0:
         return 0.4
     if (
