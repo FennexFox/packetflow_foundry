@@ -71,8 +71,11 @@ class RewordWorkflowSmokeTests(unittest.TestCase):
         apply_result = load_json(artifact_root / "apply-result.json")
         self.assertTrue(final_log["safety"]["apply_succeeded"])
         self.assertEqual(final_log["skill_specific"]["data"]["new_head"], apply_result["new_head"])
-        self.assertEqual(final_log["skill_specific"]["data"]["packet_count"], build_result["packet_metrics"]["packet_count"])
-        self.assertEqual(final_log["baseline"]["estimated_local_only_tokens"], build_result["packet_metrics"]["estimated_local_only_tokens"])
+        self.assertEqual(final_log["packet_sizing"]["packet_count"], build_result["packet_sizing"]["packet_count"])
+        self.assertEqual(
+            final_log["efficiency"]["packet_compaction"]["local_only_tokens"],
+            build_result["efficiency"]["packet_compaction"]["local_only_tokens"],
+        )
         self.assertTrue(final_log["skill_specific"]["data"]["common_path_sufficient"])
 
     def test_standalone_smoke_helper_prints_stable_summary_shape(self) -> None:
@@ -89,10 +92,11 @@ class RewordWorkflowSmokeTests(unittest.TestCase):
         payload = json.loads(result.stdout)
         self.assertEqual(
             set(payload.keys()),
-            {"status", "packet_metrics", "common_path_sufficient", "evaluation_log_path"},
+            {"status", "packet_sizing", "efficiency", "common_path_sufficient", "evaluation_log_path"},
         )
         self.assertEqual(payload["status"], "ok")
-        self.assertIsInstance(payload["packet_metrics"], dict)
+        self.assertIsInstance(payload["packet_sizing"], dict)
+        self.assertIsInstance(payload["efficiency"], dict)
         self.assertIsInstance(payload["common_path_sufficient"], bool)
         self.assertTrue(Path(payload["evaluation_log_path"]).is_file())
 

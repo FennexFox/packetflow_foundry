@@ -355,26 +355,26 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         self.assertEqual(stdout_payload, result_payload)
 
         orchestrator = payloads["orchestrator.json"]
-        packet_metrics = payloads["packet_metrics.json"]
+        packet_sizing = payloads["packet_sizing.json"]
         self.assertEqual(result_payload["context_fingerprint"], context["context_fingerprint"])
         self.assertEqual(result_payload["freshness_tuple"], context["freshness_tuple"])
         self.assertEqual(result_payload["review_mode"], orchestrator["review_mode"])
-        self.assertEqual(result_payload["recommended_worker_count"], len(result_payload["recommended_workers"]))
+        self.assertEqual(result_payload["planned_workers"]["count"], len(result_payload["planned_workers"]["workers"]))
         self.assertEqual(result_payload["packet_files"], orchestrator["packet_files"])
-        self.assertEqual(result_payload["packet_metrics"], packet_metrics)
+        self.assertEqual(result_payload["packet_sizing"], packet_sizing)
         self.assertEqual(result_payload["override_signals"], [])
-        self.assertTrue(result_payload["packet_metrics_file"].endswith("packet_metrics.json"))
-        self.assertEqual(result_payload["packet_count"], packet_metrics["packet_count"])
-        self.assertEqual(result_payload["largest_packet_bytes"], packet_metrics["largest_packet_bytes"])
-        self.assertEqual(result_payload["largest_two_packets_bytes"], packet_metrics["largest_two_packets_bytes"])
-        self.assertEqual(result_payload["estimated_local_only_tokens"], packet_metrics["estimated_local_only_tokens"])
-        self.assertEqual(result_payload["estimated_packet_tokens"], packet_metrics["estimated_packet_tokens"])
-        self.assertEqual(result_payload["estimated_delegation_savings"], packet_metrics["estimated_delegation_savings"])
-        self.assertEqual(result_payload["packet_size_bytes"], packet_metrics["packet_size_bytes"])
+        self.assertTrue(result_payload["packet_sizing_file"].endswith("packet_sizing.json"))
+        self.assertEqual(result_payload["packet_sizing"]["packet_count"], packet_sizing["packet_count"])
+        self.assertEqual(result_payload["packet_sizing"]["largest_packet_bytes"], packet_sizing["largest_packet_bytes"])
+        self.assertEqual(
+            result_payload["efficiency"]["packet_compaction"]["savings_tokens"],
+            result_payload["efficiency"]["packet_compaction"]["local_only_tokens"]
+            - result_payload["efficiency"]["packet_compaction"]["packet_tokens"],
+        )
         self.assertTrue(result_payload["common_path_sufficient"])
         self.assertEqual(
             result_payload["synthesis_packet_sufficient_for_common_path"],
-            packet_metrics["synthesis_packet_sufficient_for_common_path"],
+            True,
         )
         self.assertEqual(result_payload["qa_gate_guidance"]["review_mode"], orchestrator["review_mode"])
 
@@ -390,16 +390,16 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
             payloads = packets.build_packet_payloads(context, lint)
 
         self.assertIn("orchestrator.json", payloads)
-        self.assertIn("packet_metrics.json", payloads)
+        self.assertIn("packet_sizing.json", payloads)
 
     def test_packet_emission_and_common_path_sufficiency(self) -> None:
         context = self.build_context()
         lint = self.build_lint()
 
-        exit_code, stdout, payloads, result_payload = self.run_builder(context, lint)
+        exit_code, stdout, payloads, result_payload = self.run_builder(context, lint, result_output=True)
 
         self.assertEqual(exit_code, 0)
-        self.assertIsNone(result_payload)
+        self.assertIsNotNone(result_payload)
         self.assertIn('"review_mode": "targeted-delegation"', stdout)
 
         expected_files = {
@@ -411,7 +411,7 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
             "evidence_packet.json",
             "synthesis_packet.json",
             "orchestrator.json",
-            "packet_metrics.json",
+            "packet_sizing.json",
         }
         emitted_files = set(payloads)
         self.assertEqual(emitted_files, expected_files)
@@ -424,7 +424,7 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         evidence_packet = payloads["evidence_packet.json"]
         synthesis_packet = payloads["synthesis_packet.json"]
         orchestrator = payloads["orchestrator.json"]
-        packet_metrics = payloads["packet_metrics.json"]
+        packet_sizing = payloads["packet_sizing.json"]
 
         self.assertTrue(packets.synthesis_packet_common_path_ready(synthesis_packet))
         self.assertTrue(packets.SYNTHESIS_REQUIRED_KEYS.issubset(synthesis_packet))
@@ -485,26 +485,11 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         self.assertNotIn("estimated_packet_tokens", orchestrator)
         self.assertNotIn("estimated_delegation_savings", orchestrator)
 
-        self.assertEqual(packet_metrics["packet_count"], len(orchestrator["packet_files"]))
-        self.assertEqual(packet_metrics["packet_count"], len(expected_files) - 1)
-        packet_sizes = packet_metrics["packet_size_bytes"]
-        self.assertEqual(
-            packet_sizes["by_packet"]["synthesis_packet.json"],
-            contract.packet_size_bytes(synthesis_packet),
-        )
-        self.assertEqual(
-            packet_sizes["worker_facing_total"],
-            sum(
-                packet_sizes["by_packet"][name]
-                for name in expected_files
-                if name not in {"synthesis_packet.json", "orchestrator.json", "packet_metrics.json"}
-            ),
-        )
-        self.assertLessEqual(packet_sizes["worker_facing_total"], TARGET_WORKER_FACING_BYTES)
-        self.assertGreater(packet_sizes["raw_local_source_bytes"], 0)
-        self.assertGreater(packet_metrics["estimated_delegation_savings"], 0)
-        self.assertGreaterEqual(packet_metrics["largest_packet_bytes"], 1)
-        self.assertGreaterEqual(packet_metrics["largest_two_packets_bytes"], packet_metrics["largest_packet_bytes"])
+        self.assertEqual(packet_sizing["packet_count"], len(orchestrator["packet_files"]))
+        self.assertEqual(packet_sizing["packet_count"], len(expected_files) - 1)
+        self.assertGreater(result_payload["efficiency"]["packet_compaction"]["savings_tokens"], 0)
+        self.assertGreaterEqual(packet_sizing["largest_packet_bytes"], 1)
+        self.assertGreaterEqual(packet_sizing["largest_two_packets_bytes"], packet_sizing["largest_packet_bytes"])
 
 
 if __name__ == "__main__":

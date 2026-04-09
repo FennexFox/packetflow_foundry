@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 import re
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -39,6 +40,17 @@ SYNTHESIS_REQUIRED_KEYS = {
     "plan_defaults",
 }
 DELEGATION_SAVINGS_FLOOR = 250
+
+
+def resolve_builder_scripts_dir() -> Path:
+    return Path(__file__).resolve().parents[2] / "scripts"
+
+
+BUILDER_SCRIPTS_DIR = resolve_builder_scripts_dir()
+if str(BUILDER_SCRIPTS_DIR) not in sys.path:
+    sys.path.append(str(BUILDER_SCRIPTS_DIR))
+
+import evaluation_log_common as common  # noqa: E402
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -876,7 +888,7 @@ def _build_runtime_packet_state(context: dict[str, Any], lint_report: dict[str, 
         ],
         "packet_files": packet_files,
     }
-    packets["packet_metrics.json"] = packet_metrics
+    packets["packet_sizing.json"] = common.normalize_packet_sizing(packet_metrics)
     return {
         "packets": packets,
         "packet_metrics": packet_metrics,
@@ -897,6 +909,7 @@ def build_result_payload(
     context: dict[str, Any],
     packets: dict[str, dict[str, Any]],
     *,
+    packet_metrics: dict[str, Any],
     review_mode_baseline: str,
     review_mode_adjustments: list[str],
     recommended_workers: list[dict[str, Any]],
@@ -904,8 +917,8 @@ def build_result_payload(
     override_signals: list[str],
 ) -> dict[str, Any]:
     orchestrator = packets["orchestrator.json"]
-    packet_metrics = packets["packet_metrics.json"]
-    return {
+    return common.normalize_build_result(
+        {
         "output_dir": str(output_dir),
         "context_fingerprint": context.get("context_fingerprint"),
         "freshness_tuple": context.get("freshness_tuple"),
@@ -917,7 +930,7 @@ def build_result_payload(
         "optional_workers": list(optional_workers),
         "override_signals": list(override_signals),
         "packet_files": list(orchestrator["packet_files"]),
-        "packet_metrics_file": str(output_dir / "packet_metrics.json"),
+        "packet_sizing_file": str(output_dir / "packet_sizing.json"),
         "packet_metrics": packet_metrics,
         "packet_count": packet_metrics["packet_count"],
         "largest_packet_bytes": packet_metrics["largest_packet_bytes"],
@@ -929,7 +942,9 @@ def build_result_payload(
         "common_path_sufficient": packet_metrics["synthesis_packet_sufficient_for_common_path"],
         "synthesis_packet_sufficient_for_common_path": packet_metrics["synthesis_packet_sufficient_for_common_path"],
         "qa_gate_guidance": dict((packets["synthesis_packet.json"].get("qa_gate_guidance") or {})),
-    }
+        },
+        packet_metrics=packet_metrics,
+    )
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -969,6 +984,7 @@ def main() -> int:
         output_dir,
         context,
         packets,
+        packet_metrics=runtime_state["packet_metrics"],
         review_mode_baseline=runtime_state["review_mode_baseline"],
         review_mode_adjustments=runtime_state["review_mode_adjustments"],
         recommended_workers=recommended_workers,

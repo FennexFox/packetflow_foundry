@@ -81,6 +81,7 @@ def write_skill_fixture(
     profile_versioning: dict[str, object] | None,
 ) -> Path:
     skill_dir = root / name
+    (skill_dir / "scripts").mkdir(parents=True, exist_ok=True)
     (skill_dir / "profiles" / "default").mkdir(parents=True, exist_ok=True)
     spec_payload: dict[str, object] = {
         "skill_name": name,
@@ -95,6 +96,26 @@ def write_skill_fixture(
         spec_payload["builder_versioning"] = dict(skill_versioning)
     (skill_dir / "builder-spec.json").write_text(
         json.dumps(spec_payload, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+    (skill_dir / "scripts" / "write_evaluation_log.py").write_text(
+        "import evaluation_log_common as common\n",
+        encoding="utf-8",
+    )
+    (skill_dir / "migration-worksheet.md").write_text(
+        "\n".join(
+            [
+                f"# Migration Worksheet: {name}",
+                "",
+                "## Builder Compatibility History",
+                "- `unversioned -> packet-workflow 0.1.0`",
+                (
+                    f"- `packet-workflow {builder_version()['builder_semver']} / "
+                    f"epoch {builder_version()['compatibility_epoch']}`"
+                ),
+                "",
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -143,6 +164,8 @@ class PacketWorkflowVersioningTests(unittest.TestCase):
             report = versioning.evaluate_skill_dir(skill_dir)
             self.assertEqual(report["status"], versioning.STATUS_CURRENT)
             self.assertFalse(report["blocking"])
+            self.assertEqual(report["evaluation_schema_version"], "2.0")
+            self.assertTrue(report["migration_entry_present"])
 
     def test_evaluate_skill_dir_reports_semver_behind_compatible(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

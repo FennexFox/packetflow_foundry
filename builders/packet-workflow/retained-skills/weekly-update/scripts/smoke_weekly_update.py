@@ -25,7 +25,7 @@ EXPECTED_PACKET_FILES = (
     "incidents_packet.json",
     "risks_packet.json",
 )
-EXPECTED_EVAL_FILES = ("packet_metrics.json",)
+EXPECTED_EVAL_FILES = ("packet_sizing.json",)
 
 
 def parse_args() -> argparse.Namespace:
@@ -240,7 +240,11 @@ def main() -> int:
             ]
         )
         build_result = read_json(build_result_path)
-        packet_metrics = read_json(packet_dir / "packet_metrics.json")
+        packet_sizing = read_json(packet_dir / "packet_sizing.json")
+        packet_compaction = (
+            build_result.get("efficiency", {})
+            .get("packet_compaction", {})
+        )
 
         packet_files = sorted(path.name for path in packet_dir.iterdir() if path.is_file())
         missing_packets = missing_packet_files(packet_dir)
@@ -259,8 +263,8 @@ def main() -> int:
         orchestrator = read_json(packet_dir / "orchestrator.json")
         if "estimated_packet_tokens" in orchestrator or "packet_size_bytes" in orchestrator:
             raise RuntimeError("orchestrator.json unexpectedly contains token-efficiency counters")
-        if packet_metrics.get("estimated_packet_tokens", 0) >= packet_metrics.get("estimated_local_only_tokens", 0):
-            raise RuntimeError("packet_metrics.json did not report token-efficiency savings")
+        if packet_compaction.get("packet_tokens", 0) >= packet_compaction.get("local_only_tokens", 0):
+            raise RuntimeError("build-result efficiency did not report packet-compaction savings")
         if build_result.get("common_path_sufficient") is not True:
             raise RuntimeError("weekly-update smoke run required raw rereads in the common path")
         if int(build_result.get("raw_reread_count") or 0) != 0:
@@ -354,8 +358,15 @@ def main() -> int:
         eval_log = read_json(eval_log_path)
         if eval_log.get("skill", {}).get("name") != "weekly-update":
             raise RuntimeError("write_evaluation_log.py did not initialize a weekly-update log")
-        if eval_log.get("skill_specific", {}).get("data", {}).get("estimated_packet_tokens") != packet_metrics.get("estimated_packet_tokens"):
-            raise RuntimeError("Build metrics did not merge into the evaluation log")
+        if eval_log.get("packet_sizing", {}).get("packet_count") != packet_sizing.get("packet_count"):
+            raise RuntimeError("Build packet sizing did not merge into the evaluation log")
+        if (
+            eval_log.get("efficiency", {})
+            .get("packet_compaction", {})
+            .get("savings_tokens")
+            != packet_compaction.get("savings_tokens")
+        ):
+            raise RuntimeError("Build efficiency did not merge into the evaluation log")
 
         smoke_result = smoke_summary(
             "ok",
@@ -363,14 +374,15 @@ def main() -> int:
             repo_root,
             "review_smoke_results",
             context_id=context.get("context_id"),
-            packet_count=packet_metrics.get("packet_count"),
+            packet_count=packet_sizing.get("packet_count"),
             packet_files=packet_files,
             plan_valid=bool(plan_validation.get("valid")),
             apply_succeeded=bool(apply_result.get("apply_succeeded")),
             marker_update_written=bool(apply_result.get("marker_update_written")),
-            estimated_local_only_tokens=packet_metrics.get("estimated_local_only_tokens"),
-            estimated_packet_tokens=packet_metrics.get("estimated_packet_tokens"),
-            estimated_delegation_savings=packet_metrics.get("estimated_delegation_savings"),
+            largest_packet_bytes=packet_sizing.get("largest_packet_bytes"),
+            local_only_tokens=packet_compaction.get("local_only_tokens"),
+            packet_tokens=packet_compaction.get("packet_tokens"),
+            packet_compaction_savings_tokens=packet_compaction.get("savings_tokens"),
             common_path_sufficient=build_result.get("common_path_sufficient"),
             raw_reread_count=build_result.get("raw_reread_count"),
         )

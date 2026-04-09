@@ -68,8 +68,8 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
 
         self.assertEqual(payload["review_mode"], "targeted-delegation")
         self.assertEqual(payload["selected_packets"], ["mapping_packet", "changes_packet", "risks_packet"])
-        self.assertIsNone(payload["worker_count"])
-        self.assertEqual(payload["worker_mix"], [])
+        self.assertNotIn("worker_count", payload)
+        self.assertNotIn("worker_mix", payload)
         self.assertEqual(payload["candidate_counts_by_proposed_classification"]["actual_incident"], 1)
         self.assertEqual(payload["candidate_counts_by_proposed_classification"]["blocker_or_risk"], 1)
         self.assertEqual(payload["raw_reread_reason_counts"], {"conflicting_signals": 1})
@@ -91,54 +91,84 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
 
         payload = eval_log.build_base_log(SCRIPT_DIR / "write_evaluation_log.py", context, orchestrator, None)
 
-        self.assertIsNone(payload["orchestration"]["worker_count"])
-        self.assertEqual(payload["orchestration"]["worker_roles"], [])
+        self.assertEqual(payload["orchestration"]["planned_workers"]["count"], 0)
+        self.assertEqual(payload["orchestration"]["planned_workers"]["roles"], [])
+        self.assertEqual(payload["orchestration"]["actual_workers"]["summary"]["executed_count"], 0)
         self.assertEqual(payload["orchestration"]["override_signals"], [])
-        self.assertIsNone(payload["skill_specific"]["data"]["worker_count"])
-        self.assertEqual(payload["skill_specific"]["data"]["worker_mix"], [])
+        self.assertNotIn("worker_count", payload["skill_specific"]["data"])
+        self.assertNotIn("worker_mix", payload["skill_specific"]["data"])
 
-    def test_build_phase_merges_packet_metrics_and_common_path_signals(self) -> None:
+    def test_build_phase_merges_packet_sizing_efficiency_and_common_path_signals(self) -> None:
         log = {
             "skill": {"name": "weekly-update"},
-            "measurement": {"efficiency_source": "unavailable"},
+            "measurement": {},
             "baseline": {},
             "orchestration": {},
             "skill_specific": {"data": {}},
         }
         result = {
             "review_mode": "targeted-delegation",
-            "recommended_worker_count": 2,
-            "recommended_workers": [{"agent_type": "repo_mapper"}, {"agent_type": "large_diff_auditor"}],
+            "planned_workers": {
+                "count": 2,
+                "roles": ["repo_mapper", "large_diff_auditor"],
+                "workers": [
+                    {
+                        "name": "mapping-repo-mapper",
+                        "agent_type": "repo_mapper",
+                        "model": "gpt-5.4-mini",
+                        "reasoning_effort": "medium",
+                        "packets": ["mapping_packet.json"],
+                        "responsibility": "Map repo surfaces",
+                    },
+                    {
+                        "name": "risks-large-diff-auditor",
+                        "agent_type": "large_diff_auditor",
+                        "model": "gpt-5.4-mini",
+                        "reasoning_effort": "medium",
+                        "packets": ["risks_packet.json"],
+                        "responsibility": "Audit risks",
+                    },
+                ],
+            },
             "selected_packets": ["mapping_packet", "changes_packet", "risks_packet"],
             "candidate_counts_by_proposed_classification": {"actual_incident": 1, "blocker_or_risk": 2},
             "raw_reread_reason_counts": {"conflicting_signals": 1},
             "coverage_gap_count": 2,
             "common_path_sufficient": False,
             "raw_reread_count": 1,
-            "packet_metrics": {
+            "packet_sizing": {
                 "packet_count": 6,
-                "packet_size_bytes": 4096,
+                "total_packet_bytes": 4096,
                 "largest_packet_bytes": 1024,
                 "largest_two_packets_bytes": 1800,
-                "estimated_local_only_tokens": 1200,
-                "estimated_packet_tokens": 400,
-                "estimated_delegation_savings": 800,
+            },
+            "efficiency": {
+                "packet_compaction": {
+                    "local_only_tokens": 1200,
+                    "packet_tokens": 400,
+                    "savings_tokens": 800,
+                    "main_model_input_cost_nanousd": 1000,
+                    "provenance": "estimated",
+                    "pricing_snapshot_id": "openai-2026-04-09",
+                }
             },
         }
 
         eval_log.apply_phase_update(log, "build", result, 1.5)
 
         self.assertEqual(log["orchestration"]["review_mode"], "targeted-delegation")
-        self.assertEqual(log["orchestration"]["worker_count"], 2)
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 2)
         self.assertEqual(log["skill_specific"]["data"]["selected_packets"], ["mapping_packet", "changes_packet", "risks_packet"])
-        self.assertEqual(log["skill_specific"]["data"]["packet_count"], 6)
-        self.assertEqual(log["skill_specific"]["data"]["estimated_packet_tokens"], 400)
-        self.assertEqual(log["skill_specific"]["data"]["estimated_delegation_savings"], 800)
+        self.assertNotIn("packet_count", log["skill_specific"]["data"])
+        self.assertNotIn("estimated_packet_tokens", log["skill_specific"]["data"])
+        self.assertNotIn("estimated_delegation_savings", log["skill_specific"]["data"])
         self.assertFalse(log["skill_specific"]["data"]["common_path_sufficient"])
         self.assertTrue(log["orchestration"]["raw_reread_required"])
-        self.assertEqual(log["baseline"]["estimated_local_only_tokens"], 1200)
-        self.assertEqual(log["baseline"]["estimated_token_savings"], 800)
-        self.assertEqual(log["measurement"]["efficiency_source"], "estimated")
+        self.assertEqual(log["packet_sizing"]["packet_count"], 6)
+        self.assertEqual(log["packet_sizing"]["total_packet_bytes"], 4096)
+        self.assertEqual(log["efficiency"]["packet_compaction"]["local_only_tokens"], 1200)
+        self.assertEqual(log["efficiency"]["packet_compaction"]["savings_tokens"], 800)
+        self.assertEqual(log["latency"]["packet_builder_seconds"], 1.5)
 
     def test_validate_and_apply_merge_plan_and_marker_fields(self) -> None:
         log = {

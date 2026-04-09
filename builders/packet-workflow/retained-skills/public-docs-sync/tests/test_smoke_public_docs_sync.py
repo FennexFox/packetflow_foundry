@@ -65,7 +65,7 @@ class SmokePublicDocsSyncTests(unittest.TestCase):
 
         payload = json.loads(buffer.getvalue())
         self.assertEqual(payload["smoke"], "passed")
-        self.assertGreater(payload["estimated_delegation_savings"], 0)
+        self.assertGreater(payload["packet_compaction_savings_tokens"], 0)
         self.assertEqual(payload["raw_reread_count"], 0)
         self.assertTrue(payload["common_path_sufficient"])
 

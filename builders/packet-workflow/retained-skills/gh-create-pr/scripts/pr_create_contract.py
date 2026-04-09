@@ -174,7 +174,7 @@ PACKET_METRIC_FIELDS = [
 ]
 
 LOCAL_ONLY_PACKETS = {"synthesis_packet.json", "orchestrator.json"}
-RUNTIME_PACKET_EXCLUSIONS = {"packet_metrics.json"}
+RUNTIME_PACKET_EXCLUSIONS = {"packet_sizing.json"}
 
 
 def load_json(path: Any) -> dict[str, Any]:

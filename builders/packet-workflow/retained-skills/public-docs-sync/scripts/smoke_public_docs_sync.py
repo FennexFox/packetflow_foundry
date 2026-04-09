@@ -412,27 +412,30 @@ def main() -> int:
         )
 
         orchestrator = load_json(packet_dir / "orchestrator.json")
-        packet_metrics = load_json(packet_dir / "packet_metrics.json")
+        packet_sizing = load_json(packet_dir / "packet_sizing.json")
+        build_result = load_json(build_result_path)
+        packet_compaction = build_result["efficiency"]["packet_compaction"]
         apply_result = load_json(apply_result_path)
         eval_log = load_json(eval_log_path)
 
         assert orchestrator["orchestrator_profile"] == "standard"
         assert "packet_size_bytes" not in orchestrator
-        assert packet_metrics["estimated_packet_tokens"] < packet_metrics["estimated_local_only_tokens"]
-        assert packet_metrics["estimated_delegation_savings"] > 0
+        assert packet_compaction["packet_tokens"] < packet_compaction["local_only_tokens"]
+        assert packet_compaction["savings_tokens"] > 0
         assert apply_result["dry_run"] is True
         assert apply_result["marker_written"] is False
-        assert eval_log["skill_specific"]["data"]["packet_count"] == packet_metrics["packet_count"]
+        assert eval_log["packet_sizing"]["packet_count"] == packet_sizing["packet_count"]
         assert not state_file.exists()
 
         print(
             json.dumps(
                 {
                     "smoke": "passed",
-                    "packet_count": packet_metrics["packet_count"],
-                    "estimated_local_only_tokens": packet_metrics["estimated_local_only_tokens"],
-                    "estimated_packet_tokens": packet_metrics["estimated_packet_tokens"],
-                    "estimated_delegation_savings": packet_metrics["estimated_delegation_savings"],
+                    "packet_count": packet_sizing["packet_count"],
+                    "largest_packet_bytes": packet_sizing["largest_packet_bytes"],
+                    "local_only_tokens": packet_compaction["local_only_tokens"],
+                    "packet_tokens": packet_compaction["packet_tokens"],
+                    "packet_compaction_savings_tokens": packet_compaction["savings_tokens"],
                     "raw_reread_count": 0,
                     "common_path_sufficient": True,
                 },

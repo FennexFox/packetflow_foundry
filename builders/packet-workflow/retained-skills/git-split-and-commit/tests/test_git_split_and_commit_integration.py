@@ -207,7 +207,7 @@ class GitSplitAndCommitIntegrationTests(unittest.TestCase):
         self.assertEqual(validation_payload["normalized_plan"]["commits"][0]["footer"], ["Refs: #22"])
         self.assertEqual(payload["created_hashes"], [])
         self.assertTrue((packet_dir / "orchestrator.json").is_file())
-        self.assertTrue((packet_dir / "packet_metrics.json").is_file())
+        self.assertTrue((packet_dir / "packet_sizing.json").is_file())
         self.assertTrue(build_result["common_path_sufficient"])
         self.assertEqual(build_result["raw_reread_count"], 0)
 

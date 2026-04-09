@@ -780,10 +780,11 @@ def run_smoke_workflow(
         cwd=repo_root,
     )
 
-    packet_metrics = read_json(post_packet_dir / "packet_metrics.json")
+    packet_sizing = read_json(post_packet_dir / "packet_sizing.json")
     complete_result = read_json(complete_result_path)
     post_context = read_json(post_context_path)
     reconciliation_summary = complete_result.get("reconciliation_summary") or {}
+    packet_compaction = (build_result.get("efficiency") or {}).get("packet_compaction") or {}
     return summary(
         "ok",
         None,
@@ -796,8 +797,9 @@ def run_smoke_workflow(
         evaluation_final_path=manifest["paths"]["evaluation"]["final"],
         review_mode=build_result.get("review_mode"),
         common_path_sufficient=build_result.get("common_path_sufficient"),
-        estimated_packet_tokens=packet_metrics.get("estimated_packet_tokens"),
-        estimated_delegation_savings=packet_metrics.get("estimated_delegation_savings"),
+        packet_count=packet_sizing.get("packet_count"),
+        packet_tokens=packet_compaction.get("packet_tokens"),
+        packet_compaction_savings_tokens=packet_compaction.get("savings_tokens"),
         outdated_transition_candidates=reconciliation_summary.get(
             "outdated_transition_candidates",
             build_result.get("outdated_transition_candidates"),

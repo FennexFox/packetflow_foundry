@@ -34,6 +34,12 @@ from reword_plan_contract import (
     rules_reliability,
 )
 
+BUILDER_SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
+if str(BUILDER_SCRIPTS_DIR) not in sys.path:
+    sys.path.append(str(BUILDER_SCRIPTS_DIR))
+
+import evaluation_log_common as common  # noqa: E402
+
 
 LOCAL_COMMIT_LIMIT = 2
 LOCAL_FILE_LIMIT = 8
@@ -326,7 +332,8 @@ def build_result_payload(
     common_path_sufficient: bool,
     raw_reread_reasons: list[str],
 ) -> dict[str, Any]:
-    return {
+    return common.normalize_build_result(
+        {
         "review_mode": review_mode,
         "review_mode_baseline": review_mode_baseline,
         "review_mode_adjustments": review_mode_adjustments,
@@ -342,7 +349,9 @@ def build_result_payload(
         "raw_reread_count": len(raw_reread_reasons),
         "raw_reread_reasons": raw_reread_reasons,
         "packet_metrics": packet_metrics,
-    }
+        },
+        packet_metrics=packet_metrics,
+    )
 
 
 def main() -> int:
@@ -820,8 +829,8 @@ def main() -> int:
         local_only_sources={"rules": rules, "plan": plan},
         shared_packets=COMMON_PATH_CONTRACT["shared_packets"],
     )
-    (output_dir / "packet_metrics.json").write_text(
-        json.dumps(packet_metrics, indent=2, ensure_ascii=True) + "\n",
+    (output_dir / "packet_sizing.json").write_text(
+        json.dumps(common.normalize_packet_sizing(packet_metrics), indent=2, ensure_ascii=True) + "\n",
         encoding="utf-8",
     )
 
@@ -852,7 +861,7 @@ def main() -> int:
                 "output_dir": str(output_dir),
                 "review_mode": review_mode,
                 "packet_files": orchestrator["packet_files"],
-                "recommended_worker_count": len(recommended_workers),
+                "planned_worker_count": build_result["planned_workers"]["count"],
                 "common_path_sufficient": common_path_sufficient,
             },
             indent=2,

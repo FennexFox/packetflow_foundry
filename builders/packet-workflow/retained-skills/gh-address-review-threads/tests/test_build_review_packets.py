@@ -407,7 +407,7 @@ class BuildReviewPacketsTests(unittest.TestCase):
                 json.loads((output_dir / "global_packet.json").read_text(encoding="utf-8")),
                 json.loads((output_dir / "thread-01.json").read_text(encoding="utf-8")),
                 json.loads((output_dir / "orchestrator.json").read_text(encoding="utf-8")),
-                json.loads((output_dir / "packet_metrics.json").read_text(encoding="utf-8")),
+                json.loads((output_dir / "packet_sizing.json").read_text(encoding="utf-8")),
                 json.loads(build_result_path.read_text(encoding="utf-8")),
             )
 
@@ -472,7 +472,7 @@ class BuildReviewPacketsTests(unittest.TestCase):
             batch_packet = json.loads((output_dir / "thread-batch-01.json").read_text(encoding="utf-8"))
             singleton_packet = json.loads((output_dir / "thread-03.json").read_text(encoding="utf-8"))
             outdated_packet = json.loads((output_dir / "thread-04.json").read_text(encoding="utf-8"))
-            packet_metrics = json.loads((output_dir / "packet_metrics.json").read_text(encoding="utf-8"))
+            packet_sizing = json.loads((output_dir / "packet_sizing.json").read_text(encoding="utf-8"))
             build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
 
             self.assertEqual(orchestrator["review_mode"], "targeted-delegation")
@@ -501,10 +501,10 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertNotIn("analysis_targets", orchestrator)
             self.assertNotIn("thread_batches", orchestrator)
             self.assertEqual(
-                [worker["packets"] for worker in build_result["recommended_workers"]],
+                [worker["packets"] for worker in build_result["planned_workers"]["workers"]],
                 [["global_packet.json", "thread-batch-01.json"], ["global_packet.json", "thread-03.json"]],
             )
-            self.assertEqual(build_result["recommended_worker_count"], 2)
+            self.assertEqual(build_result["planned_workers"]["count"], 2)
             self.assertEqual(build_result["thread_batch_count"], 1)
             self.assertEqual(build_result["analysis_targets"], {"batch_count": 1, "singleton_count": 1})
             self.assertEqual(build_result["thread_batches"], {"batch-01": ["t-1", "t-2"]})
@@ -538,10 +538,13 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertEqual(outdated_packet["thread"]["thread_id"], "t-4")
             self.assertTrue(outdated_packet["thread"]["is_outdated"])
             self.assertEqual(outdated_packet["thread"]["default_decision_candidate"], "defer-outdated")
-            self.assertTrue(packet_metrics["estimated_local_only_tokens"] > packet_metrics["estimated_packet_tokens"])
+            self.assertTrue(
+                build_result["efficiency"]["packet_compaction"]["local_only_tokens"]
+                > build_result["efficiency"]["packet_compaction"]["packet_tokens"]
+            )
             self.assertTrue(build_result["common_path_sufficient"])
+            self.assertEqual(packet_sizing["packet_count"], len(orchestrator["packet_files"]))
             self.assertNotIn("estimated_packet_tokens", build_result)
-            self.assertEqual(Path(build_result["packet_metrics_file"]).name, "packet_metrics.json")
 
     def test_main_propagates_structured_marker_conflict_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -890,7 +893,7 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertEqual(thread_packet["adjudication_basis"]["explicit_reread_reasons"], [])
 
     def test_main_keeps_local_only_when_only_estimated_token_savings_are_high(self) -> None:
-        context, _threads, _global_packet, _thread_packet, orchestrator, _packet_metrics, build_result = (
+        context, _threads, _global_packet, _thread_packet, orchestrator, _packet_sizing, build_result = (
             self._run_estimated_savings_observation_case()
         )
 
@@ -900,12 +903,12 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertEqual(build_result["review_mode"], "local-only")
         self.assertEqual(build_result["review_mode_baseline"], "local-only")
         self.assertEqual(build_result["review_mode_adjustments"], [])
-        self.assertEqual(build_result["recommended_worker_count"], 0)
-        self.assertEqual(build_result["recommended_workers"], [])
+        self.assertEqual(build_result["planned_workers"]["count"], 0)
+        self.assertEqual(build_result["planned_workers"]["workers"], [])
         self.assertEqual(context["conversation_comments"][0]["author_login"], "reviewer-a")
 
-    def test_main_keeps_packet_metrics_observational_when_estimated_savings_are_high(self) -> None:
-        context, threads, global_packet, thread_packet, orchestrator, packet_metrics, build_result = (
+    def test_main_keeps_packet_sizing_observational_when_estimated_savings_are_high(self) -> None:
+        context, threads, global_packet, thread_packet, orchestrator, packet_sizing, build_result = (
             self._run_estimated_savings_observation_case()
         )
 
@@ -924,11 +927,11 @@ class BuildReviewPacketsTests(unittest.TestCase):
                 "override_signals": [],
             },
         )
-        self.assertEqual(packet_metrics["packet_count"], len(orchestrator["packet_files"]))
-        self.assertEqual(packet_metrics, expected_packet_metrics)
-        self.assertGreater(packet_metrics["estimated_delegation_savings"], 0)
+        self.assertEqual(packet_sizing["packet_count"], len(orchestrator["packet_files"]))
+        self.assertEqual(packet_sizing["packet_size_bytes"], expected_packet_metrics["packet_size_bytes"])
+        self.assertGreater(build_result["efficiency"]["packet_compaction"]["savings_tokens"], 0)
         self.assertEqual(build_result["review_mode"], "local-only")
-        self.assertEqual(build_result["packet_metrics_file"], str(Path(context["repo_root"]).parent / "packets" / "packet_metrics.json"))
+        self.assertEqual(build_result["packet_sizing"], packet_sizing)
 
     def test_main_marks_same_run_outdated_transition_candidates(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

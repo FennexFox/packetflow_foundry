@@ -37,7 +37,7 @@ CANONICAL_RUNTIME_ARTIFACTS = [
     SHARED_LOCAL_PACKET,
 ]
 CANONICAL_OPTIONAL_RUNTIME_ARTIFACTS = ["evidence_packet.json"]
-CANONICAL_EVAL_ARTIFACTS = ["packet_metrics.json", "eval-log.json"]
+CANONICAL_EVAL_ARTIFACTS = ["packet_sizing.json", "eval-log.json"]
 
 AUTHORITY_ORDER = [
     "tracked release rules and metadata",

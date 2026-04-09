@@ -90,7 +90,7 @@ class BuildPublicDocsSyncPacketsContractTests(unittest.TestCase):
         self.assertEqual(len(promoted), 2)
         self.assertEqual(promoted[1]["agent_type"], "repo_mapper")
 
-    def test_packet_emission_result_output_and_metrics_sidecar(self) -> None:
+    def test_packet_emission_result_output_and_packet_sizing_sidecar(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             tmp = Path(tmpdir)
             context_path = tmp / "context.json"
@@ -286,7 +286,7 @@ class BuildPublicDocsSyncPacketsContractTests(unittest.TestCase):
             claims_packet = self.read_json(output_dir / "claims_packet.json")
             forms_packet = self.read_json(output_dir / "forms_batch_packet.json")
             batch_packet = self.read_json(output_dir / "batch-packet-01.json")
-            packet_metrics = self.read_json(output_dir / "packet_metrics.json")
+            packet_sizing = self.read_json(output_dir / "packet_sizing.json")
             build_result = self.read_json(result_path)
 
             self.assertEqual(orchestrator["orchestrator_profile"], "standard")
@@ -307,10 +307,10 @@ class BuildPublicDocsSyncPacketsContractTests(unittest.TestCase):
             self.assertEqual(build_result["review_mode_adjustments"], ["override_signal"])
             self.assertEqual(build_result["applied_override_signals"], ["lint"])
             self.assertEqual(
-                [worker["agent_type"] for worker in build_result["recommended_workers"]],
+                [worker["agent_type"] for worker in build_result["planned_workers"]["workers"]],
                 ["large_diff_auditor", "evidence_summarizer", "docs_verifier", "docs_verifier"],
             )
-            self.assertEqual(build_result["recommended_workers"][-1]["packet"], "batch-packet-01.json")
+            self.assertEqual(build_result["planned_workers"]["workers"][-1]["packets"], ["batch-packet-01.json"])
             self.assertEqual([worker["agent_type"] for worker in build_result["optional_workers"]], ["repo_mapper", "log_triager"])
             self.assertEqual(global_packet["orchestrator_profile"], "standard")
             self.assertEqual(global_packet["review_mode_overrides"], contract.REVIEW_MODE_OVERRIDES)
@@ -323,27 +323,29 @@ class BuildPublicDocsSyncPacketsContractTests(unittest.TestCase):
             self.assertFalse(claims_packet["marker_gate_signals"]["marker_blocked_by_packet"])
             self.assertEqual(forms_packet["marker_gate_signals"]["manual_review_residual_count"], 1)
             self.assertEqual(batch_packet["deterministic_action_candidates"][0]["canonical_type"], "issue_template_metadata_sync")
-            self.assertEqual(
-                packet_metrics,
-                contract.compute_packet_metrics(
-                    {
-                        "orchestrator.json": orchestrator,
-                        "global_packet.json": global_packet,
-                        "claims_packet.json": claims_packet,
-                        "reporting_packet.json": self.read_json(output_dir / "reporting_packet.json"),
-                        "workflow_packet.json": self.read_json(output_dir / "workflow_packet.json"),
-                        "forms_batch_packet.json": forms_packet,
-                        "batch-packet-01.json": batch_packet,
-                    },
-                    local_only_sources={
-                        "context.json": context,
-                        "lint.json": lint,
-                    },
-                ),
+            recomputed_metrics = contract.compute_packet_metrics(
+                {
+                    "orchestrator.json": orchestrator,
+                    "global_packet.json": global_packet,
+                    "claims_packet.json": claims_packet,
+                    "reporting_packet.json": self.read_json(output_dir / "reporting_packet.json"),
+                    "workflow_packet.json": self.read_json(output_dir / "workflow_packet.json"),
+                    "forms_batch_packet.json": forms_packet,
+                    "batch-packet-01.json": batch_packet,
+                },
+                local_only_sources={
+                    "context.json": context,
+                    "lint.json": lint,
+                },
             )
-            self.assertEqual(packet_metrics["packet_count"], 7)
+            self.assertEqual(packet_sizing["packet_count"], 7)
+            self.assertEqual(packet_sizing["packet_size_bytes"], recomputed_metrics["packet_size_bytes"])
+            self.assertEqual(
+                build_result["efficiency"]["packet_compaction"]["local_only_tokens"],
+                recomputed_metrics["estimated_local_only_tokens"],
+            )
             self.assertEqual(build_result["auto_apply_candidate_count"], 2)
-            self.assertEqual(build_result["packet_metrics"]["largest_packet_bytes"], packet_metrics["largest_packet_bytes"])
+            self.assertEqual(build_result["packet_sizing"]["largest_packet_bytes"], packet_sizing["largest_packet_bytes"])
 
     def test_common_path_focused_packets_are_decision_ready(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:

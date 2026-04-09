@@ -1,0 +1,48 @@
+{
+  "schema_version": "1.0",
+  "snapshot_id": "openai-2026-04-09",
+  "captured_at_utc": "2026-04-09T00:00:00Z",
+  "currency": "USD",
+  "source_urls": [
+    "https://openai.com/api/pricing/",
+    "https://platform.openai.com/docs/pricing"
+  ],
+  "models": [
+    {
+      "canonical_model_id": "gpt-5.4",
+      "aliases": [
+        "gpt-5"
+      ],
+      "input_nanousd_per_token": 1250,
+      "cached_input_nanousd_per_token": 125,
+      "output_nanousd_per_token": 10000,
+      "reasoning_nanousd_per_token": 10000,
+      "reasoning_price_basis": "output",
+      "supports_cached_input": true
+    },
+    {
+      "canonical_model_id": "gpt-5.4-mini",
+      "aliases": [
+        "gpt-5-mini"
+      ],
+      "input_nanousd_per_token": 250,
+      "cached_input_nanousd_per_token": 25,
+      "output_nanousd_per_token": 2000,
+      "reasoning_nanousd_per_token": 2000,
+      "reasoning_price_basis": "output",
+      "supports_cached_input": true
+    },
+    {
+      "canonical_model_id": "gpt-5.4-nano",
+      "aliases": [
+        "gpt-5-nano"
+      ],
+      "input_nanousd_per_token": 50,
+      "cached_input_nanousd_per_token": 5,
+      "output_nanousd_per_token": 400,
+      "reasoning_nanousd_per_token": 400,
+      "reasoning_price_basis": "output",
+      "supports_cached_input": true
+    }
+  ]
+}

@@ -7,6 +7,7 @@ import argparse
 import json
 import re
 import subprocess
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +43,12 @@ from review_thread_packet_contract import (
     normalize_text_for_matching as contract_normalize_text_for_matching,
     request_anchor_evidence as contract_request_anchor_evidence,
 )
+
+BUILDER_SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
+if str(BUILDER_SCRIPTS_DIR) not in sys.path:
+    sys.path.append(str(BUILDER_SCRIPTS_DIR))
+
+import evaluation_log_common as common  # noqa: E402
 
 
 SNIPPET_RADIUS = 12
@@ -1567,8 +1574,8 @@ def main() -> int:
             "override_signals": override_signals,
         },
     )
-    packet_metrics_path = output_dir / "packet_metrics.json"
-    write_json(packet_metrics_path, packet_metrics)
+    packet_sizing_path = output_dir / "packet_sizing.json"
+    write_json(packet_sizing_path, common.normalize_packet_sizing(packet_metrics))
 
     build_result = build_result_payload(
         review_mode=review_mode,
@@ -1595,7 +1602,11 @@ def main() -> int:
         outdated_recheck_ambiguous=sum(
             1 for item in outdated_recheck_records if item["resolution_verdict"] == "ambiguous"
         ),
-        packet_metrics_path=str(packet_metrics_path),
+        packet_metrics_path=str(packet_sizing_path),
+    )
+    build_result = common.normalize_build_result(
+        build_result,
+        packet_metrics=packet_metrics,
     )
     if args.result_output is not None:
         write_json(args.result_output, build_result)
@@ -1606,7 +1617,7 @@ def main() -> int:
                 "output_dir": str(output_dir),
                 "review_mode": review_mode,
                 "packet_files": packet_files,
-                "recommended_worker_count": len(recommended_workers),
+                "planned_worker_count": build_result["planned_workers"]["count"],
                 "common_path_sufficient": common_path_sufficient,
                 "result_output": str(args.result_output) if args.result_output else None,
             },

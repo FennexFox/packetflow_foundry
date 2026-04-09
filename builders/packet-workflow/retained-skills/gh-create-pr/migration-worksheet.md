@@ -1,4 +1,9 @@
-# Migration Worksheet: draft-release-copy
+# Migration Worksheet: gh-create-pr
+
+## Workflow Snapshot
+- `workflow_family`: `github-pr`
+- Current runtime shape: `packet-heavy-orchestrator`, `generic`, `flat`, lint/validate/apply split
+- Primary packets: `global_packet`, `rules_packet`, `process_packet`, `runtime_packet`, `testing_packet`
 
 ## Builder Compatibility History
 - `unversioned -> packet-workflow 0.1.0`

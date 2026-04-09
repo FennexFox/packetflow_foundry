@@ -145,7 +145,7 @@ class ReviewThreadWorkflowSmokeTests(unittest.TestCase):
 
             self.assertEqual(finalized["skill_specific"]["data"]["threads_accepted"], 1)
             self.assertTrue(finalized["skill_specific"]["data"]["common_path_sufficient"])
-            self.assertIsNotNone(finalized["skill_specific"]["data"]["estimated_packet_tokens"])
+            self.assertIsNotNone(finalized["efficiency"]["packet_compaction"]["packet_tokens"])
             self.assertEqual(finalized["quality"]["result_status"], "dry-run")
             self.assertTrue(finalized["safety"]["fingerprint_match"])
 

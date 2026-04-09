@@ -27,7 +27,7 @@ def main() -> int:
     packets = artifacts["packets"]
     for file_name, payload in packets.items():
         write_json(output_dir / file_name, payload)
-    write_json(output_dir / "packet_metrics.json", artifacts["packet_metrics"])
+    write_json(output_dir / "packet_sizing.json", artifacts["packet_sizing"])
     if args.result_output:
         write_json(Path(args.result_output).resolve(), artifacts["build_result"])
     return 0

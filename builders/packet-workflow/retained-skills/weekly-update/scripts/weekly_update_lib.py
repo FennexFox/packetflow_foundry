@@ -58,6 +58,7 @@ from packet_workflow_versioning import (  # type: ignore  # noqa: E402
     load_builder_versioning,
     load_json_document,
 )
+import evaluation_log_common as common  # type: ignore  # noqa: E402
 
 SKILL_NAME = "weekly-update"
 SKILL_VERSION = "0.1.0"
@@ -2074,7 +2075,16 @@ def build_packet_artifacts(context: dict[str, Any], lint_report: dict[str, Any])
         "common_path_sufficient": not raw_reread_reason_counts,
         "raw_reread_count": sum(raw_reread_reason_counts.values()),
     }
-    return {"packets": packets, "packet_metrics": packet_metrics, "build_result": build_result}
+    build_result = common.normalize_build_result(
+        build_result,
+        packet_metrics=packet_metrics,
+    )
+    return {
+        "packets": packets,
+        "packet_sizing": build_result["packet_sizing"],
+        "efficiency": build_result["efficiency"],
+        "build_result": build_result,
+    }
 
 
 def build_packets(context: dict[str, Any], lint_report: dict[str, Any]) -> dict[str, dict[str, Any]]:

@@ -78,7 +78,7 @@ class SmokePrepareReleaseCopyTests(unittest.TestCase):
         self.assertEqual(payload["status"], "ok")
         self.assertIsNone(payload["reason"])
         self.assertEqual(payload["next_action"], "review_smoke_results")
-        self.assertGreater(payload["estimated_delegation_savings"], 0)
+        self.assertGreater(payload["packet_compaction_savings_tokens"], 0)
 
 
 if __name__ == "__main__":

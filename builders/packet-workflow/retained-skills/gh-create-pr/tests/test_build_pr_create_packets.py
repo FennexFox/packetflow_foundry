@@ -92,7 +92,7 @@ class BuildPrCreatePacketsTests(unittest.TestCase):
         self.assertIn("testing_packet.json", packets)
         self.assertIn("synthesis_packet.json", packets)
         self.assertIn("orchestrator.json", packets)
-        self.assertIn("packet_metrics.json", packets)
+        self.assertIn("packet_sizing.json", packets)
         self.assertEqual(build_result["shared_local_packet"], "synthesis_packet.json")
         self.assertEqual(packets["orchestrator.json"]["routing_contract"], builder.contract.ROUTING_CONTRACT)
         self.assertEqual(packets["global_packet.json"]["routing_contract"], builder.contract.ROUTING_CONTRACT)
@@ -113,8 +113,9 @@ class BuildPrCreatePacketsTests(unittest.TestCase):
             packets["rules_packet.json"]["strict_claim_gates"],
         )
         self.assertEqual(build_result["review_mode_baseline"], "targeted-delegation")
-        self.assertIn("recommended_workers", build_result)
+        self.assertIn("planned_workers", build_result)
         self.assertIn("optional_workers", build_result)
+        self.assertEqual(build_result["planned_workers"]["count"], 2)
         self.assertEqual(build_result["delegation_non_use_cases"], builder.contract.DELEGATION_NON_USE_CASES)
 
 

@@ -44,26 +44,54 @@ Every evaluation log should contain:
 
 - Keep only truly common fields in the shared envelope.
 - Put workflow-specific counters and mutation details in `skill_specific.data`.
-- Record observed values first. Estimated values must be labeled in `measurement` or `baseline`.
+- Record observed values first. Estimated values must be labeled in `baseline` or per-component provenance fields.
 - If no baseline is available, leave savings fields null instead of inventing a comparison.
 - Scores must renormalize weights when inputs are missing.
 
-## Baseline
+## Orchestration
 
-- `baseline.method`: `none | heuristic_local_only | paired_run | historical_cohort`
-- default: `none`
-- include estimate fields only when they actually exist:
-  - `estimated_local_only_tokens`
-  - `estimated_token_savings`
-  - `estimated_delegation_savings`
-- keep `baseline.confidence` explicit when a heuristic or historical estimate is used
+- `orchestration.planned_workers`
+  - `count`, `roles`, `workers[]`
+  - `workers[]` must contain `worker_id`, `name`, `agent_type`, `model`, `reasoning_effort`, `packets`, `responsibility`
+- `orchestration.actual_workers`
+  - `summary`, `workers[]`
+  - `summary` must contain `materialized_count`, `executed_count`, `completed_count`, `failed_count`, `cancelled_count`, `planned_not_run_count`, `unplanned_count`, `capture_complete`, `capture_incomplete_reason`
+  - finalize outputs should contain terminal statuses only unless `capture_complete=false`
 
 ## Measurement
 
 At minimum record:
-- `token_source`: `measured | estimated | unavailable`
 - `latency_source`: `measured | estimated | unavailable`
 - `quality_source`: `self_assessed | human_confirmed | mixed | unavailable`
+
+## Packet Sizing And Efficiency
+
+- `packet_sizing` contains only sizing counters:
+  - `packet_count`
+  - `packet_size_bytes`
+  - `largest_packet_bytes`
+  - `largest_two_packets_bytes`
+  - optional `packet_size_breakdown`
+- `efficiency.packet_compaction` records packet-compaction telemetry:
+  - `local_only_tokens`
+  - `packet_tokens`
+  - `savings_tokens`
+  - `main_model_input_cost_nanousd`
+  - `provenance`
+  - `pricing_snapshot_id`
+- `efficiency.model_tier_delegation` records delegation telemetry:
+  - `gross_avoided_main_cost_nanousd`
+  - `delegation_overhead_cost_nanousd`
+  - `net_savings_cost_nanousd`
+  - `gross_avoided_provenance`
+  - `overhead_provenance`
+  - `net_provenance`
+  - `pricing_snapshot_id`
+- `efficiency.combined` records combined cost-equivalent telemetry:
+  - `packet_compaction_cost_nanousd`
+  - `delegation_net_cost_nanousd`
+  - `total_net_cost_nanousd`
+  - `component_provenance`
 
 ## Scoring
 

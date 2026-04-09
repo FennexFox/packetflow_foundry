@@ -48,47 +48,78 @@ def orchestrator() -> dict:
 
 
 class WriteEvaluationLogGhFixPrWriteupTests(unittest.TestCase):
-    def test_build_phase_merges_packet_metrics_and_common_path_fields(self) -> None:
+    def test_build_phase_merges_packet_sizing_efficiency_and_common_path_fields(self) -> None:
         log = eval_log.build_base_log(Path(eval_log.__file__), context(), orchestrator(), None)
         result = {
             "review_mode": "broad-delegation",
-            "recommended_worker_count": 3,
             "override_signals": [{"reason": "diff_stat_threshold", "detail": "Large churn"}],
-            "recommended_workers": [
-                {"agent_type": "packet_explorer"},
-                {"agent_type": "packet_explorer"},
-                {"agent_type": "evidence_summarizer"},
-            ],
+            "planned_workers": {
+                "count": 3,
+                "roles": ["packet_explorer", "evidence_summarizer"],
+                "workers": [
+                    {
+                        "name": "runtime",
+                        "agent_type": "packet_explorer",
+                        "model": "gpt-5.4-mini",
+                        "reasoning_effort": "medium",
+                        "packets": ["global_packet.json", "runtime_packet.json"],
+                        "responsibility": "Runtime summary",
+                    },
+                    {
+                        "name": "process",
+                        "agent_type": "packet_explorer",
+                        "model": "gpt-5.4-mini",
+                        "reasoning_effort": "medium",
+                        "packets": ["global_packet.json", "process_packet.json"],
+                        "responsibility": "Process summary",
+                    },
+                    {
+                        "name": "testing",
+                        "agent_type": "evidence_summarizer",
+                        "model": "gpt-5.4-mini",
+                        "reasoning_effort": "low",
+                        "packets": ["global_packet.json", "testing_packet.json"],
+                        "responsibility": "Testing summary",
+                    },
+                ],
+            },
             "delegation_non_use_cases": contract.DELEGATION_NON_USE_CASES,
             "rewrite_strategy": "full-rewrite",
             "qa_required": True,
             "qa_reason": "broad-delegation full rewrite requires QA cross-check",
             "common_path_sufficient": True,
             "raw_reread_count": 0,
-            "packet_metrics": {
+            "packet_sizing": {
                 "packet_count": 6,
-                "estimated_local_only_tokens": 2400,
-                "estimated_packet_tokens": 900,
-                "estimated_delegation_savings": 1500,
+                "packet_size_bytes": 8689,
+                "largest_packet_bytes": 2419,
+                "largest_two_packets_bytes": 4693,
+            },
+            "efficiency": {
+                "packet_compaction": {
+                    "local_only_tokens": 2400,
+                    "packet_tokens": 900,
+                    "savings_tokens": 1500,
+                    "main_model_input_cost_nanousd": 1875000,
+                    "provenance": "estimated",
+                    "pricing_snapshot_id": "openai-2026-04-09",
+                },
             },
         }
 
         eval_log.apply_phase_update(log, "build", result, 0.25)
 
         data = log["skill_specific"]["data"]
-        self.assertEqual(data["packet_count"], 6)
         self.assertEqual(data["delegation_non_use_cases"], contract.DELEGATION_NON_USE_CASES)
         self.assertEqual(data["rewrite_strategy"], "full-rewrite")
         self.assertTrue(data["qa_required"])
         self.assertTrue(data["common_path_sufficient"])
         self.assertEqual(data["raw_reread_count"], 0)
-        self.assertEqual(data["estimated_packet_tokens"], 900)
-        self.assertEqual(data["estimated_delegation_savings"], 1500)
         self.assertEqual(log["orchestration"]["override_signals"], ["diff_stat_threshold"])
-        self.assertEqual(log["orchestration"]["worker_roles"], ["packet_explorer", "packet_explorer", "evidence_summarizer"])
-        self.assertEqual(log["baseline"]["estimated_local_only_tokens"], 2400)
-        self.assertEqual(log["baseline"]["estimated_token_savings"], 1500)
-        self.assertEqual(log["measurement"]["token_source"], "estimated")
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 3)
+        self.assertEqual(log["packet_sizing"]["packet_count"], 6)
+        self.assertEqual(log["efficiency"]["packet_compaction"]["packet_tokens"], 900)
+        self.assertEqual(log["efficiency"]["packet_compaction"]["savings_tokens"], 1500)
 
     def test_validate_and_apply_merge_qa_state(self) -> None:
         log = eval_log.build_base_log(Path(eval_log.__file__), context(), orchestrator(), None)
