@@ -125,6 +125,12 @@ def parse_args() -> argparse.Namespace:
         default=[],
         help="Trusted explicit issue hint such as `15` or `#15`. Repeat as needed.",
     )
+    parser.add_argument(
+        "--test-command",
+        action="append",
+        default=[],
+        help="Trusted exact test command to allow in positive Testing claims. Repeat as needed.",
+    )
     parser.add_argument("--reviewer", action="append", default=[], help="Raw reviewer option. Repeat as needed.")
     parser.add_argument("--assignee", action="append", default=[], help="Raw assignee option. Repeat as needed.")
     parser.add_argument("--label", action="append", default=[], help="Raw label option. Repeat as needed.")
@@ -161,6 +167,7 @@ def main() -> int:
             base_ref=args.base,
             head_ref=args.head,
             issue_hints=list(args.issue_hint or []),
+            test_commands=list(args.test_command or []),
             reviewers=list(args.reviewer or []),
             assignees=list(args.assignee or []),
             labels=list(args.label or []),

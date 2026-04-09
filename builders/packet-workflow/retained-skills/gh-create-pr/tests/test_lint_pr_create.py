@@ -151,6 +151,7 @@ def collected_context() -> dict:
         },
         "testing_signal_candidates": {
             "exact_commands": [],
+            "operator_supplied": [],
             "supports_positive_testing_claims": False,
             "test_files_changed": True,
         },
@@ -266,6 +267,34 @@ class LintPrCreateTests(unittest.TestCase):
                     "  - Revert the docs text.",
                 ],
                 classification="- [x] Docs",
+            ),
+        )
+
+        self.assertEqual(findings["detected"]["unsupported_claims"], [])
+
+    def test_candidate_findings_allow_positive_testing_claim_with_trusted_command(self) -> None:
+        context = collected_context()
+        context["testing_signal_candidates"]["exact_commands"] = ["python -m pytest"]
+        context["testing_signal_candidates"]["operator_supplied"] = ["python -m pytest"]
+        context["testing_signal_candidates"]["supports_positive_testing_claims"] = True
+
+        findings = lint.collect_candidate_findings(
+            context,
+            "feat(pr-create): create guarded PRs",
+            "\n".join(
+                [
+                    "## Why",
+                    "Open a guarded PR.",
+                    "## What changed",
+                    "- Added validator/apply gates.",
+                    "## How",
+                    "- Keep create fail-closed.",
+                    "## Risk / Rollback",
+                    "- Re-run validation.",
+                    "## Testing",
+                    "- Ran `python -m pytest`.",
+                    "Refs: #42",
+                ]
             ),
         )
 

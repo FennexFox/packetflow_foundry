@@ -434,6 +434,27 @@ def normalize_explicit_issue_hints(values: Iterable[Any] | None) -> list[str]:
     return normalized
 
 
+def normalize_exact_test_commands(values: Iterable[Any] | None) -> list[str]:
+    normalized: list[str] = []
+    invalid: list[str] = []
+    for value in values or []:
+        text = str(value).strip()
+        if not text:
+            continue
+        if any(token in text for token in ("\r", "\n", "`")):
+            invalid.append(text)
+            continue
+        if text not in normalized:
+            normalized.append(text)
+    if invalid:
+        invalid_values = ", ".join(repr(item) for item in invalid)
+        raise ValueError(
+            "Explicit test commands must be single-line exact commands without backticks; "
+            f"got {invalid_values}."
+        )
+    return normalized
+
+
 def select_pr_template(repo_root: Path) -> dict[str, Any]:
     default_candidates = [normalize_path(str(repo_root / path)) for path in DEFAULT_TEMPLATE_PATHS if (repo_root / path).is_file()]
     named_candidates: list[str] = []
@@ -552,6 +573,7 @@ def build_context(
     base_ref: str | None = None,
     head_ref: str | None = None,
     issue_hints: list[str] | None = None,
+    test_commands: list[str] | None = None,
     reviewers: list[str] | None = None,
     assignees: list[str] | None = None,
     labels: list[str] | None = None,
@@ -572,6 +594,7 @@ def build_context(
     template_selection = select_pr_template(repo_root)
     rule_paths = template_file_paths(repo_root, template_selection)
     explicit_issue_hints = normalize_explicit_issue_hints(issue_hints)
+    explicit_test_commands = normalize_exact_test_commands(test_commands)
     branch_issue_hints = extract_issue_numbers(resolved_head)
     commit_issue_hints = extract_issue_numbers(" ".join(commit_subjects))
 
@@ -635,8 +658,9 @@ def build_context(
             "operator_supplied": explicit_issue_hints,
         },
         "testing_signal_candidates": {
-            "exact_commands": [],
-            "supports_positive_testing_claims": False,
+            "exact_commands": explicit_test_commands,
+            "operator_supplied": explicit_test_commands,
+            "supports_positive_testing_claims": bool(explicit_test_commands),
             "test_files_changed": int((summarize_groups(groups).get("tests") or {}).get("count", 0)) > 0,
         },
         "duplicate_check_hint": duplicate_hint,

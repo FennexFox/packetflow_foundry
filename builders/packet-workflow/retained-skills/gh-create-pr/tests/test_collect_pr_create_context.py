@@ -102,6 +102,7 @@ class CollectPrCreateContextTests(unittest.TestCase):
                 "    return {\n"
                 "        \"builder_compatibility\": {\"status\": \"current\"},\n"
                 "        \"captured_issue_hints\": kwargs.get(\"issue_hints\"),\n"
+                "        \"captured_test_commands\": kwargs.get(\"test_commands\"),\n"
                 "    }\n",
             )
             write_text(
@@ -152,6 +153,10 @@ class CollectPrCreateContextTests(unittest.TestCase):
                     "#15",
                     "--issue-hint",
                     "27",
+                    "--test-command",
+                    "python -m unittest",
+                    "--test-command",
+                    "python smoke.py",
                     "--output",
                     str(output_path),
                 ]
@@ -168,6 +173,7 @@ class CollectPrCreateContextTests(unittest.TestCase):
             payload = json.loads(output_path.read_text(encoding="utf-8"))
             self.assertEqual(exit_code, 0)
             self.assertEqual(payload["captured_issue_hints"], ["#15", "27"])
+            self.assertEqual(payload["captured_test_commands"], ["python -m unittest", "python smoke.py"])
 
 
 if __name__ == "__main__":

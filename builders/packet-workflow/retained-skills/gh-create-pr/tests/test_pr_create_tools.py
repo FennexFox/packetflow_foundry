@@ -170,6 +170,30 @@ class PrCreateToolsTests(unittest.TestCase):
             self.assertEqual(context["issue_reference_hints"]["commit_numbers"], [])
             self.assertEqual(context["issue_reference_hints"]["operator_supplied"], ["15"])
 
+    def test_build_context_accepts_explicit_test_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            origin_root = root / "origin.git"
+            repo_root.mkdir()
+            init_repo(repo_root, origin_root)
+
+            context = tools.build_context(
+                repo_root=repo_root,
+                repo_slug="owner/repo",
+                test_commands=["python -m unittest", "python -m unittest", "python smoke.py"],
+            )
+
+            self.assertEqual(
+                context["testing_signal_candidates"]["exact_commands"],
+                ["python -m unittest", "python smoke.py"],
+            )
+            self.assertEqual(
+                context["testing_signal_candidates"]["operator_supplied"],
+                ["python -m unittest", "python smoke.py"],
+            )
+            self.assertTrue(context["testing_signal_candidates"]["supports_positive_testing_claims"])
+
     def test_build_context_rejects_free_form_explicit_issue_hints(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)
@@ -183,6 +207,28 @@ class PrCreateToolsTests(unittest.TestCase):
                     repo_root=repo_root,
                     repo_slug="owner/repo",
                     issue_hints=["Refs: #42"],
+                )
+
+    def test_build_context_rejects_multiline_or_backticked_test_commands(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            repo_root = root / "repo"
+            origin_root = root / "origin.git"
+            repo_root.mkdir()
+            init_repo(repo_root, origin_root)
+
+            with self.assertRaisesRegex(ValueError, "Explicit test commands must be single-line exact commands"):
+                tools.build_context(
+                    repo_root=repo_root,
+                    repo_slug="owner/repo",
+                    test_commands=["python -m unittest\npython smoke.py"],
+                )
+
+            with self.assertRaisesRegex(ValueError, "Explicit test commands must be single-line exact commands"):
+                tools.build_context(
+                    repo_root=repo_root,
+                    repo_slug="owner/repo",
+                    test_commands=["`python -m unittest`"],
                 )
 
     def test_select_pr_template_fails_closed_when_multiple_candidates_exist(self) -> None:

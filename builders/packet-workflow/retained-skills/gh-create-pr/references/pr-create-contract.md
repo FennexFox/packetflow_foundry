@@ -21,6 +21,7 @@ Collector CLI:
 - optional `--base`
 - optional `--head`
 - repeated `--issue-hint`
+- repeated `--test-command`
 - repeated `--reviewer`
 - repeated `--assignee`
 - repeated `--label`
@@ -34,6 +35,7 @@ Resolution rules:
 - base resolution order is `--base`, `branch.<current>.gh-merge-base`, remote default branch
 - head resolution order is `--head`, current branch
 - explicit issue hints must come from repeated `--issue-hint` inputs and normalize only exact `15` / `#15` values
+- explicit testing evidence must come from repeated `--test-command` inputs and normalize only exact single-line commands
 - collected issue-reference hints merge branch metadata, commit-subject metadata, and trusted explicit issue hints
 - v1 stops closed when the resolved remote head does not exist
 
@@ -121,7 +123,7 @@ Candidate lint:
 
 Strict claim gates:
 - issue references require process-packet issue hints, whether derived from branch/commit metadata or trusted explicit collector input
-- positive testing claims require exact commands from testing evidence
+- positive testing claims require exact commands from testing evidence, whether supplied by trusted collector input or a future equivalent evidence path
 - `no behavior change` is allowed only when runtime packet is empty
 - rollout, restart/reload, and consumer migration/compatibility claims fail closed by default
 - unchecked template checklist items are not treated as asserted claims until checked or rewritten as prose
