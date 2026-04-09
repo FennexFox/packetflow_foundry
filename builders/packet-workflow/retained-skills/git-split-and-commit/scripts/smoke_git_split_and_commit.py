@@ -100,6 +100,7 @@ def build_plan(worktree: dict) -> dict:
                 "scope": "core",
                 "subject": "update app output",
                 "body": ["- update the tracked runtime file"],
+                "footer": [],
                 "whole_file_paths": ["src/app.py"],
                 "untracked_paths": [],
                 "split_paths": [],

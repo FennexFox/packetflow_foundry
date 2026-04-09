@@ -25,7 +25,7 @@ Read this file when `orchestrator.json` sets `review_mode` to `targeted-delegati
   - Purpose: keep the shared packet contract, stop conditions, and routing metadata in view
 - `rules_packet.json`
   - Prefer `docs_verifier`
-  - Purpose: extract hard commit-message rules, allowed types, scope requirements, subject/body constraints, and scope vocabulary
+  - Purpose: extract hard commit-message rules, allowed types, scope requirements, subject/body/footer constraints, and scope vocabulary
 - `worktree_packet.json`
   - Prefer `repo_mapper`
   - Purpose: extract touched-surface, fingerprint, and validation-candidate facts
@@ -60,6 +60,7 @@ Return exactly:
 - evidence files
 - recommended type/scope
 - body needed
+- footer needed
 - unsupported split risk
 ```
 

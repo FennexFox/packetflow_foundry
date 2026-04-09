@@ -12,10 +12,21 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import validate_commit_plan as validator  # noqa: E402
 
+REPO_ROOT = Path(__file__).resolve().parents[5]
+TEST_REPO_ROOT = (
+    REPO_ROOT
+    / ".codex"
+    / "tmp"
+    / "packet-workflow"
+    / "git-split-and-commit"
+    / "contract-tests"
+    / "repo"
+).resolve()
+
 
 def sample_worktree() -> dict[str, object]:
     return {
-        "repo_root": "C:/repo",
+        "repo_root": str(TEST_REPO_ROOT),
         "pathspecs": [],
         "head_commit": "abc123",
         "worktree_fingerprint": "sha256:worktree",
@@ -42,7 +53,7 @@ def sample_worktree() -> dict[str, object]:
 
 def sample_plan() -> dict[str, object]:
     return {
-        "repo_root": "C:/repo",
+        "repo_root": str(TEST_REPO_ROOT),
         "base_head": "abc123",
         "worktree_fingerprint": "sha256:worktree",
         "input_scope": "all-local-changes",
@@ -59,6 +70,7 @@ def sample_plan() -> dict[str, object]:
                 "scope": "core",
                 "subject": "update app behavior",
                 "body": "- update the app behavior\n- keep tests green",
+                "footer": "Refs: #22",
                 "whole_file_paths": ["src/app.py"],
                 "untracked_paths": [],
                 "split_paths": [],
@@ -85,8 +97,11 @@ class ValidateCommitPlanContractTests(unittest.TestCase):
         self.assertIn(validator.VALIDATION_WARNING_CODES["unknown_top_level_field"], warning_codes)
         self.assertIn(validator.VALIDATION_WARNING_CODES["unknown_commit_field"], warning_codes)
         self.assertIn(validator.VALIDATION_WARNING_CODES["body_string_normalized"], warning_codes)
+        self.assertIn(validator.VALIDATION_WARNING_CODES["footer_string_normalized"], warning_codes)
+        self.assertNotIn(validator.VALIDATION_WARNING_CODES["non_bullet_body"], warning_codes)
         self.assertNotIn("extra_field", payload["normalized_plan"])
         self.assertNotIn("extra_commit_field", payload["normalized_plan"]["commits"][0])
+        self.assertEqual(payload["normalized_plan"]["commits"][0]["footer"], ["Refs: #22"])
         self.assertTrue(str(payload["normalized_plan_fingerprint"]).startswith("sha256:"))
         self.assertEqual(
             payload["apply_gate_status"]["covered_stop_categories"],
@@ -291,6 +306,20 @@ class ValidateCommitPlanContractTests(unittest.TestCase):
         self.assertIn(
             "Commit 1 references unknown supporting path `docs/notes.md`.",
             payload["errors"],
+        )
+
+    def test_validator_requires_explicit_footer_field(self) -> None:
+        worktree = sample_worktree()
+        plan = sample_plan()
+        del plan["commits"][0]["footer"]
+
+        with patch.object(validator, "build_worktree_context", return_value=worktree):
+            payload = validator.validate_plan_against_worktree(worktree, plan)
+
+        self.assertFalse(payload["valid"])
+        self.assertIn(
+            validator.VALIDATION_ERROR_CODES["missing_field"],
+            {item["code"] for item in payload["error_details"] if item.get("field") == "footer"},
         )
 
 
