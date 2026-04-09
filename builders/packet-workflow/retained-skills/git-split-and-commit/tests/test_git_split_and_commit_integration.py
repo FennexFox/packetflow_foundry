@@ -23,6 +23,7 @@ def run_command(args: list[str], *, cwd: Path, check: bool = True) -> subprocess
         encoding="utf-8",
         errors="replace",
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         check=False,
     )
     if check and result.returncode != 0:

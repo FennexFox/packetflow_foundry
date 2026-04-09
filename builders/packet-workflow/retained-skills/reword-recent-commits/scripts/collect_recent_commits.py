@@ -123,6 +123,7 @@ def run_git(repo: Path, args: list[str], check: bool = True) -> str:
         cwd=repo,
         text=True,
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         check=False,
     )
     if check and result.returncode != 0:

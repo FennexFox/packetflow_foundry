@@ -43,6 +43,7 @@ def run_git(repo_root: Path, args: list[str]) -> str:
         encoding="utf-8",
         errors="replace",
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         check=False,
     )
     if result.returncode != 0:

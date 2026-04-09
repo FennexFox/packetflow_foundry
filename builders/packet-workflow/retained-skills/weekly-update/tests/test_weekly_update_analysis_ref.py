@@ -26,6 +26,7 @@ def run_git(repo_root: Path, *args: str, env: dict[str, str] | None = None) -> s
         ["git", *args],
         cwd=repo_root,
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         text=True,
         encoding="utf-8",
         errors="replace",

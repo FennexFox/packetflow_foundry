@@ -175,6 +175,7 @@ def run_git(repo: Path, args: list[str], check: bool = True) -> str:
         encoding="utf-8",
         errors="replace",
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         check=False,
     )
     if check and result.returncode != 0:

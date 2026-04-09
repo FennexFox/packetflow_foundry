@@ -279,6 +279,7 @@ def git_result(
         cwd=repo_root,
         text=True,
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         check=False,
         env=env,
     )

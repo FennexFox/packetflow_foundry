@@ -30,12 +30,13 @@ class PrWriteupToolsTests(unittest.TestCase):
     def test_load_local_diff_stat_uses_pr_scoped_merge_base(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
-            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_root), check=True, capture_output=True, text=True)
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_root), check=True, capture_output=True, stdin=subprocess.DEVNULL, text=True)
             subprocess.run(
                 ["git", "config", "user.name", "PacketFlow Tests"],
                 cwd=str(repo_root),
                 check=True,
                 capture_output=True,
+                stdin=subprocess.DEVNULL,
                 text=True,
             )
             subprocess.run(
@@ -43,16 +44,18 @@ class PrWriteupToolsTests(unittest.TestCase):
                 cwd=str(repo_root),
                 check=True,
                 capture_output=True,
+                stdin=subprocess.DEVNULL,
                 text=True,
             )
 
             (repo_root / "base.txt").write_text("base\n", encoding="utf-8")
-            subprocess.run(["git", "add", "base.txt"], cwd=str(repo_root), check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "base.txt"], cwd=str(repo_root), check=True, capture_output=True, stdin=subprocess.DEVNULL, text=True)
             subprocess.run(
                 ["git", "commit", "-m", "base"],
                 cwd=str(repo_root),
                 check=True,
                 capture_output=True,
+                stdin=subprocess.DEVNULL,
                 text=True,
             )
 
@@ -61,26 +64,29 @@ class PrWriteupToolsTests(unittest.TestCase):
                 cwd=str(repo_root),
                 check=True,
                 capture_output=True,
+                stdin=subprocess.DEVNULL,
                 text=True,
             )
             (repo_root / "feature.txt").write_text("feature\n", encoding="utf-8")
-            subprocess.run(["git", "add", "feature.txt"], cwd=str(repo_root), check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "feature.txt"], cwd=str(repo_root), check=True, capture_output=True, stdin=subprocess.DEVNULL, text=True)
             subprocess.run(
                 ["git", "commit", "-m", "feature"],
                 cwd=str(repo_root),
                 check=True,
                 capture_output=True,
+                stdin=subprocess.DEVNULL,
                 text=True,
             )
 
-            subprocess.run(["git", "checkout", "main"], cwd=str(repo_root), check=True, capture_output=True, text=True)
+            subprocess.run(["git", "checkout", "main"], cwd=str(repo_root), check=True, capture_output=True, stdin=subprocess.DEVNULL, text=True)
             (repo_root / "main-only.txt").write_text("main\n", encoding="utf-8")
-            subprocess.run(["git", "add", "main-only.txt"], cwd=str(repo_root), check=True, capture_output=True, text=True)
+            subprocess.run(["git", "add", "main-only.txt"], cwd=str(repo_root), check=True, capture_output=True, stdin=subprocess.DEVNULL, text=True)
             subprocess.run(
                 ["git", "commit", "-m", "main only"],
                 cwd=str(repo_root),
                 check=True,
                 capture_output=True,
+                stdin=subprocess.DEVNULL,
                 text=True,
             )
 
@@ -116,12 +122,13 @@ class PrWriteupToolsTests(unittest.TestCase):
     def test_infer_repo_slug_accepts_dotted_repo_names(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
-            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_root), check=True, capture_output=True, text=True)
+            subprocess.run(["git", "init", "-b", "main"], cwd=str(repo_root), check=True, capture_output=True, stdin=subprocess.DEVNULL, text=True)
             subprocess.run(
                 ["git", "remote", "add", "origin", "git@github.com:owner/my.repo.git"],
                 cwd=str(repo_root),
                 check=True,
                 capture_output=True,
+                stdin=subprocess.DEVNULL,
                 text=True,
             )
 

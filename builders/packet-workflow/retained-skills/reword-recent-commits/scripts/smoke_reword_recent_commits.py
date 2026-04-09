@@ -25,6 +25,7 @@ def run_python(args: list[str], *, cwd: Path | None = None) -> subprocess.Comple
         encoding="utf-8",
         errors="replace",
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         check=False,
     )
     if result.returncode != 0:
@@ -40,6 +41,7 @@ def run_git(repo_root: Path, args: list[str]) -> subprocess.CompletedProcess[str
         encoding="utf-8",
         errors="replace",
         capture_output=True,
+        stdin=subprocess.DEVNULL,
         check=False,
     )
     if result.returncode != 0:
