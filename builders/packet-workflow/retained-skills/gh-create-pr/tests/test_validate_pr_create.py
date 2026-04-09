@@ -14,19 +14,7 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import pr_create_contract as contract  # noqa: E402
 import validate_pr_create as validator  # noqa: E402
-
-
-REPO_TEMPLATE_SECTIONS = [
-    "What changed",
-    "Why",
-    "How",
-    "Testing",
-    "Compatibility / Adoption",
-    "Risk / Rollback",
-    "Reviewer Checklist",
-    "PR Classification (optional)",
-]
-
+from pr_create_test_support import REPO_TEMPLATE_SECTIONS  # noqa: E402
 
 def _lines(value: str | list[str]) -> list[str]:
     if isinstance(value, str):

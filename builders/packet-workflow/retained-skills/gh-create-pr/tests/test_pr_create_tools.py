@@ -14,19 +14,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import pr_create_tools as tools  # noqa: E402
-
-
-REPO_TEMPLATE_SECTIONS = [
-    "What changed",
-    "Why",
-    "How",
-    "Testing",
-    "Compatibility / Adoption",
-    "Risk / Rollback",
-    "Reviewer Checklist",
-    "PR Classification (optional)",
-]
-
+from pr_create_test_support import REPO_TEMPLATE_SECTIONS  # noqa: E402
 
 def run_git(repo_root: Path, args: list[str]) -> None:
     result = subprocess.run(

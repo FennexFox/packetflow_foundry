@@ -10,18 +10,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import lint_pr_create as lint  # noqa: E402
-
-
-REPO_TEMPLATE_SECTIONS = [
-    "What changed",
-    "Why",
-    "How",
-    "Testing",
-    "Compatibility / Adoption",
-    "Risk / Rollback",
-    "Reviewer Checklist",
-    "PR Classification (optional)",
-]
+from pr_create_test_support import REPO_TEMPLATE_SECTIONS  # noqa: E402
 
 UNSUPPORTED_CLAIM_MESSAGE = (
     "Consumer migration or compatibility claims require direct runtime/process evidence and are blocked by default."
@@ -354,6 +343,20 @@ class LintPrCreateTests(unittest.TestCase):
         )
 
         self.assertEqual(findings["detected"]["unsupported_claims"], [])
+
+    def test_candidate_findings_flag_present_but_empty_testing_section(self) -> None:
+        findings = lint.collect_candidate_findings(
+            collected_context(),
+            "fix(pr-create): harden guarded flow",
+            candidate_body(
+                what_changed="- Tightened verifier comparisons.",
+                why=["- Document the guarded create flow for maintainers.", "- Refs: #42"],
+                how="- Keep the migrated workflow shape local to the retained skill boundary.",
+                testing="",
+            ),
+        )
+
+        self.assertIn("`Testing` is present but empty.", findings["detected"]["body_errors"])
 
     def test_candidate_findings_allow_unchecked_repo_template_migration_checkbox(self) -> None:
         findings = lint.collect_candidate_findings(

@@ -391,7 +391,7 @@ def collect_candidate_findings(context: dict[str, Any], title: str, body: str) -
     if ROLLOUT_PATTERN.search(asserted_body):
         unsupported_claims.append("Rollout claims require direct process evidence and are blocked by default.")
 
-    if bodies.get("Testing", "") and not bodies["Testing"].strip():
+    if "Testing" in bodies and not bodies["Testing"]:
         body_errors.append("`Testing` is present but empty.")
 
     errors.extend(title_errors)

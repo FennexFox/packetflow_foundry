@@ -10,19 +10,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import build_pr_create_packets as builder  # noqa: E402
-
-
-REPO_TEMPLATE_SECTIONS = [
-    "What changed",
-    "Why",
-    "How",
-    "Testing",
-    "Compatibility / Adoption",
-    "Risk / Rollback",
-    "Reviewer Checklist",
-    "PR Classification (optional)",
-]
-
+from pr_create_test_support import REPO_TEMPLATE_SECTIONS  # noqa: E402
 
 def collected_context() -> dict:
     return {
