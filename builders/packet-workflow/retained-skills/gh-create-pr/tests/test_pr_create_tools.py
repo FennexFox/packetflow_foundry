@@ -14,12 +14,13 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import pr_create_tools as tools  # noqa: E402
-
+from pr_create_test_support import REPO_TEMPLATE_SECTIONS  # noqa: E402
 
 def run_git(repo_root: Path, args: list[str]) -> None:
     result = subprocess.run(
         ["git", *args],
         cwd=str(repo_root),
+        stdin=subprocess.DEVNULL,
         text=True,
         encoding="utf-8",
         capture_output=True,
@@ -39,6 +40,7 @@ def init_repo(repo_root: Path, origin_root: Path) -> None:
     result = subprocess.run(
         ["git", "init", "--bare", str(origin_root)],
         cwd=str(origin_root.parent),
+        stdin=subprocess.DEVNULL,
         text=True,
         encoding="utf-8",
         capture_output=True,
@@ -53,7 +55,10 @@ def init_repo(repo_root: Path, origin_root: Path) -> None:
 
     write_text(
         repo_root / ".github" / "pull_request_template.md",
-        "## Why\n\n## What changed\n\n## How\n\n## Risk / Rollback\n\n## Testing\n",
+        (
+            "## What changed\n\n## Why\n\n## How\n\n## Testing\n\n## Compatibility / Adoption\n\n"
+            "## Risk / Rollback\n\n## Reviewer Checklist\n\n## PR Classification (optional)\n\nJustification:\n"
+        ),
     )
     write_text(
         repo_root / ".github" / "instructions" / "pull-request.instructions.md",
@@ -85,11 +90,11 @@ class PrCreateToolsTests(unittest.TestCase):
     def test_read_utf8_text_accepts_bom_prefixed_markdown(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             path = Path(tmp) / "body.md"
-            path.write_text("## Why\nOpen the PR safely.\n", encoding="utf-8-sig")
+            path.write_text("## What changed\nOpen the PR safely.\n", encoding="utf-8-sig")
 
             text = tools.read_utf8_text(path)
 
-        self.assertEqual(text.splitlines()[0], "## Why")
+        self.assertEqual(text.splitlines()[0], "## What changed")
         self.assertFalse(text.startswith("\ufeff"))
 
     def test_infer_repo_slug_accepts_dotted_repo_names(self) -> None:
@@ -114,6 +119,7 @@ class PrCreateToolsTests(unittest.TestCase):
             self.assertEqual(context["resolved_base"], "main")
             self.assertEqual(context["repo_slug"], "owner/repo")
             self.assertEqual(context["template_selection"]["status"], "selected")
+            self.assertEqual(context["expected_template_sections"], REPO_TEMPLATE_SECTIONS)
             self.assertTrue(context["changed_files"])
             self.assertEqual(context["duplicate_check_hint"]["status"], "unavailable")
 
@@ -138,8 +144,8 @@ class PrCreateToolsTests(unittest.TestCase):
     def test_select_pr_template_fails_closed_when_multiple_candidates_exist(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
-            write_text(repo_root / ".github" / "pull_request_template.md", "## Why\n")
-            write_text(repo_root / ".github" / "PULL_REQUEST_TEMPLATE" / "alt.md", "## Why\n")
+            write_text(repo_root / ".github" / "pull_request_template.md", "## What changed\n")
+            write_text(repo_root / ".github" / "PULL_REQUEST_TEMPLATE" / "alt.md", "## What changed\n")
 
             selection = tools.select_pr_template(repo_root)
 
@@ -162,7 +168,7 @@ class PrCreateToolsTests(unittest.TestCase):
                 ),
                 encoding="utf-8",
             )
-            body_path.write_text("## Why\nOpen safely.\n", encoding="utf-8-sig")
+            body_path.write_text("## What changed\nOpen safely.\n", encoding="utf-8-sig")
 
             with mock.patch.dict(tools.os.environ, {tools.GH_STUB_STATE_ENV: str(state_path)}):
                 output = tools.run_command(
@@ -184,7 +190,7 @@ class PrCreateToolsTests(unittest.TestCase):
 
             updated = json.loads(state_path.read_text(encoding="utf-8"))
             self.assertIn("/pull/101", output)
-            self.assertEqual(updated["existing_prs"][0]["body"].splitlines()[0], "## Why")
+            self.assertEqual(updated["existing_prs"][0]["body"].splitlines()[0], "## What changed")
             self.assertFalse(updated["existing_prs"][0]["body"].startswith("\ufeff"))
 
 

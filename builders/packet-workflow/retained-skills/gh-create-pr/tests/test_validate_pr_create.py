@@ -14,6 +14,100 @@ if str(SCRIPT_DIR) not in sys.path:
 
 import pr_create_contract as contract  # noqa: E402
 import validate_pr_create as validator  # noqa: E402
+from pr_create_test_support import REPO_TEMPLATE_SECTIONS  # noqa: E402
+
+def _lines(value: str | list[str]) -> list[str]:
+    if isinstance(value, str):
+        return [value]
+    return list(value)
+
+
+def candidate_body(
+    *,
+    what_changed: str | list[str],
+    why: str | list[str],
+    how: str | list[str],
+    testing: str | list[str] | None = None,
+    compatibility: str | list[str] | None = None,
+    risk: str | list[str] | None = None,
+    reviewer_checklist: str | list[str] | None = None,
+    classification: str | list[str] | None = None,
+    justification: str | list[str] | None = None,
+) -> str:
+    testing_lines = (
+        _lines(testing)
+        if testing is not None
+        else [
+            "- Validation / tests:",
+            "  - Not run.",
+            "- Manual review:",
+            "  - Not applicable.",
+        ]
+    )
+    compatibility_lines = (
+        _lines(compatibility)
+        if compatibility is not None
+        else [
+            "- Consumer / vendor impact:",
+            "  - [x] None",
+            "  - [ ] Requires regenerating builder output",
+            "  - [ ] Requires updating project-local profiles or agents",
+            "  - [ ] Requires a migration note for vendored consumers",
+            "- Details:",
+            "  - No additional consumer changes.",
+        ]
+    )
+    risk_lines = (
+        _lines(risk)
+        if risk is not None
+        else [
+            "- Risk areas:",
+            "  - Validation could drift from live branch or template state.",
+            "- Rollback / mitigation:",
+            "  - Refresh branch state and rerun validation.",
+        ]
+    )
+    reviewer_lines = (
+        _lines(reviewer_checklist)
+        if reviewer_checklist is not None
+        else [
+            "- [x] Linked issue, design note, or release item when applicable",
+            "- [x] Docs or templates updated if shared behavior changed",
+            "- [x] Builder/tests updated with core contract/template/default changes",
+            "- [x] Consumer impact called out when applicable",
+            "- [x] Validation steps are specific enough to reproduce",
+            "- [x] Risk and rollback are concrete when behavior could regress",
+        ]
+    )
+    classification_lines = _lines(classification) if classification is not None else ["- [x] Bugfix"]
+    justification_lines = (
+        _lines(justification)
+        if justification is not None
+        else ["- Tightens the guarded PR create flow without widening the supported claim set."]
+    )
+    return "\n".join(
+        [
+            "## What changed",
+            *_lines(what_changed),
+            "## Why",
+            *_lines(why),
+            "## How",
+            *_lines(how),
+            "## Testing",
+            *testing_lines,
+            "## Compatibility / Adoption",
+            *compatibility_lines,
+            "## Risk / Rollback",
+            *risk_lines,
+            "## Reviewer Checklist",
+            *reviewer_lines,
+            "## PR Classification (optional)",
+            *classification_lines,
+            "",
+            "Justification:",
+            *justification_lines,
+        ]
+    )
 
 
 def collected_context(repo_root: Path, *, repo_slug: str = "owner/repo") -> dict:
@@ -39,7 +133,7 @@ def collected_context(repo_root: Path, *, repo_slug: str = "owner/repo") -> dict
             "selected_path": "C:/repo/.github/pull_request_template.md",
             "fingerprint": contract.json_fingerprint("template"),
         },
-        "expected_template_sections": ["Why", "What changed", "How", "Risk / Rollback", "Testing"],
+        "expected_template_sections": list(REPO_TEMPLATE_SECTIONS),
         "issue_reference_hints": {"numbers": ["42"], "branch": "feature/pr-create", "commit_subjects": []},
         "testing_signal_candidates": {"exact_commands": [], "supports_positive_testing_claims": False, "test_files_changed": True},
         "create_options": {
@@ -62,45 +156,92 @@ def collected_context(repo_root: Path, *, repo_slug: str = "owner/repo") -> dict
     }
 
 
+def repo_template_context(repo_root: Path) -> dict:
+    context = collected_context(repo_root)
+    context["issue_reference_hints"] = {"numbers": ["23"], "branch": "feature/pr-create", "commit_subjects": []}
+    return context
+
+
 def valid_body() -> str:
-    return "\n".join(
-        [
-            "## Why",
-            "Open a guarded PR from a pushed branch.",
-            "## What changed",
+    return candidate_body(
+        what_changed=[
             "- Added validator-normalized create flow.",
             "- Re-check duplicate and template state before create.",
-            "## How",
-            "- Keep create fail-closed on stale snapshots.",
-            "## Risk / Rollback",
-            "- Refresh branch state and rerun validation.",
-            "## Testing",
-            "- Not run.",
-            "Refs: #42",
-        ]
+        ],
+        why=["- Open a guarded PR from a pushed branch.", "- Refs: #42"],
+        how="- Keep create fail-closed on stale snapshots.",
+    )
+
+
+def repo_template_checkbox_body(*, migration_checkbox: str) -> str:
+    return candidate_body(
+        what_changed="- Tightened compatibility claim gating.",
+        why=["- Keep template-compatible PR bodies accepted.", "- Refs: #23"],
+        how="- Keep authored consumer migration prose fail-closed.",
+        testing=[
+            "- Validation / tests:",
+            "  - Not run.",
+            "- Manual review:",
+            "  - Not run.",
+        ],
+        compatibility=[
+            "- Consumer / vendor impact:",
+            "  - [ ] None",
+            "  - [ ] Requires regenerating builder output",
+            "  - [ ] Requires updating project-local profiles or agents",
+            f"  - [{migration_checkbox}] Requires a migration note for vendored consumers",
+            "- Details:",
+            "  - None.",
+        ],
+        risk=[
+            "- Risk areas:",
+            "  - Claim-gate regressions.",
+            "- Rollback / mitigation:",
+            "  - Revert the lint update.",
+        ],
+        reviewer_checklist="- [x] Builder/tests updated with core contract/template/default changes",
+        justification="- Keeps the validator aligned with the template.",
     )
 
 
 def internal_migration_body() -> str:
-    return "\n".join(
-        [
-            "## Why",
-            "Complete the next internal migration slice for the guarded create flow.",
-            "## What changed",
+    return candidate_body(
+        what_changed=[
             "- Added validator-normalized create flow.",
             "- Re-check duplicate and template state before create.",
-            "## How",
-            "- Keep the migrated workflow shape local to the retained skill boundary.",
-            "## Risk / Rollback",
-            "- Revert if the migrated workflow shape drifts.",
-            "## Testing",
-            "- Not run.",
-            "Refs: #42",
-        ]
+        ],
+        why=[
+            "- Complete the next internal migration slice for the guarded create flow.",
+            "- Refs: #42",
+        ],
+        how="- Keep the migrated workflow shape local to the retained skill boundary.",
+        risk=[
+            "- Risk areas:",
+            "  - Workflow-shape drift.",
+            "- Rollback / mitigation:",
+            "  - Revert if the migrated workflow shape drifts.",
+        ],
     )
 
 
 class ValidatePrCreateTests(unittest.TestCase):
+    def assert_validator_rejects_consumer_claim(self, claim_line: str) -> None:
+        context = collected_context(Path.cwd())
+        body = valid_body().replace("- Keep create fail-closed on stale snapshots.", claim_line)
+        with mock.patch.object(
+            validator.tools,
+            "run_command",
+            side_effect=AssertionError("gh command should not run once unsupported claims are detected"),
+        ):
+            payload = validator.validate_pr_create(
+                context,
+                "feat(pr-create): create guarded PRs",
+                body,
+            )
+
+        self.assertFalse(payload["valid"])
+        self.assertIn("unsupported_claim", payload["stop_reasons"])
+
     def test_validator_rejects_repo_inference_failure_before_gh_calls(self) -> None:
         context = collected_context(Path.cwd(), repo_slug="")
         with mock.patch.object(
@@ -131,7 +272,7 @@ class ValidatePrCreateTests(unittest.TestCase):
 
     def test_validator_flags_unsupported_claims(self) -> None:
         context = collected_context(Path.cwd())
-        body = valid_body().replace("- Not run.", "- Ran `python -m pytest`.")
+        body = valid_body().replace("  - Not run.", "  - Ran `python -m pytest`.", 1)
         with mock.patch.object(
             validator.tools,
             "run_command",
@@ -147,144 +288,25 @@ class ValidatePrCreateTests(unittest.TestCase):
         self.assertIn("unsupported_claim", payload["stop_reasons"])
 
     def test_validator_rejects_direct_consumer_migration_claim(self) -> None:
-        context = collected_context(Path.cwd())
-        body = valid_body().replace(
-            "- Keep create fail-closed on stale snapshots.",
-            "- Requires migration for consumers.",
-        )
-        with mock.patch.object(
-            validator.tools,
-            "run_command",
-            side_effect=AssertionError("gh command should not run once unsupported claims are detected"),
-        ):
-            payload = validator.validate_pr_create(
-                context,
-                "feat(pr-create): create guarded PRs",
-                body,
-            )
-
-        self.assertFalse(payload["valid"])
-        self.assertIn("unsupported_claim", payload["stop_reasons"])
+        self.assert_validator_rejects_consumer_claim("- Requires migration for consumers.")
 
     def test_validator_rejects_subject_first_consumer_migration_claim(self) -> None:
-        context = collected_context(Path.cwd())
-        body = valid_body().replace(
-            "- Keep create fail-closed on stale snapshots.",
-            "- Existing users must migrate.",
-        )
-        with mock.patch.object(
-            validator.tools,
-            "run_command",
-            side_effect=AssertionError("gh command should not run once unsupported claims are detected"),
-        ):
-            payload = validator.validate_pr_create(
-                context,
-                "feat(pr-create): create guarded PRs",
-                body,
-            )
-
-        self.assertFalse(payload["valid"])
-        self.assertIn("unsupported_claim", payload["stop_reasons"])
+        self.assert_validator_rejects_consumer_claim("- Existing users must migrate.")
 
     def test_validator_rejects_subject_first_consumer_should_migrate_claim(self) -> None:
-        context = collected_context(Path.cwd())
-        body = valid_body().replace(
-            "- Keep create fail-closed on stale snapshots.",
-            "- Existing users should migrate.",
-        )
-        with mock.patch.object(
-            validator.tools,
-            "run_command",
-            side_effect=AssertionError("gh command should not run once unsupported claims are detected"),
-        ):
-            payload = validator.validate_pr_create(
-                context,
-                "feat(pr-create): create guarded PRs",
-                body,
-            )
-
-        self.assertFalse(payload["valid"])
-        self.assertIn("unsupported_claim", payload["stop_reasons"])
+        self.assert_validator_rejects_consumer_claim("- Existing users should migrate.")
 
     def test_validator_rejects_passive_voice_consumer_migration_claim(self) -> None:
-        context = collected_context(Path.cwd())
-        body = valid_body().replace(
-            "- Keep create fail-closed on stale snapshots.",
-            "- Consumers are required to migrate.",
-        )
-        with mock.patch.object(
-            validator.tools,
-            "run_command",
-            side_effect=AssertionError("gh command should not run once unsupported claims are detected"),
-        ):
-            payload = validator.validate_pr_create(
-                context,
-                "feat(pr-create): create guarded PRs",
-                body,
-            )
-
-        self.assertFalse(payload["valid"])
-        self.assertIn("unsupported_claim", payload["stop_reasons"])
+        self.assert_validator_rejects_consumer_claim("- Consumers are required to migrate.")
 
     def test_validator_rejects_by_audience_consumer_migration_claim(self) -> None:
-        context = collected_context(Path.cwd())
-        body = valid_body().replace(
-            "- Keep create fail-closed on stale snapshots.",
-            "- Requires migration by consumers.",
-        )
-        with mock.patch.object(
-            validator.tools,
-            "run_command",
-            side_effect=AssertionError("gh command should not run once unsupported claims are detected"),
-        ):
-            payload = validator.validate_pr_create(
-                context,
-                "feat(pr-create): create guarded PRs",
-                body,
-            )
-
-        self.assertFalse(payload["valid"])
-        self.assertIn("unsupported_claim", payload["stop_reasons"])
+        self.assert_validator_rejects_consumer_claim("- Requires migration by consumers.")
 
     def test_validator_rejects_copular_migration_subject_claim(self) -> None:
-        context = collected_context(Path.cwd())
-        body = valid_body().replace(
-            "- Keep create fail-closed on stale snapshots.",
-            "- Migration is required for consumers.",
-        )
-        with mock.patch.object(
-            validator.tools,
-            "run_command",
-            side_effect=AssertionError("gh command should not run once unsupported claims are detected"),
-        ):
-            payload = validator.validate_pr_create(
-                context,
-                "feat(pr-create): create guarded PRs",
-                body,
-            )
-
-        self.assertFalse(payload["valid"])
-        self.assertIn("unsupported_claim", payload["stop_reasons"])
+        self.assert_validator_rejects_consumer_claim("- Migration is required for consumers.")
 
     def test_validator_rejects_copular_audience_migration_claim(self) -> None:
-        context = collected_context(Path.cwd())
-        body = valid_body().replace(
-            "- Keep create fail-closed on stale snapshots.",
-            "- Consumer migration is required.",
-        )
-        with mock.patch.object(
-            validator.tools,
-            "run_command",
-            side_effect=AssertionError("gh command should not run once unsupported claims are detected"),
-        ):
-            payload = validator.validate_pr_create(
-                context,
-                "feat(pr-create): create guarded PRs",
-                body,
-            )
-
-        self.assertFalse(payload["valid"])
-        self.assertIn("unsupported_claim", payload["stop_reasons"])
+        self.assert_validator_rejects_consumer_claim("- Consumer migration is required.")
 
     def test_validator_rejects_existing_open_pr_on_live_duplicate_check(self) -> None:
         context = collected_context(Path.cwd())
@@ -394,6 +416,34 @@ class ValidatePrCreateTests(unittest.TestCase):
         self.assertTrue(payload["valid"])
         self.assertTrue(payload["can_apply"])
 
+    def test_validator_allows_unchecked_repo_template_migration_checkbox(self) -> None:
+        context = repo_template_context(Path.cwd())
+        with (
+            mock.patch.object(validator.tools, "run_command", return_value="Logged in to github.com"),
+            mock.patch.object(validator.tools, "local_head_oid", return_value="abc123"),
+            mock.patch.object(validator.tools, "remote_head_oid", return_value="abc123"),
+            mock.patch.object(validator.tools, "load_changed_files_between", return_value=context["changed_files"]),
+            mock.patch.object(validator.tools, "select_pr_template", return_value=context["template_selection"]),
+            mock.patch.object(
+                validator.tools,
+                "duplicate_check_summary",
+                return_value={
+                    "status": "clear",
+                    "matched_repo_slug": "owner/repo",
+                    "matched_head": "feature/pr-create",
+                    "existing_pr_count": 0,
+                },
+            ),
+        ):
+            payload = validator.validate_pr_create(
+                context,
+                "fix(pr-create): align claim gates with template",
+                repo_template_checkbox_body(migration_checkbox=" "),
+            )
+
+        self.assertTrue(payload["valid"])
+        self.assertTrue(payload["can_apply"])
+
     def test_validator_rejects_stale_snapshot_when_changed_files_drift(self) -> None:
         context = collected_context(Path.cwd())
         with (
@@ -471,7 +521,7 @@ class ValidatePrCreateTests(unittest.TestCase):
             self.assertTrue(payload["valid"])
             self.assertTrue(payload["can_apply"])
             self.assertFalse(payload["normalized_create_request"]["body"].startswith("\ufeff"))
-            self.assertEqual(payload["normalized_create_request"]["body"].splitlines()[0], "## Why")
+            self.assertEqual(payload["normalized_create_request"]["body"].splitlines()[0], "## What changed")
 
 
 if __name__ == "__main__":

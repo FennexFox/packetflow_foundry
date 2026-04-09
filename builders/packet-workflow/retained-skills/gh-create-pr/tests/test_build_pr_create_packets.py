@@ -10,7 +10,7 @@ if str(SCRIPT_DIR) not in sys.path:
     sys.path.insert(0, str(SCRIPT_DIR))
 
 import build_pr_create_packets as builder  # noqa: E402
-
+from pr_create_test_support import REPO_TEMPLATE_SECTIONS  # noqa: E402
 
 def collected_context() -> dict:
     return {
@@ -34,7 +34,7 @@ def collected_context() -> dict:
             "selected_path": "C:/repo/.github/pull_request_template.md",
             "fingerprint": "sha256:template",
         },
-        "expected_template_sections": ["Why", "What changed", "How", "Risk / Rollback", "Testing"],
+        "expected_template_sections": list(REPO_TEMPLATE_SECTIONS),
         "duplicate_check_hint": {"status": "clear", "matched_repo_slug": "owner/repo", "matched_head": "feature/pr-create"},
         "issue_reference_hints": {"numbers": ["42"], "branch": "feature/pr-create", "commit_subjects": []},
         "testing_signal_candidates": {"exact_commands": [], "supports_positive_testing_claims": False, "test_files_changed": True},
@@ -61,7 +61,7 @@ def lint_report() -> dict:
         },
         "drafting_basis": {
             "active_rule_gates": ["title_pattern", "required_sections"],
-            "required_sections_status": {"required": ["Why", "What changed", "How", "Risk / Rollback", "Testing"]},
+            "required_sections_status": {"required": list(REPO_TEMPLATE_SECTIONS)},
             "supported_claims": [{"cluster": "runtime", "basis": "runtime files changed", "evidence_anchor": "src/creator.py"}],
             "issue_reference_hints": {"numbers": ["42"]},
             "testing_evidence_status": {"exact_commands": []},
@@ -91,6 +91,10 @@ class BuildPrCreatePacketsTests(unittest.TestCase):
         self.assertNotIn("review_overrides", packets["global_packet.json"])
         self.assertIn(
             "restart/reload, rollout, and consumer migration/compatibility claims are blocked by default",
+            packets["rules_packet.json"]["strict_claim_gates"],
+        )
+        self.assertIn(
+            "unchecked template checklist items are not treated as asserted claims until checked or rewritten as prose",
             packets["rules_packet.json"]["strict_claim_gates"],
         )
         self.assertEqual(build_result["review_mode_baseline"], "local-only")

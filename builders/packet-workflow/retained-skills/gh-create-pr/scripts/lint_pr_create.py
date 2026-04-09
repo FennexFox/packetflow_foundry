@@ -25,6 +25,7 @@ PLACEHOLDER_PATTERNS = [
         "Template reminder `If not tested, state why.` was not replaced.",
     ),
 ]
+UNCHECKED_CHECKLIST_ITEM_PATTERN = re.compile(r"^\s*(?:[-*]|\d+\.)\s+\[\s\]\s+")
 ISSUE_REF_PATTERN = re.compile(r"#(?P<number>\d+)")
 CLOSING_REF_PATTERN = re.compile(r"\b(?:fixes|closes)\s+#(?P<number>\d+)", re.IGNORECASE)
 NO_BEHAVIOR_CHANGE_PATTERN = re.compile(r"\bno behavior change\b", re.IGNORECASE)
@@ -133,6 +134,12 @@ def referenced_issue_numbers(text: str) -> list[str]:
         if number not in seen:
             seen.append(number)
     return seen
+
+
+def asserted_claim_text(markdown_text: str) -> str:
+    return "\n".join(
+        line for line in markdown_text.splitlines() if not UNCHECKED_CHECKLIST_ITEM_PATTERN.match(line)
+    )
 
 
 def is_generated_file(path: str) -> bool:
@@ -326,6 +333,8 @@ def collect_candidate_findings(context: dict[str, Any], title: str, body: str) -
     expected_sections = list(context.get("expected_template_sections") or [])
     actual_sections = list(section_bodies(body).keys())
     bodies = section_bodies(body)
+    asserted_body = asserted_claim_text(body)
+    asserted_bodies = section_bodies(asserted_body)
     issue_hints = set(str(item) for item in context.get("issue_reference_hints", {}).get("numbers", []))
     runtime_count = int(((context.get("changed_file_groups") or {}).get("runtime") or {}).get("count", 0))
     testing_signals = context.get("testing_signal_candidates") or {}
@@ -348,7 +357,7 @@ def collect_candidate_findings(context: dict[str, Any], title: str, body: str) -
         if pattern.search(body):
             body_errors.append(message)
 
-    testing_text = bodies.get("Testing", "")
+    testing_text = asserted_bodies.get("Testing", "")
     testing_commands = {match.group(1).strip() for match in COMMAND_PATTERN.finditer(testing_text)}
     if POSITIVE_TEST_PATTERN.search(testing_text) and not NOT_RUN_PATTERN.search(testing_text):
         if not testing_commands:
@@ -360,8 +369,8 @@ def collect_candidate_findings(context: dict[str, Any], title: str, body: str) -
                 "Positive testing claims cite commands that are not grounded in the testing packet."
             )
 
-    all_refs = set(referenced_issue_numbers(body))
-    closing_refs = {match.group("number") for match in CLOSING_REF_PATTERN.finditer(body)}
+    all_refs = set(referenced_issue_numbers(asserted_body))
+    closing_refs = {match.group("number") for match in CLOSING_REF_PATTERN.finditer(asserted_body)}
     if all_refs and not all_refs.issubset(issue_hints):
         unsupported_claims.append(
             "Issue references are present without matching issue hints from the process packet."
@@ -371,18 +380,18 @@ def collect_candidate_findings(context: dict[str, Any], title: str, body: str) -
             "Closing issue references require explicit issue hints before they can be claimed."
         )
 
-    if NO_BEHAVIOR_CHANGE_PATTERN.search(body) and runtime_count > 0:
+    if NO_BEHAVIOR_CHANGE_PATTERN.search(asserted_body) and runtime_count > 0:
         unsupported_claims.append("`No behavior change` is unsupported because runtime files changed.")
-    if RESTART_PATTERN.search(body):
+    if RESTART_PATTERN.search(asserted_body):
         unsupported_claims.append("Restart or reload claims require direct runtime evidence and are blocked by default.")
-    if MIGRATION_CLAIM_PATTERN.search(body) or COMPATIBILITY_CLAIM_PATTERN.search(body):
+    if MIGRATION_CLAIM_PATTERN.search(asserted_body) or COMPATIBILITY_CLAIM_PATTERN.search(asserted_body):
         unsupported_claims.append(
             "Consumer migration or compatibility claims require direct runtime/process evidence and are blocked by default."
         )
-    if ROLLOUT_PATTERN.search(body):
+    if ROLLOUT_PATTERN.search(asserted_body):
         unsupported_claims.append("Rollout claims require direct process evidence and are blocked by default.")
 
-    if testing_text and not testing_text.strip():
+    if "Testing" in bodies and not bodies["Testing"]:
         body_errors.append("`Testing` is present but empty.")
 
     errors.extend(title_errors)
