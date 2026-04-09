@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
-if str(SCRIPT_DIR) in sys.path:
+while str(SCRIPT_DIR) in sys.path:
     sys.path.remove(str(SCRIPT_DIR))
 sys.path.insert(0, str(SCRIPT_DIR))
 
@@ -16,7 +16,7 @@ import commit_packet_contract as contract  # noqa: E402
 
 
 class GitSplitAndCommitEvaluationLogTests(unittest.TestCase):
-    def test_skill_specific_data_includes_common_path_and_packet_metrics_fields(self) -> None:
+    def test_skill_specific_data_includes_common_path_fields(self) -> None:
         orchestrator = {
             "candidate_batch_count": 2,
             "split_file_count": 1,
@@ -41,9 +41,9 @@ class GitSplitAndCommitEvaluationLogTests(unittest.TestCase):
         self.assertTrue(payload["decision_ready_packets"])
         self.assertEqual(payload["raw_reread_count"], 0)
         self.assertTrue(payload["common_path_sufficient"])
-        self.assertIsNone(payload["packet_count"])
+        self.assertNotIn("packet_count", payload)
 
-    def test_build_phase_merges_packet_metrics_and_reread_signals(self) -> None:
+    def test_build_phase_merges_packet_sizing_efficiency_and_reread_signals(self) -> None:
         log = {
             "measurement": {},
             "baseline": {},
@@ -53,8 +53,28 @@ class GitSplitAndCommitEvaluationLogTests(unittest.TestCase):
         }
         result = {
             "review_mode": "targeted-delegation",
-            "recommended_worker_count": 2,
-            "recommended_workers": [{"agent_type": "docs_verifier"}, {"agent_type": "repo_mapper"}],
+            "planned_workers": {
+                "count": 2,
+                "roles": ["docs_verifier", "repo_mapper"],
+                "workers": [
+                    {
+                        "name": "rules",
+                        "agent_type": "docs_verifier",
+                        "model": "gpt-5.4-mini",
+                        "reasoning_effort": "medium",
+                        "packets": ["global_packet.json", "rules_packet.json"],
+                        "responsibility": "Rules summary",
+                    },
+                    {
+                        "name": "worktree",
+                        "agent_type": "repo_mapper",
+                        "model": "gpt-5.4-mini",
+                        "reasoning_effort": "medium",
+                        "packets": ["global_packet.json", "worktree_packet.json"],
+                        "responsibility": "Worktree summary",
+                    },
+                ],
+            },
             "active_packets": [
                 "rules_packet.json",
                 "worktree_packet.json",
@@ -68,31 +88,35 @@ class GitSplitAndCommitEvaluationLogTests(unittest.TestCase):
             "common_path_sufficient": True,
             "raw_reread_count": 0,
             "raw_reread_reasons": [],
-            "packet_metrics": {
+            "packet_sizing": {
                 "packet_count": 5,
                 "packet_size_bytes": 1024,
                 "largest_packet_bytes": 420,
                 "largest_two_packets_bytes": 700,
-                "estimated_local_only_tokens": 500,
-                "estimated_packet_tokens": 250,
-                "estimated_delegation_savings": 250,
+            },
+            "efficiency": {
+                "packet_compaction": {
+                    "local_only_tokens": 500,
+                    "packet_tokens": 250,
+                    "savings_tokens": 250,
+                    "main_model_input_cost_nanousd": 312500,
+                    "provenance": "estimated",
+                    "pricing_snapshot_id": "openai-2026-04-09",
+                },
             },
         }
 
         eval_log.apply_phase_update(log, "build", result, 1.5)
 
         self.assertEqual(log["orchestration"]["review_mode"], "targeted-delegation")
-        self.assertEqual(log["orchestration"]["worker_count"], 2)
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 2)
         self.assertEqual(log["orchestration"]["override_signals"], ["diff_stat_threshold"])
         self.assertEqual(log["input_size"]["active_areas"], 3)
         self.assertEqual(log["input_size"]["candidate_batches"], 1)
         self.assertEqual(log["skill_specific"]["data"]["delegation_non_use_cases"], contract.DELEGATION_NON_USE_CASES)
-        self.assertEqual(log["skill_specific"]["data"]["packet_count"], 5)
-        self.assertEqual(log["skill_specific"]["data"]["estimated_packet_tokens"], 250)
-        self.assertEqual(log["skill_specific"]["data"]["estimated_delegation_savings"], 250)
-        self.assertEqual(log["baseline"]["estimated_local_only_tokens"], 500)
-        self.assertEqual(log["baseline"]["estimated_delegation_savings"], 250)
-        self.assertEqual(log["measurement"]["efficiency_source"], "estimated")
+        self.assertEqual(log["packet_sizing"]["packet_count"], 5)
+        self.assertEqual(log["efficiency"]["packet_compaction"]["packet_tokens"], 250)
+        self.assertEqual(log["efficiency"]["packet_compaction"]["savings_tokens"], 250)
 
     def test_candidate_batch_packet_names_are_counted_as_batches(self) -> None:
         orchestrator = {

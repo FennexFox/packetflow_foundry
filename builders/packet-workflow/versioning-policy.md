@@ -1,4 +1,4 @@
-﻿# Packet-Workflow Versioning Policy
+# Packet-Workflow Versioning Policy
 
 `packet-workflow` uses explicit builder-to-skill compatibility metadata.
 
@@ -20,6 +20,10 @@
   - `builder-spec.json` shape version.
 - `repo_profile_schema_version`
   - active profile JSON shape version.
+- `evaluation_schema_version`
+  - shared evaluation-log envelope version consumed by retained `write_evaluation_log.py`.
+- `pricing_snapshot_id`
+  - repo-tracked cost snapshot id used for cost-equivalent telemetry.
 
 ## Blocking Versus Non-Blocking
 
@@ -29,6 +33,9 @@ Validation and CI block on:
 - missing or invalid skill version metadata
 - missing or invalid profile version metadata
 - skill or profile ahead of the current builder
+- evaluation schema drift from the shared retained helper
+- pricing snapshot drift from the shared retained helper default
+- missing `packet-workflow <semver> / epoch <epoch>` migration entry
 
 Validation and CI do not block on:
 - `builder_semver` drift only, when epoch and schema versions still match
@@ -62,9 +69,11 @@ Do not bump the epoch for:
   - builder semver
   - change reason
   - manual migration scope
+- Epoch 2 and later also require the retained skill migration worksheet to include a
+  `packet-workflow <builder_semver> / epoch <compatibility_epoch>` entry.
 
 ## Semver-Only Stamp Helper
 
 - `retained-skills/scripts/stamp_skill_versions.py` may update `builder_semver` and `metadata.versioning.builder_semver`.
-- It must refuse to run when epoch or schema versions are stale, missing, invalid, or ahead of the builder.
+- It must refuse to run when epoch or schema versions are stale, missing, invalid, ahead of the builder, or when shared validator checks fail for evaluation schema, pricing snapshot, or migration-entry presence.
 

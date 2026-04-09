@@ -47,8 +47,9 @@ def resolve_builder_scripts_dir() -> Path:
 
 
 BUILDER_SCRIPTS_DIR = resolve_builder_scripts_dir()
-if str(BUILDER_SCRIPTS_DIR) not in sys.path:
-    sys.path.append(str(BUILDER_SCRIPTS_DIR))
+while str(BUILDER_SCRIPTS_DIR) in sys.path:
+    sys.path.remove(str(BUILDER_SCRIPTS_DIR))
+sys.path.insert(0, str(BUILDER_SCRIPTS_DIR))
 
 from packet_workflow_versioning import (  # type: ignore  # noqa: E402
     classify_builder_compatibility,
@@ -58,6 +59,7 @@ from packet_workflow_versioning import (  # type: ignore  # noqa: E402
     load_builder_versioning,
     load_json_document,
 )
+import evaluation_log_common as common  # type: ignore  # noqa: E402
 
 SKILL_NAME = "weekly-update"
 SKILL_VERSION = "0.1.0"
@@ -120,9 +122,9 @@ PACKET_METRIC_FIELDS = [
     "packet_size_bytes",
     "largest_packet_bytes",
     "largest_two_packets_bytes",
-    "estimated_local_only_tokens",
-    "estimated_packet_tokens",
-    "estimated_delegation_savings",
+    "local_only_tokens",
+    "packet_tokens",
+    "savings_tokens",
 ]
 DELEGATION_SAVINGS_FLOOR = 250
 CANDIDATE_REQUIRED_FIELDS = [
@@ -1806,10 +1808,10 @@ def maybe_apply_delegation_savings_floor(
     packet_metrics: dict[str, Any],
     adjustments: list[str],
 ) -> tuple[str, list[str]]:
-    estimated_savings = int(packet_metrics.get("estimated_delegation_savings", 0) or 0)
+    savings_tokens = int(packet_metrics.get("savings_tokens", 0) or 0)
     if (
         review_mode == "local-only"
-        and estimated_savings >= DELEGATION_SAVINGS_FLOOR
+        and savings_tokens >= DELEGATION_SAVINGS_FLOOR
         and "delegation_savings_floor" not in adjustments
     ):
         return "targeted-delegation", [*adjustments, "delegation_savings_floor"]
@@ -2028,16 +2030,17 @@ def compute_packet_metrics(packet_payloads: dict[str, Any], *, raw_local_sources
     common_path_bytes = packet_sizes.get("global_packet.json", 0) + packet_sizes.get("mapping_packet.json", 0)
     common_path_bytes += max((packet_sizes.get(name, 0) for name in focused_packet_files), default=0)
     local_only_bytes = sum(json_bytes(payload) for payload in raw_local_sources.values())
-    estimated_local_only_tokens = estimate_tokens_from_bytes(local_only_bytes)
-    estimated_packet_tokens = estimate_tokens_from_bytes(common_path_bytes)
+    local_only_tokens = estimate_tokens_from_bytes(local_only_bytes)
+    packet_tokens = estimate_tokens_from_bytes(common_path_bytes)
     return {
         "packet_count": len(packet_payloads),
         "packet_size_bytes": total_packet_bytes,
+        "packet_size_breakdown": packet_sizes,
         "largest_packet_bytes": largest_sizes[0] if largest_sizes else 0,
         "largest_two_packets_bytes": sum(largest_sizes[:2]),
-        "estimated_local_only_tokens": estimated_local_only_tokens,
-        "estimated_packet_tokens": estimated_packet_tokens,
-        "estimated_delegation_savings": max(0, estimated_local_only_tokens - estimated_packet_tokens),
+        "local_only_tokens": local_only_tokens,
+        "packet_tokens": packet_tokens,
+        "savings_tokens": max(0, local_only_tokens - packet_tokens),
     }
 
 
@@ -2074,7 +2077,16 @@ def build_packet_artifacts(context: dict[str, Any], lint_report: dict[str, Any])
         "common_path_sufficient": not raw_reread_reason_counts,
         "raw_reread_count": sum(raw_reread_reason_counts.values()),
     }
-    return {"packets": packets, "packet_metrics": packet_metrics, "build_result": build_result}
+    build_result = common.normalize_build_result(
+        build_result,
+        packet_metrics=packet_metrics,
+    )
+    return {
+        "packets": packets,
+        "packet_sizing": build_result["packet_sizing"],
+        "efficiency": build_result["efficiency"],
+        "build_result": build_result,
+    }
 
 
 def build_packets(context: dict[str, Any], lint_report: dict[str, Any]) -> dict[str, dict[str, Any]]:

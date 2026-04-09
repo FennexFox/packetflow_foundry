@@ -6,8 +6,9 @@ from pathlib import Path
 
 
 SCRIPT_DIR = Path(__file__).resolve().parents[1] / "scripts"
-if str(SCRIPT_DIR) not in sys.path:
-    sys.path.insert(0, str(SCRIPT_DIR))
+while str(SCRIPT_DIR) in sys.path:
+    sys.path.remove(str(SCRIPT_DIR))
+sys.path.insert(0, str(SCRIPT_DIR))
 
 sys.modules.pop("write_evaluation_log", None)
 import write_evaluation_log as eval_log  # noqa: E402
@@ -47,8 +48,8 @@ class RepoPublicDocsSyncEvaluationLogTests(unittest.TestCase):
         self.assertEqual(payload["stale_baseline_count"], 1)
         self.assertEqual(payload["auto_apply_candidate_count"], 1)
         self.assertEqual(payload["selected_packets"], ["claims_packet.json"])
-        self.assertIsNone(payload["worker_count"])
-        self.assertEqual(payload["worker_mix"], [])
+        self.assertNotIn("worker_count", payload)
+        self.assertNotIn("worker_mix", payload)
 
     def test_build_base_log_leaves_eval_only_worker_metadata_unset_for_lean_runtime_packets(self) -> None:
         context = {
@@ -65,52 +66,77 @@ class RepoPublicDocsSyncEvaluationLogTests(unittest.TestCase):
 
         payload = eval_log.build_base_log(SCRIPT_DIR / "write_evaluation_log.py", context, orchestrator, None)
 
-        self.assertIsNone(payload["orchestration"]["worker_count"])
-        self.assertEqual(payload["orchestration"]["worker_roles"], [])
+        self.assertEqual(payload["orchestration"]["planned_workers"]["count"], 0)
+        self.assertEqual(payload["orchestration"]["planned_workers"]["roles"], [])
         self.assertEqual(payload["orchestration"]["override_signals"], [])
-        self.assertIsNone(payload["skill_specific"]["data"]["worker_count"])
-        self.assertEqual(payload["skill_specific"]["data"]["worker_mix"], [])
+        self.assertNotIn("worker_count", payload["skill_specific"]["data"])
+        self.assertNotIn("worker_mix", payload["skill_specific"]["data"])
 
-    def test_build_phase_merges_packet_metrics_and_active_packet_counts(self) -> None:
+    def test_build_phase_merges_packet_sizing_efficiency_and_active_packet_counts(self) -> None:
         log = {
             "measurement": {},
             "baseline": {},
             "orchestration": {},
             "input_size": {},
-            "skill_specific": {"data": {"worker_count": 0}},
+            "skill_specific": {"data": {}},
         }
         result = {
             "review_mode": "targeted-delegation",
-            "recommended_worker_count": 2,
-            "recommended_workers": [{"agent_type": "docs_verifier"}, {"agent_type": "repo_mapper"}],
+            "planned_workers": {
+                "count": 2,
+                "roles": ["docs_verifier", "repo_mapper"],
+                "workers": [
+                    {
+                        "name": "claims-docs-verifier",
+                        "agent_type": "docs_verifier",
+                        "model": "gpt-5.4-mini",
+                        "reasoning_effort": "medium",
+                        "packets": ["claims_packet.json"],
+                        "responsibility": "Verify claims packet",
+                    },
+                    {
+                        "name": "workflow-repo-mapper",
+                        "agent_type": "repo_mapper",
+                        "model": "gpt-5.4-mini",
+                        "reasoning_effort": "medium",
+                        "packets": ["workflow_packet.json"],
+                        "responsibility": "Map workflow packet",
+                    },
+                ],
+            },
             "selected_packets": ["claims_packet.json", "workflow_packet.json"],
             "active_packets": ["claims_packet", "workflow_packet"],
             "active_packet_count": 2,
             "applied_override_signals": ["high_churn"],
             "auto_apply_candidate_count": 3,
-            "packet_metrics": {
+            "packet_sizing": {
                 "packet_count": 4,
                 "packet_size_bytes": 1024,
                 "largest_packet_bytes": 400,
                 "largest_two_packets_bytes": 700,
-                "estimated_local_only_tokens": 500,
-                "estimated_packet_tokens": 250,
-                "estimated_delegation_savings": 250,
+            },
+            "efficiency": {
+                "packet_compaction": {
+                    "local_only_tokens": 500,
+                    "packet_tokens": 250,
+                    "savings_tokens": 250,
+                    "main_model_input_cost_nanousd": 625000,
+                    "provenance": "estimated",
+                    "pricing_snapshot_id": "openai-2026-04-09",
+                }
             },
         }
 
         eval_log.apply_phase_update(log, "build", result, 1.25)
 
         self.assertEqual(log["orchestration"]["review_mode"], "targeted-delegation")
-        self.assertEqual(log["orchestration"]["worker_count"], 2)
-        self.assertEqual(log["skill_specific"]["data"]["worker_count"], 2)
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 2)
         self.assertEqual(log["orchestration"]["override_signals"], ["high_churn"])
         self.assertEqual(log["input_size"]["active_areas"], 2)
-        self.assertEqual(log["skill_specific"]["data"]["packet_count"], 4)
         self.assertEqual(log["skill_specific"]["data"]["auto_apply_candidate_count"], 3)
-        self.assertEqual(log["baseline"]["estimated_local_only_tokens"], 500)
-        self.assertEqual(log["baseline"]["estimated_delegation_savings"], 250)
-        self.assertEqual(log["measurement"]["efficiency_source"], "estimated")
+        self.assertNotIn("packet_count", log["skill_specific"]["data"])
+        self.assertEqual(log["packet_sizing"]["packet_count"], 4)
+        self.assertEqual(log["efficiency"]["packet_compaction"]["savings_tokens"], 250)
 
 
 if __name__ == "__main__":

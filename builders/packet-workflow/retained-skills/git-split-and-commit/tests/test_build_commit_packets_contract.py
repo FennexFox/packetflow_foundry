@@ -251,20 +251,20 @@ class BuildCommitPacketsContractTest(unittest.TestCase):
         self.assertEqual(worktree_packet["raw_reread_reasons"], [])
         self.assertTrue(worktree_packet["common_path_sufficient"])
 
-        packet_metrics = json.loads((output_dir / "packet_metrics.json").read_text(encoding="utf-8"))
-        self.assertGreater(packet_metrics["packet_count"], 0)
-        self.assertGreater(packet_metrics["estimated_local_only_tokens"], 0)
-        self.assertGreater(packet_metrics["estimated_packet_tokens"], 0)
+        packet_sizing = json.loads((output_dir / "packet_sizing.json").read_text(encoding="utf-8"))
+        self.assertGreater(packet_sizing["packet_count"], 0)
+        self.assertGreater(packet_sizing["packet_size_bytes"], 0)
 
         self.assertTrue(result["common_path_sufficient"])
         self.assertEqual(result["raw_reread_count"], 0)
         self.assertEqual(result["active_packets"], ["rules_packet.json", "worktree_packet.json", "candidate-batch-01.json", "split-file-01.json"])
         self.assertEqual(result["delegation_non_use_cases"], build_commit_packets.DELEGATION_NON_USE_CASES)
-        self.assertIn("packet_metrics", result)
+        self.assertIn("packet_sizing", result)
+        self.assertIn("efficiency", result)
         self.assertEqual(result["review_mode_baseline"], "targeted-delegation")
         self.assertEqual(result["review_mode_adjustments"], [])
-        self.assertEqual(result["recommended_worker_count"], 2)
-        self.assertEqual(len(result["recommended_workers"]), 2)
+        self.assertEqual(result["planned_workers"]["count"], 2)
+        self.assertEqual(len(result["planned_workers"]["workers"]), 2)
 
     def test_edge_case_build_result_uses_explicit_reread_reason(self) -> None:
         rules = {

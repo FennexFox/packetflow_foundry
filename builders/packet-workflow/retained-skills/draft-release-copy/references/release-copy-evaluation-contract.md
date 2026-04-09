@@ -1,82 +1,44 @@
 # Release Copy Evaluation Contract
 
-Use the shared envelope in `references/evaluation-log-contract.md` and keep workflow-specific metrics under `skill_specific.data`.
+Use the shared envelope in `references/evaluation-log-contract.md` and keep
+release-copy-specific metrics under `skill_specific.data`.
 
-## Skill-Specific Focus
+## Recommended Skill-Specific Fields
 
-Record the signals that matter for release-copy preparation:
-- release tag and branch context
-- review mode and packet mix
-- packet count and packet-size concentration
-- token-proxy savings estimates
-- common-path reread behavior
-- changelog rewrite scope
-- release issue creation status
-- project scope availability and project add policy
-- local helper handoff availability
-- broad-mutation QA gate status and whether QA actually ran
-
-## Skill-Specific Data
-
-Keep these values in `skill_specific.data` when they are available:
-- `release_tag`
-- `branch`
-- `review_mode`
-- `selected_packets`
-- `worker_count`
-- `worker_mix`
-- `packet_count`
-- `largest_packet_bytes`
-- `largest_two_packets_bytes`
-- `estimated_local_only_tokens`
-- `estimated_packet_tokens`
-- `estimated_delegation_savings`
+- `base_tag`
+- `evidence_gate_status`
+- `publish_fields_changed`
+- `readme_sections_changed`
+- `release_issue_created`
 - `qa_required`
 - `qa_reason`
 - `qa_ran`
 - `validation_commands`
-- `changelog_lines`
-- `publish_fields_changed`
-- `readme_sections_changed`
-- `release_issue_url`
-- `issue_creation_status`
-- `project_mode`
-- `project_scope_available`
-- `project_flag_used`
-- `local_release_helper_status`
-- `local_release_helper_handoff_available`
-- `stop_reasons`
-- `raw_reread_count`
-- `compensatory_reread_detected`
-- `deterministic_file_edit_count`
-- `issue_action_attempted`
+
+## Shared Envelope Boundary
+
+Keep these shared metrics out of `skill_specific.data`:
+- `orchestration.planned_workers` and `orchestration.actual_workers`
+- `packet_sizing`
+- `efficiency.packet_compaction`
+- `efficiency.model_tier_delegation`
+- token costs under `tokens.*`
 
 ## Phase Guidance
 
-- `init`
-  - capture the release context, lint report, and packet orchestration snapshot
 - `build`
-  - merge the build result JSON and `packet_metrics.json` so review-mode metadata plus token-efficiency and packet-size metrics live in evaluation data instead of the runtime contract
-- `phase`
-  - record lint, validate, dry-run, rewrite, or issue-action results
-- `finalize`
-  - record the final release issue URL and the helper handoff status
+  - merge build-result review-mode metadata into the shared envelope
+  - update `qa_required` and `qa_reason` from `qa_gate_guidance`
+  - keep packet sizing and packet-compaction telemetry in shared `packet_sizing`
+    and `efficiency` fields, with `packet_sizing.json` as evaluation-only sidecar
+- `validate`
+  - record `qa_required`, `qa_reason`, `qa_ran`, and `validation_commands`
+- `apply` or `finalize`
+  - record whether release issue creation actually completed
 
-## Runtime Vs Eval Reminder
+## Logging Rules
 
-- runtime packet fields belong in `orchestrator.json` and the runtime packets
-- packet sizing and token-proxy metrics belong in `packet_metrics.json`
-- smoke summaries should keep a short operator schema and may append additional detail fields without replacing the core smoke keys
-
-## Safety Signals
-
-Prefer recording these when validator/apply runs are present:
-- `validation_run`
-- `validation_passed`
-- `fingerprint_match`
-- `apply_succeeded`
-- `rollback_needed`
-- `mutation_type`
-- `stop_reasons`
-- `raw_reread_count`
-- `compensatory_reread_detected`
+- Keep publish payload bodies and README bodies out of the evaluation log.
+- Prefer booleans, enums, counts, and short lists over free-form prose.
+- Treat packet-compaction numbers as estimated evaluation telemetry, not runtime
+  routing inputs.

@@ -252,7 +252,8 @@ class WeeklyUpdateContractTests(unittest.TestCase):
         self.lint = wl.lint_context(self.context)
         self.artifacts = wl.build_packet_artifacts(self.context, self.lint)
         self.packets = wl.build_packets(self.context, self.lint)
-        self.packet_metrics = self.artifacts["packet_metrics"]
+        self.packet_sizing = self.artifacts["packet_sizing"]
+        self.efficiency = self.artifacts["efficiency"]
         self.build_result = self.artifacts["build_result"]
         self.ready_plan = load_json("weekly_update_plan_ready.json")
         self.low_plan = load_json("weekly_update_plan_low.json")
@@ -367,7 +368,7 @@ class WeeklyUpdateContractTests(unittest.TestCase):
         self.assertEqual(orchestrator["worker_output_shape"], "hierarchical")
         self.assertEqual(orchestrator["packet_worker_map"], wl.PACKET_WORKER_MAP)
         self.assertIn("common_path_contract", orchestrator)
-        self.assertNotIn("estimated_packet_tokens", orchestrator)
+        self.assertNotIn("packet_tokens", orchestrator)
         self.assertNotIn("packet_size_bytes", orchestrator)
         self.assertNotIn("review_mode_baseline", orchestrator)
         self.assertNotIn("review_mode_adjustments", orchestrator)
@@ -376,18 +377,22 @@ class WeeklyUpdateContractTests(unittest.TestCase):
         self.assertNotIn("optional_workers", orchestrator)
         self.assertEqual(orchestrator["worker_selection_guidance"]["routing_authority"], "packet_worker_map")
 
-    def test_build_artifacts_emit_eval_side_packet_metrics_and_result(self) -> None:
-        self.assertEqual(self.packet_metrics["packet_count"], len(smoke.EXPECTED_PACKET_FILES))
-        self.assertGreater(self.packet_metrics["estimated_delegation_savings"], 0)
-        self.assertLess(self.packet_metrics["estimated_packet_tokens"], self.packet_metrics["estimated_local_only_tokens"])
+    def test_build_artifacts_emit_eval_side_packet_sizing_efficiency_and_result(self) -> None:
+        self.assertEqual(self.packet_sizing["packet_count"], len(smoke.EXPECTED_PACKET_FILES))
+        self.assertGreater(self.efficiency["packet_compaction"]["savings_tokens"], 0)
+        self.assertLess(
+            self.efficiency["packet_compaction"]["packet_tokens"],
+            self.efficiency["packet_compaction"]["local_only_tokens"],
+        )
         self.assertEqual(self.build_result["repo_profile_name"], "default")
-        self.assertEqual(self.build_result["packet_metrics"]["packet_count"], self.packet_metrics["packet_count"])
+        self.assertEqual(self.build_result["packet_sizing"]["packet_count"], self.packet_sizing["packet_count"])
         self.assertEqual(self.build_result["selected_packets"], ["mapping_packet", "changes_packet", "incidents_packet", "risks_packet"])
         self.assertEqual(self.build_result["review_mode_baseline"], "targeted-delegation")
         self.assertEqual(
-            [worker["agent_type"] for worker in self.build_result["recommended_workers"]],
+            [worker["agent_type"] for worker in self.build_result["planned_workers"]["workers"]],
             ["repo_mapper", "large_diff_auditor", "log_triager", "evidence_summarizer"],
         )
+        self.assertEqual(self.build_result["planned_workers"]["count"], 4)
         self.assertEqual(self.build_result["optional_workers"], ["docs_verifier"])
         self.assertIn("candidate_counts_by_proposed_classification", self.build_result)
         self.assertIn("raw_reread_reason_counts", self.build_result)
@@ -409,7 +414,7 @@ class WeeklyUpdateContractTests(unittest.TestCase):
 
         self.assertEqual(artifacts["build_result"]["override_signals"], ["a_signal", "m_signal", "z_signal"])
 
-    def test_build_wrapper_writes_packet_metrics_and_build_result(self) -> None:
+    def test_build_wrapper_writes_packet_sizing_and_build_result(self) -> None:
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
             context_path = temp_path / "context.json"
@@ -437,15 +442,24 @@ class WeeklyUpdateContractTests(unittest.TestCase):
                 exit_code = build_packets_script.main()
 
             self.assertEqual(exit_code, 0)
-            packet_metrics = json.loads((output_dir / "packet_metrics.json").read_text(encoding="utf-8"))
+            packet_sizing = json.loads((output_dir / "packet_sizing.json").read_text(encoding="utf-8"))
             build_result = json.loads(result_path.read_text(encoding="utf-8"))
             orchestrator = json.loads((output_dir / "orchestrator.json").read_text(encoding="utf-8"))
-            self.assertEqual(packet_metrics["packet_count"], len(smoke.EXPECTED_PACKET_FILES))
-            self.assertEqual(build_result["packet_metrics"]["estimated_packet_tokens"], packet_metrics["estimated_packet_tokens"])
+            self.assertEqual(packet_sizing["packet_count"], len(smoke.EXPECTED_PACKET_FILES))
+            self.assertEqual(build_result["packet_sizing"]["packet_count"], packet_sizing["packet_count"])
+            self.assertEqual(
+                packet_sizing["packet_size_bytes"],
+                sum(packet_sizing["packet_size_breakdown"].values()),
+            )
+            self.assertEqual(
+                build_result["packet_sizing"]["packet_size_breakdown"],
+                packet_sizing["packet_size_breakdown"],
+            )
+            self.assertIn("efficiency", build_result)
             self.assertEqual(orchestrator["orchestrator_profile"], "standard")
             self.assertEqual(orchestrator["repo_profile_name"], "default")
             self.assertEqual(build_result["repo_profile_name"], "default")
-            self.assertNotIn("estimated_packet_tokens", orchestrator)
+            self.assertNotIn("packet_tokens", orchestrator)
 
     def test_packet_membership_is_consistent_across_packets(self) -> None:
         mapping_index = {item["candidate_id"]: item for item in self.packets["mapping_packet.json"]["candidate_inventory_index"]}
@@ -509,7 +523,7 @@ class WeeklyUpdateContractTests(unittest.TestCase):
             ),
         )
         self.assertEqual(len(smoke.EXPECTED_PACKET_FILES), 6)
-        self.assertEqual(smoke.EXPECTED_EVAL_FILES, ("packet_metrics.json",))
+        self.assertEqual(smoke.EXPECTED_EVAL_FILES, ("packet_sizing.json",))
 
     def test_smoke_plan_disables_marker_updates(self) -> None:
         plan = smoke.build_minimal_plan({"context_id": "ctx-1", "context_fingerprint": "fp-1"})

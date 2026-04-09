@@ -169,9 +169,9 @@ PACKET_METRIC_FIELDS = [
     "packet_size_bytes",
     "largest_packet_bytes",
     "largest_two_packets_bytes",
-    "estimated_local_only_tokens",
-    "estimated_packet_tokens",
-    "estimated_delegation_savings",
+    "local_only_tokens",
+    "packet_tokens",
+    "savings_tokens",
 ]
 
 
@@ -205,14 +205,14 @@ def compute_packet_metrics(
     total_packet_bytes = sum(packet_sizes.values())
     largest_sizes = sorted(packet_sizes.values(), reverse=True)
     local_only_bytes = sum(json_bytes(payload) for payload in local_only_sources.values())
-    estimated_local_only_tokens = estimate_tokens_from_bytes(local_only_bytes)
-    estimated_packet_tokens = estimate_tokens_from_bytes(largest_sizes[0] if largest_sizes else 0)
+    local_only_tokens = estimate_tokens_from_bytes(local_only_bytes)
+    packet_tokens = estimate_tokens_from_bytes(largest_sizes[0] if largest_sizes else 0)
     return {
         "packet_count": len(packet_payloads),
         "packet_size_bytes": total_packet_bytes,
         "largest_packet_bytes": largest_sizes[0] if largest_sizes else 0,
         "largest_two_packets_bytes": sum(largest_sizes[:2]),
-        "estimated_local_only_tokens": estimated_local_only_tokens,
-        "estimated_packet_tokens": estimated_packet_tokens,
-        "estimated_delegation_savings": max(0, estimated_local_only_tokens - estimated_packet_tokens),
+        "local_only_tokens": local_only_tokens,
+        "packet_tokens": packet_tokens,
+        "savings_tokens": max(0, local_only_tokens - packet_tokens),
     }

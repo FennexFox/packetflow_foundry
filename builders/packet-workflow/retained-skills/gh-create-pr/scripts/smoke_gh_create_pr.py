@@ -329,7 +329,7 @@ def main() -> int:
             "apply_succeeded": apply_result["apply_succeeded"],
             "created_pr_url": created["url"],
             "created_pr_number": created["number"],
-            "packet_metrics_path": str(packet_dir / "packet_metrics.json"),
+            "packet_sizing_path": str(packet_dir / "packet_sizing.json"),
         }
         print(json.dumps(summary, indent=2, ensure_ascii=True))
         return 0

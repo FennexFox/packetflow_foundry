@@ -163,7 +163,7 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
         self.assertEqual(commit_packet["scope_candidates"][0], "parser")
         self.assertEqual(commit_packet["rules_reliability"], "explicit")
 
-        packet_metrics = json.loads((output_dir / "packet_metrics.json").read_text(encoding="utf-8"))
+        packet_sizing = json.loads((output_dir / "packet_sizing.json").read_text(encoding="utf-8"))
         rules_packet = json.loads((output_dir / "rules_packet.json").read_text(encoding="utf-8"))
         commit_packet_payloads = {
             name: json.loads((output_dir / name).read_text(encoding="utf-8"))
@@ -180,20 +180,24 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
             local_only_sources={"rules": rules, "plan": plan},
             shared_packets=COMMON_PATH_CONTRACT["shared_packets"],
         )
-        self.assertEqual(packet_metrics, expected_metrics)
-        self.assertEqual(result["packet_metrics"], packet_metrics)
-        self.assertEqual(packet_metrics["packet_count"], len(orchestrator["packet_files"]))
+        self.assertEqual(packet_sizing["packet_count"], len(orchestrator["packet_files"]))
+        self.assertEqual(packet_sizing["packet_size_bytes"], expected_metrics["packet_size_bytes"])
+        self.assertEqual(result["packet_sizing"], packet_sizing)
         self.assertEqual(result["delegation_non_use_cases"], DELEGATION_NON_USE_CASES)
         self.assertTrue(result["common_path_sufficient"])
         self.assertEqual(result["raw_reread_reasons"], [])
         self.assertEqual(
-            packet_metrics["estimated_local_only_tokens"],
+            result["efficiency"]["packet_compaction"]["local_only_tokens"],
             estimate_tokens_from_bytes(json_bytes(rules) + json_bytes(plan)),
         )
         largest_commit_bytes = max(json_bytes(payload) for payload in commit_packet_payloads.values())
         self.assertEqual(
-            packet_metrics["estimated_packet_tokens"],
+            result["efficiency"]["packet_compaction"]["packet_tokens"],
             estimate_tokens_from_bytes(json_bytes(rules_packet) + largest_commit_bytes),
+        )
+        self.assertEqual(
+            result["efficiency"]["packet_compaction"]["savings_tokens"],
+            expected_metrics["savings_tokens"],
         )
 
     def test_local_review_mode_preserves_minimal_local_only_path(self) -> None:
@@ -272,7 +276,7 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
         self.assertNotIn("review_mode_adjustments", orchestrator)
         self.assertNotIn("recommended_workers", orchestrator)
         self.assertNotIn("optional_workers", orchestrator)
-        packet_metrics = json.loads((output_dir / "packet_metrics.json").read_text(encoding="utf-8"))
+        packet_sizing = json.loads((output_dir / "packet_sizing.json").read_text(encoding="utf-8"))
         orchestrator_payload = json.loads((output_dir / "orchestrator.json").read_text(encoding="utf-8"))
         rules_packet = json.loads((output_dir / "rules_packet.json").read_text(encoding="utf-8"))
         commit_payloads = {
@@ -290,13 +294,13 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
             local_only_sources={"rules": rules, "plan": plan},
             shared_packets=COMMON_PATH_CONTRACT["shared_packets"],
         )
-        self.assertEqual(packet_metrics, expected_metrics)
-        self.assertEqual(packet_metrics["packet_count"], len(orchestrator_payload["packet_files"]))
-        self.assertEqual(result["packet_metrics"], packet_metrics)
+        self.assertEqual(packet_sizing["packet_count"], len(orchestrator_payload["packet_files"]))
+        self.assertEqual(packet_sizing["packet_size_bytes"], expected_metrics["packet_size_bytes"])
+        self.assertEqual(result["packet_sizing"], packet_sizing)
         self.assertEqual(result["review_mode"], "local-only")
         self.assertEqual(result["review_mode_baseline"], "local-only")
         self.assertEqual(result["review_mode_adjustments"], [])
-        self.assertEqual(result["recommended_worker_count"], 0)
+        self.assertEqual(result["planned_workers"]["count"], 0)
 
     def test_local_review_mode_promotes_when_savings_floor_is_met(self) -> None:
         temp_dir, repo = make_repo()
@@ -376,7 +380,7 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
         self.assertNotIn("recommended_workers", orchestrator)
         self.assertNotIn("optional_workers", orchestrator)
 
-        packet_metrics = json.loads((output_dir / "packet_metrics.json").read_text(encoding="utf-8"))
+        packet_sizing = json.loads((output_dir / "packet_sizing.json").read_text(encoding="utf-8"))
         global_packet = json.loads((output_dir / "global_packet.json").read_text(encoding="utf-8"))
         rules_packet = json.loads((output_dir / "rules_packet.json").read_text(encoding="utf-8"))
         commit_payloads = {
@@ -394,20 +398,20 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
             local_only_sources={"rules": rules, "plan": plan},
             shared_packets=COMMON_PATH_CONTRACT["shared_packets"],
         )
-        self.assertEqual(packet_metrics, expected_metrics)
-        self.assertEqual(packet_metrics["packet_count"], len(orchestrator["packet_files"]))
+        self.assertEqual(packet_sizing["packet_count"], len(orchestrator["packet_files"]))
+        self.assertEqual(packet_sizing["packet_size_bytes"], expected_metrics["packet_size_bytes"])
         self.assertGreaterEqual(
-            packet_metrics["estimated_delegation_savings"],
+            result["efficiency"]["packet_compaction"]["savings_tokens"],
             DELEGATION_SAVINGS_FLOOR,
         )
-        self.assertEqual(result["packet_metrics"], packet_metrics)
+        self.assertEqual(result["packet_sizing"], packet_sizing)
         self.assertEqual(result["review_mode_baseline"], "local-only")
         self.assertEqual(result["review_mode"], "targeted-delegation")
         self.assertEqual(
             result["review_mode_adjustments"],
             ["delegation_savings_floor"],
         )
-        self.assertEqual(result["recommended_worker_count"], 2)
+        self.assertEqual(result["planned_workers"]["count"], 2)
 
     def test_local_mode_surfaces_root_rewrite_blocker(self) -> None:
         temp_dir, repo = make_repo()
@@ -465,7 +469,7 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(orchestrator["review_mode"], "local-only")
-        self.assertEqual(result["recommended_worker_count"], 0)
+        self.assertEqual(result["planned_workers"]["count"], 0)
         self.assertTrue(orchestrator["rewrite_blockers"]["root_rewrite_unsupported"])
         self.assertTrue(result["common_path_sufficient"])
 
@@ -598,16 +602,17 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
             ],
         }
 
-        exit_code, output_dir, _orchestrator, _result = self.run_script(rules, plan)
+        exit_code, output_dir, _orchestrator, result = self.run_script(rules, plan)
 
         self.assertEqual(exit_code, 0)
-        packet_metrics = json.loads((output_dir / "packet_metrics.json").read_text(encoding="utf-8"))
+        packet_sizing = json.loads((output_dir / "packet_sizing.json").read_text(encoding="utf-8"))
         rules_packet = json.loads((output_dir / "rules_packet.json").read_text(encoding="utf-8"))
         commit_01 = json.loads((output_dir / "commit-01.json").read_text(encoding="utf-8"))
         commit_02 = json.loads((output_dir / "commit-02.json").read_text(encoding="utf-8"))
         self.assertGreater(json_bytes(commit_02), json_bytes(commit_01))
+        self.assertEqual(packet_sizing["packet_count"], 5)
         self.assertEqual(
-            packet_metrics["estimated_packet_tokens"],
+            result["efficiency"]["packet_compaction"]["packet_tokens"],
             estimate_tokens_from_bytes(json_bytes(rules_packet) + json_bytes(commit_02)),
         )
 

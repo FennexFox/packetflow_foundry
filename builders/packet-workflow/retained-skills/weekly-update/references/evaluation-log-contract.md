@@ -27,10 +27,11 @@ Use this top-level shape:
 - `request`
 - `input_size`
 - `orchestration`
-- `baseline`
 - `measurement`
 - `tokens`
 - `latency`
+- `packet_sizing`
+- `efficiency`
 - `quality`
 - `safety`
 - `outputs`
@@ -42,9 +43,9 @@ Use this top-level shape:
 
 - Keep truly common fields in the shared envelope only.
 - Put workflow-specific counters or mutation details in `skill_specific.data`.
-- Default `baseline.method` to `none`.
-- Leave savings fields null when no baseline exists.
-- Label estimated or unavailable data explicitly in `measurement`.
+- Keep packet sizing and packet-compaction telemetry in shared `packet_sizing` and `efficiency` blocks, not in `skill_specific.data`.
+- Label estimated or unavailable data through shared provenance fields.
+- Do not reintroduce legacy shared fields such as `baseline`, `measurement.token_source`, or `measurement.efficiency_source`.
 - Renormalize scoring weights when a signal is missing.
 
 ## Helper Workflow
@@ -56,3 +57,7 @@ Use `scripts/write_evaluation_log.py` in three modes:
   - `--log <json> --phase build|lint|validate|apply --result <json> [--duration-seconds <float>]`
 - `finalize`
   - `--log <json> --final <json>`
+
+Build-phase merge should populate shared `packet_sizing` and `efficiency`
+fields, using `packet_sizing.json` only as an evaluation-side sidecar when
+present.

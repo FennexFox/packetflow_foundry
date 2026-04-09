@@ -68,8 +68,8 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
 
         self.assertEqual(payload["review_mode"], "targeted-delegation")
         self.assertEqual(payload["selected_packets"], ["mapping_packet", "changes_packet", "risks_packet"])
-        self.assertIsNone(payload["worker_count"])
-        self.assertEqual(payload["worker_mix"], [])
+        self.assertNotIn("worker_count", payload)
+        self.assertNotIn("worker_mix", payload)
         self.assertEqual(payload["candidate_counts_by_proposed_classification"]["actual_incident"], 1)
         self.assertEqual(payload["candidate_counts_by_proposed_classification"]["blocker_or_risk"], 1)
         self.assertEqual(payload["raw_reread_reason_counts"], {"conflicting_signals": 1})
@@ -91,16 +91,89 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
 
         payload = eval_log.build_base_log(SCRIPT_DIR / "write_evaluation_log.py", context, orchestrator, None)
 
-        self.assertIsNone(payload["orchestration"]["worker_count"])
-        self.assertEqual(payload["orchestration"]["worker_roles"], [])
+        self.assertEqual(payload["orchestration"]["planned_workers"]["count"], 0)
+        self.assertEqual(payload["orchestration"]["planned_workers"]["roles"], [])
+        self.assertEqual(payload["orchestration"]["actual_workers"]["summary"]["executed_count"], 0)
         self.assertEqual(payload["orchestration"]["override_signals"], [])
-        self.assertIsNone(payload["skill_specific"]["data"]["worker_count"])
-        self.assertEqual(payload["skill_specific"]["data"]["worker_mix"], [])
+        self.assertNotIn("worker_count", payload["skill_specific"]["data"])
+        self.assertNotIn("worker_mix", payload["skill_specific"]["data"])
 
-    def test_build_phase_merges_packet_metrics_and_common_path_signals(self) -> None:
+    def test_build_phase_merges_packet_sizing_efficiency_and_common_path_signals(self) -> None:
         log = {
             "skill": {"name": "weekly-update"},
-            "measurement": {"efficiency_source": "unavailable"},
+            "measurement": {},
+            "baseline": {},
+            "orchestration": {},
+            "skill_specific": {"data": {}},
+        }
+        result = {
+            "review_mode": "targeted-delegation",
+            "planned_workers": {
+                "count": 2,
+                "roles": ["repo_mapper", "large_diff_auditor"],
+                "workers": [
+                    {
+                        "name": "mapping-repo-mapper",
+                        "agent_type": "repo_mapper",
+                        "model": "gpt-5.4-mini",
+                        "reasoning_effort": "medium",
+                        "packets": ["mapping_packet.json"],
+                        "responsibility": "Map repo surfaces",
+                    },
+                    {
+                        "name": "risks-large-diff-auditor",
+                        "agent_type": "large_diff_auditor",
+                        "model": "gpt-5.4-mini",
+                        "reasoning_effort": "medium",
+                        "packets": ["risks_packet.json"],
+                        "responsibility": "Audit risks",
+                    },
+                ],
+            },
+            "selected_packets": ["mapping_packet", "changes_packet", "risks_packet"],
+            "candidate_counts_by_proposed_classification": {"actual_incident": 1, "blocker_or_risk": 2},
+            "raw_reread_reason_counts": {"conflicting_signals": 1},
+            "coverage_gap_count": 2,
+            "common_path_sufficient": False,
+            "raw_reread_count": 1,
+            "packet_sizing": {
+                "packet_count": 6,
+                "packet_size_bytes": 4096,
+                "largest_packet_bytes": 1024,
+                "largest_two_packets_bytes": 1800,
+            },
+            "efficiency": {
+                "packet_compaction": {
+                    "local_only_tokens": 1200,
+                    "packet_tokens": 400,
+                    "savings_tokens": 800,
+                    "main_model_input_cost_nanousd": 1000,
+                    "provenance": "estimated",
+                    "pricing_snapshot_id": "openai-2026-04-09",
+                }
+            },
+        }
+
+        eval_log.apply_phase_update(log, "build", result, 1.5)
+
+        self.assertEqual(log["orchestration"]["review_mode"], "targeted-delegation")
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 2)
+        self.assertEqual(log["skill_specific"]["data"]["selected_packets"], ["mapping_packet", "changes_packet", "risks_packet"])
+        self.assertNotIn("packet_count", log["skill_specific"]["data"])
+        self.assertNotIn("packet_tokens", log["skill_specific"]["data"])
+        self.assertNotIn("savings_tokens", log["skill_specific"]["data"])
+        self.assertFalse(log["skill_specific"]["data"]["common_path_sufficient"])
+        self.assertTrue(log["orchestration"]["raw_reread_required"])
+        self.assertEqual(log["packet_sizing"]["packet_count"], 6)
+        self.assertEqual(log["packet_sizing"]["packet_size_bytes"], 4096)
+        self.assertEqual(log["efficiency"]["packet_compaction"]["local_only_tokens"], 1200)
+        self.assertEqual(log["efficiency"]["packet_compaction"]["savings_tokens"], 800)
+        self.assertEqual(log["latency"]["packet_builder_seconds"], 1.5)
+
+    def test_build_phase_preserves_legacy_recommended_worker_count_without_worker_list(self) -> None:
+        log = {
+            "skill": {"name": "weekly-update"},
+            "measurement": {},
             "baseline": {},
             "orchestration": {},
             "skill_specific": {"data": {}},
@@ -108,37 +181,107 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
         result = {
             "review_mode": "targeted-delegation",
             "recommended_worker_count": 2,
-            "recommended_workers": [{"agent_type": "repo_mapper"}, {"agent_type": "large_diff_auditor"}],
-            "selected_packets": ["mapping_packet", "changes_packet", "risks_packet"],
-            "candidate_counts_by_proposed_classification": {"actual_incident": 1, "blocker_or_risk": 2},
-            "raw_reread_reason_counts": {"conflicting_signals": 1},
-            "coverage_gap_count": 2,
-            "common_path_sufficient": False,
-            "raw_reread_count": 1,
-            "packet_metrics": {
-                "packet_count": 6,
-                "packet_size_bytes": 4096,
-                "largest_packet_bytes": 1024,
-                "largest_two_packets_bytes": 1800,
-                "estimated_local_only_tokens": 1200,
-                "estimated_packet_tokens": 400,
-                "estimated_delegation_savings": 800,
+            "recommended_workers": [],
+            "packet_sizing": {
+                "packet_count": 2,
+                "packet_size_bytes": 512,
+                "packet_size_breakdown": {
+                    "orchestrator.json": 128,
+                    "mapping_packet.json": 384,
+                },
             },
         }
 
-        eval_log.apply_phase_update(log, "build", result, 1.5)
+        eval_log.apply_phase_update(log, "build", result, None)
 
-        self.assertEqual(log["orchestration"]["review_mode"], "targeted-delegation")
-        self.assertEqual(log["orchestration"]["worker_count"], 2)
-        self.assertEqual(log["skill_specific"]["data"]["selected_packets"], ["mapping_packet", "changes_packet", "risks_packet"])
-        self.assertEqual(log["skill_specific"]["data"]["packet_count"], 6)
-        self.assertEqual(log["skill_specific"]["data"]["estimated_packet_tokens"], 400)
-        self.assertEqual(log["skill_specific"]["data"]["estimated_delegation_savings"], 800)
-        self.assertFalse(log["skill_specific"]["data"]["common_path_sufficient"])
-        self.assertTrue(log["orchestration"]["raw_reread_required"])
-        self.assertEqual(log["baseline"]["estimated_local_only_tokens"], 1200)
-        self.assertEqual(log["baseline"]["estimated_token_savings"], 800)
-        self.assertEqual(log["measurement"]["efficiency_source"], "estimated")
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 2)
+        self.assertEqual(log["orchestration"]["planned_workers"]["workers"], [])
+        self.assertEqual(log["orchestration"]["planned_workers"]["roles"], [])
+
+    def test_execution_fidelity_scores_local_only_empty_run_as_one(self) -> None:
+        score = eval_log.common.execution_fidelity_score(
+            {
+                "orchestration": {
+                    "planned_workers": {"count": 0, "roles": [], "workers": []},
+                    "actual_workers": {
+                        "summary": {
+                            "materialized_count": 0,
+                            "executed_count": 0,
+                            "completed_count": 0,
+                            "failed_count": 0,
+                            "cancelled_count": 0,
+                            "planned_not_run_count": 0,
+                            "unplanned_count": 0,
+                            "capture_complete": True,
+                            "capture_incomplete_reason": None,
+                        },
+                        "workers": [],
+                    },
+                }
+            }
+        )
+
+        self.assertEqual(score, 1.0)
+
+    def test_finalize_treats_unknown_planned_worker_id_as_unplanned_execution(self) -> None:
+        log = {
+            "skill": {"name": "weekly-update"},
+            "measurement": {},
+            "baseline": {},
+            "orchestration": {
+                "review_mode": "targeted-delegation",
+                "planned_workers": {
+                    "count": 1,
+                    "roles": ["repo_mapper"],
+                    "workers": [
+                        {
+                            "worker_id": "planned:mapping:repo_mapper:abc123",
+                            "name": "mapping-repo-mapper",
+                            "agent_type": "repo_mapper",
+                            "model": "gpt-5.4-mini",
+                            "reasoning_effort": "medium",
+                            "packets": ["mapping_packet.json"],
+                            "responsibility": "Map repo surfaces",
+                        }
+                    ],
+                },
+            },
+            "quality": {},
+            "safety": {},
+            "skill_specific": {"data": {}},
+        }
+
+        eval_log.finalize_log(
+            log,
+            {
+                "orchestration": {
+                    "actual_workers": {
+                        "summary": {"capture_complete": True},
+                        "workers": [
+                            {
+                                "planned_worker_id": "planned:missing:repo_mapper:deadbeef",
+                                "agent_type": "repo_mapper",
+                                "model": "gpt-5.4-mini",
+                                "reasoning_effort": "medium",
+                                "status": "completed",
+                            }
+                        ],
+                    }
+                }
+            },
+        )
+
+        actual_workers = log["orchestration"]["actual_workers"]
+        self.assertEqual(actual_workers["summary"]["executed_count"], 1)
+        self.assertEqual(actual_workers["summary"]["planned_not_run_count"], 1)
+        self.assertEqual(actual_workers["summary"]["unplanned_count"], 1)
+        self.assertEqual(actual_workers["workers"][0]["planned_worker_id"], None)
+        self.assertEqual(actual_workers["workers"][0]["status"], "unplanned_completed")
+        self.assertEqual(actual_workers["workers"][1]["status"], "planned_not_run")
+        self.assertIn(
+            "Unknown planned_worker_id in actual worker payload; recorded as unplanned execution.",
+            log["notes"],
+        )
 
     def test_validate_and_apply_merge_plan_and_marker_fields(self) -> None:
         log = {

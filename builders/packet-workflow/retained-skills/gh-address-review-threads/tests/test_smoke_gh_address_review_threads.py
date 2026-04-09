@@ -160,7 +160,7 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
         self.assertEqual(payload["next_action"], "review_smoke_results")
         self.assertEqual(payload["thread_counts"]["unresolved"], 2)
         self.assertTrue(payload["common_path_sufficient"])
-        self.assertGreaterEqual(payload["estimated_delegation_savings"], 0)
+        self.assertGreaterEqual(payload["packet_compaction_savings_tokens"], 0)
         self.assertEqual(payload["outdated_transition_candidates"], 1)
         self.assertEqual(payload["outdated_auto_resolved"], 1)
         self.assertEqual(payload["outdated_recheck_ambiguous"], 0)
@@ -258,30 +258,34 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
                         output_dir / "orchestrator.json",
                         {
                             "review_mode": "targeted-delegation",
-                            "recommended_worker_count": 1,
-                            "recommended_workers": [{"agent_type": "packet_explorer"}],
                             "packet_files": ["global_packet.json", "thread-01.json", "thread-02.json", "orchestrator.json"],
                         },
                     )
                     write_json(output_dir / "global_packet.json", {"orchestrator_profile": "standard"})
                     write_json(
-                        output_dir / "packet_metrics.json",
+                        output_dir / "packet_sizing.json",
                         {
                             "packet_count": 4,
                             "packet_size_bytes": 1200,
                             "largest_packet_bytes": 500,
                             "largest_two_packets_bytes": 900,
-                            "estimated_local_only_tokens": 600,
-                            "estimated_packet_tokens": 250,
-                            "estimated_delegation_savings": 350,
                         },
                     )
                     write_json(
                         Path(arg_list[arg_list.index("--result-output") + 1]),
                         {
                             "review_mode": "targeted-delegation",
-                            "recommended_worker_count": 1,
-                            "recommended_workers": [{"agent_type": "packet_explorer"}],
+                            "planned_workers": {
+                                "count": 1,
+                                "roles": ["packet_explorer"],
+                                "workers": [
+                                    {
+                                        "name": "thread-01",
+                                        "agent_type": "packet_explorer",
+                                        "packets": ["global_packet.json", "thread-01.json"],
+                                    }
+                                ],
+                            },
                             "thread_batch_count": 0,
                             "singleton_thread_packet_count": 2,
                             "active_paths": ["src/app.py", "src/helper.py"],
@@ -291,7 +295,19 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
                             "thread_counts": {"unresolved": 2, "unresolved_outdated": 0},
                             "outdated_transition_candidates": 0,
                             "outdated_recheck_ambiguous": 0,
-                            "packet_metrics_file": str(output_dir / "packet_metrics.json"),
+                            "packet_sizing": {
+                                "packet_count": 4,
+                                "packet_size_bytes": 1200,
+                                "largest_packet_bytes": 500,
+                                "largest_two_packets_bytes": 900,
+                            },
+                            "efficiency": {
+                                "packet_compaction": {
+                                    "local_only_tokens": 600,
+                                    "packet_tokens": 250,
+                                    "savings_tokens": 350,
+                                }
+                            },
                         },
                     )
                     return ""
@@ -362,7 +378,7 @@ class SmokeGhAddressReviewThreadsTests(unittest.TestCase):
             self.assertEqual(payload["thread_counts"]["unresolved"], 2)
             self.assertEqual(payload["next_action"], "review_smoke_results")
             self.assertTrue(payload["common_path_sufficient"])
-            self.assertGreater(payload["estimated_delegation_savings"], 0)
+            self.assertGreater(payload["packet_compaction_savings_tokens"], 0)
             self.assertEqual(payload["outdated_transition_candidates"], 0)
             self.assertEqual(payload["outdated_auto_resolved"], 0)
             self.assertEqual(payload["outdated_recheck_ambiguous"], 0)

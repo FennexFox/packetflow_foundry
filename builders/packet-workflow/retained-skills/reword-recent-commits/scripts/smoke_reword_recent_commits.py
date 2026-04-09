@@ -145,15 +145,16 @@ def main() -> int:
 
         build_result = load_json(artifact_root / "build-result.json")
         packet_dir = artifact_root / "packets"
-        packet_metrics = load_json(packet_dir / "packet_metrics.json")
-        if build_result.get("packet_metrics") != packet_metrics:
-            raise RuntimeError("Smoke build result and packet_metrics.json disagree.")
+        packet_sizing = load_json(packet_dir / "packet_sizing.json")
+        if build_result.get("packet_sizing") != packet_sizing:
+            raise RuntimeError("Smoke build result and packet_sizing.json disagree.")
         persisted_eval_log = smoke_root / "eval-log.json"
         eval_log_path = Path(str(apply_summary["evaluation_log_path"]))
         persisted_eval_log.write_text(eval_log_path.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
         summary = {
             "status": "ok",
-            "packet_metrics": packet_metrics,
+            "packet_sizing": packet_sizing,
+            "efficiency": build_result.get("efficiency"),
             "common_path_sufficient": bool(build_result.get("common_path_sufficient")),
             "evaluation_log_path": str(persisted_eval_log),
         }

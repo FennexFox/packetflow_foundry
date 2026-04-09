@@ -81,6 +81,7 @@ def write_skill_fixture(
     profile_versioning: dict[str, object] | None,
 ) -> Path:
     skill_dir = root / name
+    (skill_dir / "scripts").mkdir(parents=True, exist_ok=True)
     (skill_dir / "profiles" / "default").mkdir(parents=True, exist_ok=True)
     spec_payload: dict[str, object] = {
         "skill_name": name,
@@ -95,6 +96,26 @@ def write_skill_fixture(
         spec_payload["builder_versioning"] = dict(skill_versioning)
     (skill_dir / "builder-spec.json").write_text(
         json.dumps(spec_payload, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
+    (skill_dir / "scripts" / "write_evaluation_log.py").write_text(
+        "import evaluation_log_common as common\n",
+        encoding="utf-8",
+    )
+    (skill_dir / "migration-worksheet.md").write_text(
+        "\n".join(
+            [
+                f"# Migration Worksheet: {name}",
+                "",
+                "## Builder Compatibility History",
+                "- `unversioned -> packet-workflow 0.1.0`",
+                (
+                    f"- `packet-workflow {builder_version()['builder_semver']} / "
+                    f"epoch {builder_version()['compatibility_epoch']}`"
+                ),
+                "",
+            ]
+        ),
         encoding="utf-8",
     )
 
@@ -143,6 +164,26 @@ class PacketWorkflowVersioningTests(unittest.TestCase):
             report = versioning.evaluate_skill_dir(skill_dir)
             self.assertEqual(report["status"], versioning.STATUS_CURRENT)
             self.assertFalse(report["blocking"])
+            self.assertEqual(report["evaluation_schema_version"], "2.0")
+            self.assertTrue(report["migration_entry_present"])
+
+    def test_canonical_pricing_snapshot_matches_openai_2026_04_09_rates(self) -> None:
+        payload = versioning.load_json_document(versioning.canonical_pricing_snapshot_path())
+        self.assertEqual(payload["snapshot_id"], "openai-2026-04-09")
+        models = {
+            item["canonical_model_id"]: item
+            for item in payload["models"]
+            if isinstance(item, dict) and item.get("canonical_model_id")
+        }
+        self.assertEqual(models["gpt-5.4"]["input_nanousd_per_token"], 2500)
+        self.assertEqual(models["gpt-5.4"]["cached_input_nanousd_per_token"], 250)
+        self.assertEqual(models["gpt-5.4"]["output_nanousd_per_token"], 15000)
+        self.assertEqual(models["gpt-5.4-mini"]["input_nanousd_per_token"], 750)
+        self.assertEqual(models["gpt-5.4-mini"]["cached_input_nanousd_per_token"], 75)
+        self.assertEqual(models["gpt-5.4-mini"]["output_nanousd_per_token"], 4500)
+        self.assertEqual(models["gpt-5.4-nano"]["input_nanousd_per_token"], 200)
+        self.assertEqual(models["gpt-5.4-nano"]["cached_input_nanousd_per_token"], 20)
+        self.assertEqual(models["gpt-5.4-nano"]["output_nanousd_per_token"], 1250)
 
     def test_evaluate_skill_dir_reports_semver_behind_compatible(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:

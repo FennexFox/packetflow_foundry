@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -12,6 +13,18 @@ import lint_pr_create as lint_tools
 import pr_create_contract as contract
 
 DELEGATION_SAVINGS_FLOOR = 250
+
+
+def resolve_builder_scripts_dir() -> Path:
+    return Path(__file__).resolve().parents[2] / "scripts"
+
+
+BUILDER_SCRIPTS_DIR = resolve_builder_scripts_dir()
+while str(BUILDER_SCRIPTS_DIR) in sys.path:
+    sys.path.remove(str(BUILDER_SCRIPTS_DIR))
+sys.path.insert(0, str(BUILDER_SCRIPTS_DIR))
+
+import evaluation_log_common as common  # noqa: E402
 
 
 def load_json(path: Path) -> dict[str, Any]:
@@ -68,10 +81,10 @@ def maybe_apply_delegation_savings_floor(
     packet_metrics: dict[str, Any],
     adjustments: list[str],
 ) -> tuple[str, int, list[str]]:
-    estimated_savings = int(packet_metrics.get("estimated_delegation_savings", 0) or 0)
+    savings_tokens = int(packet_metrics.get("savings_tokens", 0) or 0)
     if (
         review_mode == "local-only"
-        and estimated_savings >= DELEGATION_SAVINGS_FLOOR
+        and savings_tokens >= DELEGATION_SAVINGS_FLOOR
         and "delegation_savings_floor" not in adjustments
     ):
         return "targeted-delegation", max(worker_count, 2), [*adjustments, "delegation_savings_floor"]
@@ -420,7 +433,8 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         testing_relevant=testing_relevant,
     )
     packet_files = list(packet_payloads.keys()) + ["orchestrator.json"]
-    build_result = {
+    build_result = common.normalize_build_result(
+        {
         "review_mode": review_mode,
         "review_mode_baseline": review_mode_baseline,
         "review_mode_adjustments": review_mode_adjustments,
@@ -436,7 +450,9 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         "template_status": context.get("template_selection", {}).get("status"),
         "duplicate_hint_status": context.get("duplicate_check_hint", {}).get("status"),
         "packet_metrics": packet_metrics,
-    }
+        },
+        packet_metrics=packet_metrics,
+    )
     orchestrator = {
         "workflow_family": contract.WORKFLOW_FAMILY,
         "archetype": contract.ARCHETYPE,
@@ -467,7 +483,7 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         "packet_files": packet_files,
     }
     packet_payloads["orchestrator.json"] = orchestrator
-    packet_payloads["packet_metrics.json"] = packet_metrics
+    packet_payloads["packet_sizing.json"] = common.normalize_packet_sizing(packet_metrics)
     return packet_payloads, build_result
 
 
@@ -496,8 +512,8 @@ def main() -> int:
                 "output_dir": str(output_dir),
                 "review_mode": build_result["review_mode"],
                 "packet_files": build_result["packet_files"],
-                "recommended_worker_count": build_result["recommended_worker_count"],
-                "packet_metrics_file": str(output_dir / "packet_metrics.json"),
+                "planned_worker_count": build_result["planned_workers"]["count"],
+                "packet_sizing_file": str(output_dir / "packet_sizing.json"),
             },
             indent=2,
             ensure_ascii=True,

@@ -26,6 +26,7 @@ BLOCKING_STATUSES = {
 }
 
 SEMVER_RE = re.compile(r"^(?P<major>\d+)\.(?P<minor>\d+)\.(?P<patch>\d+)$")
+PYTHON_STRING_CONSTANT_RE_TEMPLATE = r'^{name}\s*=\s*["\'](?P<value>[^"\']+)["\']'
 
 
 def foundry_root_dir() -> Path:
@@ -40,12 +41,37 @@ def canonical_retained_skills_root() -> Path:
     return foundry_root_dir() / "builders" / "packet-workflow" / "retained-skills"
 
 
+def canonical_shared_eval_helper_path() -> Path:
+    return canonical_retained_skills_root() / "scripts" / "evaluation_log_common.py"
+
+
+def canonical_pricing_snapshot_path() -> Path:
+    return (
+        foundry_root_dir()
+        / "core"
+        / "defaults"
+        / "packet-workflow"
+        / "model-pricing.json"
+    )
+
+
 def load_json_document(path: Path) -> Any:
     return json.loads(path.read_text(encoding="utf-8-sig"))
 
 
 def write_json_document(path: Path, payload: Any) -> None:
     path.write_text(json.dumps(payload, indent=2, ensure_ascii=True) + "\n", encoding="utf-8")
+
+
+def extract_python_string_constant(path: Path, name: str) -> str | None:
+    if not path.is_file():
+        return None
+    pattern = re.compile(
+        PYTHON_STRING_CONSTANT_RE_TEMPLATE.format(name=re.escape(name)),
+        re.MULTILINE,
+    )
+    match = pattern.search(path.read_text(encoding="utf-8"))
+    return match.group("value").strip() if match else None
 
 
 def parse_semver(value: Any) -> tuple[int, int, int] | None:
@@ -98,6 +124,52 @@ def load_builder_versioning(path: Path | None = None) -> dict[str, Any]:
     if normalized is None:
         raise RuntimeError(f"Invalid builder version metadata: {version_path}")
     return normalized
+
+
+def load_pricing_snapshot_id(path: Path | None = None) -> str | None:
+    snapshot_path = path or canonical_pricing_snapshot_path()
+    payload = load_json_document(snapshot_path)
+    if not isinstance(payload, dict):
+        return None
+    snapshot_id = str(payload.get("snapshot_id") or "").strip()
+    return snapshot_id or None
+
+
+def shared_evaluation_schema_version() -> str | None:
+    return extract_python_string_constant(canonical_shared_eval_helper_path(), "SCHEMA_VERSION")
+
+
+def shared_pricing_snapshot_constant() -> str | None:
+    return extract_python_string_constant(
+        canonical_shared_eval_helper_path(),
+        "DEFAULT_PRICING_SNAPSHOT_ID",
+    )
+
+
+def extract_evaluation_schema_version(skill_dir: Path) -> str | None:
+    script_path = skill_dir / "scripts" / "write_evaluation_log.py"
+    if not script_path.is_file():
+        return None
+    script_text = script_path.read_text(encoding="utf-8")
+    if "evaluation_log_common" in script_text:
+        return shared_evaluation_schema_version()
+    return extract_python_string_constant(script_path, "SCHEMA_VERSION")
+
+
+def expected_migration_entry(builder_version: dict[str, Any]) -> str:
+    return (
+        f"packet-workflow {builder_version['builder_semver']} / "
+        f"epoch {builder_version['compatibility_epoch']}"
+    )
+
+
+def migration_entry_present(skill_dir: Path, *, builder_version: dict[str, Any]) -> bool:
+    worksheet_path = skill_dir / "migration-worksheet.md"
+    if not worksheet_path.is_file():
+        return False
+    return expected_migration_entry(builder_version) in worksheet_path.read_text(
+        encoding="utf-8"
+    )
 
 
 def extract_skill_builder_versioning(spec_payload: Any) -> dict[str, Any] | None:
@@ -276,11 +348,48 @@ def evaluate_skill_dir(
         skill_versioning=extract_skill_builder_versioning(spec_payload),
         profile_versioning=extract_profile_versioning(profile_payload),
     )
+    evaluation_schema_version = extract_evaluation_schema_version(skill_dir)
+    expected_eval_schema = shared_evaluation_schema_version()
+    pricing_snapshot_id = load_pricing_snapshot_id()
+    expected_pricing_snapshot_id = shared_pricing_snapshot_constant()
+    migration_expected = expected_migration_entry(builder_version)
+    migration_present = migration_entry_present(
+        skill_dir,
+        builder_version=builder_version,
+    )
+    validator_failures: list[str] = []
+    if evaluation_schema_version != expected_eval_schema:
+        validator_failures.append(
+            "evaluation_schema_version mismatch "
+            f"(expected {expected_eval_schema}, got {evaluation_schema_version})"
+        )
+    if (
+        pricing_snapshot_id is None
+        or expected_pricing_snapshot_id is None
+        or pricing_snapshot_id != expected_pricing_snapshot_id
+    ):
+        validator_failures.append(
+            "pricing_snapshot_id mismatch "
+            f"(expected {expected_pricing_snapshot_id}, got {pricing_snapshot_id})"
+        )
+    if not migration_present:
+        validator_failures.append(
+            f"migration worksheet missing `{migration_expected}` entry"
+        )
+    blocking = bool(report["blocking"]) or bool(validator_failures)
     report.update(
         {
             "skill_name": skill_dir.name,
             "builder_spec_path": (skill_dir / "builder-spec.json").as_posix(),
             "profile_path": (skill_dir / "profiles" / "default" / "profile.json").as_posix(),
+            "evaluation_schema_version": evaluation_schema_version,
+            "expected_evaluation_schema_version": expected_eval_schema,
+            "pricing_snapshot_id": pricing_snapshot_id,
+            "expected_pricing_snapshot_id": expected_pricing_snapshot_id,
+            "migration_entry_expected": migration_expected,
+            "migration_entry_present": migration_present,
+            "validator_failures": validator_failures,
+            "blocking": blocking,
         }
     )
     return report

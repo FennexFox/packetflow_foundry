@@ -29,10 +29,11 @@ Every evaluation log should contain:
 - `request`
 - `input_size`
 - `orchestration`
-- `baseline`
 - `measurement`
 - `tokens`
 - `latency`
+- `packet_sizing`
+- `efficiency`
 - `quality`
 - `safety`
 - `outputs`
@@ -44,26 +45,55 @@ Every evaluation log should contain:
 
 - Keep only truly common fields in the shared envelope.
 - Put workflow-specific counters and mutation details in `skill_specific.data`.
-- Record observed values first. Estimated values must be labeled in `measurement` or `baseline`.
-- If no baseline is available, leave savings fields null instead of inventing a comparison.
+- Record observed values first. Estimated or unavailable values must be labeled through per-component provenance fields.
+- Do not reintroduce legacy shared fields such as `baseline`, `measurement.token_source`, or `measurement.efficiency_source`.
+- Merge packet-sizing and packet-compaction telemetry from build results or finalize payloads. They are evaluation artifacts, not runtime routing inputs.
 - Scores must renormalize weights when inputs are missing.
 
-## Baseline
+## Orchestration
 
-- `baseline.method`: `none | heuristic_local_only | paired_run | historical_cohort`
-- default: `none`
-- include estimate fields only when they actually exist:
-  - `estimated_local_only_tokens`
-  - `estimated_token_savings`
-  - `estimated_delegation_savings`
-- keep `baseline.confidence` explicit when a heuristic or historical estimate is used
+- `orchestration.planned_workers`
+  - `count`, `roles`, `workers[]`
+  - `workers[]` must contain `worker_id`, `name`, `agent_type`, `model`, `reasoning_effort`, `packets`, `responsibility`
+- `orchestration.actual_workers`
+  - `summary`, `workers[]`
+  - `summary` must contain `materialized_count`, `executed_count`, `completed_count`, `failed_count`, `cancelled_count`, `planned_not_run_count`, `unplanned_count`, `capture_complete`, `capture_incomplete_reason`
+  - finalize outputs should contain terminal statuses only unless `capture_complete=false`
 
 ## Measurement
 
 At minimum record:
-- `token_source`: `measured | estimated | unavailable`
 - `latency_source`: `measured | estimated | unavailable`
 - `quality_source`: `self_assessed | human_confirmed | mixed | unavailable`
+
+## Packet Sizing And Efficiency
+
+- `packet_sizing` contains only sizing counters:
+  - `packet_count`
+  - `packet_size_bytes`
+  - `largest_packet_bytes`
+  - `largest_two_packets_bytes`
+  - optional `packet_size_breakdown`
+- `efficiency.packet_compaction` records packet-compaction telemetry:
+  - `local_only_tokens`
+  - `packet_tokens`
+  - `savings_tokens`
+  - `main_model_input_cost_nanousd`
+  - `provenance`
+  - `pricing_snapshot_id`
+- `efficiency.model_tier_delegation` records delegation telemetry:
+  - `gross_avoided_main_cost_nanousd`
+  - `delegation_overhead_cost_nanousd`
+  - `net_savings_cost_nanousd`
+  - `gross_avoided_provenance`
+  - `overhead_provenance`
+  - `net_provenance`
+  - `pricing_snapshot_id`
+- `efficiency.combined` records combined cost-equivalent telemetry:
+  - `packet_compaction_cost_nanousd`
+  - `delegation_net_cost_nanousd`
+  - `total_net_cost_nanousd`
+  - `component_provenance`
 
 ## Scoring
 
@@ -84,6 +114,7 @@ The common helper should support:
 - `init`
   - build a base log from `context`, `orchestrator`, and optional `lint`
 - `phase`
-  - merge deterministic phase outputs such as lint, validate, and apply results
+  - merge deterministic phase outputs such as build, lint, validate, and apply results
+  - build-phase merges should populate shared `packet_sizing` and `efficiency` fields, using `packet_sizing.json` only as an evaluation-side sidecar when present
 - `finalize`
   - merge agent-only observations such as token usage, actual worker mix, final usability, outputs, and notes

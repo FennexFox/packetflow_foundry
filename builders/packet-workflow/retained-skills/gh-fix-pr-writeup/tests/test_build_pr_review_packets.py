@@ -194,7 +194,7 @@ class BuildPrReviewPacketsTests(unittest.TestCase):
         global_packet = json.loads((output_dir / "global_packet.json").read_text(encoding="utf-8"))
         rules_packet = json.loads((output_dir / "rules_packet.json").read_text(encoding="utf-8"))
         synthesis_packet = json.loads((output_dir / "synthesis_packet.json").read_text(encoding="utf-8"))
-        packet_metrics = json.loads((output_dir / "packet_metrics.json").read_text(encoding="utf-8"))
+        packet_sizing = json.loads((output_dir / "packet_sizing.json").read_text(encoding="utf-8"))
 
         self.assertEqual(orchestrator["orchestrator_profile"], "packet-heavy-orchestrator")
         self.assertEqual(orchestrator["shared_local_packet"], "synthesis_packet.json")
@@ -203,16 +203,19 @@ class BuildPrReviewPacketsTests(unittest.TestCase):
         self.assertEqual(orchestrator["routing_contract"], packets.contract.ROUTING_CONTRACT)
         self.assertEqual(global_packet["routing_contract"], packets.contract.ROUTING_CONTRACT)
         self.assertNotIn("packet_size_bytes", orchestrator)
-        self.assertNotIn("estimated_packet_tokens", orchestrator)
+        self.assertNotIn("packet_tokens", orchestrator)
         self.assertNotIn("review_mode_baseline", orchestrator)
         self.assertNotIn("review_mode_adjustments", orchestrator)
         self.assertNotIn("recommended_workers", orchestrator)
         self.assertNotIn("optional_workers", orchestrator)
         self.assertNotIn("review_overrides", orchestrator)
         self.assertNotIn("review_overrides", global_packet)
-        self.assertIn("packet_size_bytes", packet_metrics)
-        self.assertGreater(packet_metrics["estimated_delegation_savings"], 0)
-        self.assertLess(packet_metrics["estimated_packet_tokens"], packet_metrics["estimated_local_only_tokens"])
+        self.assertIn("packet_size_bytes", packet_sizing)
+        self.assertGreater(build_result["efficiency"]["packet_compaction"]["savings_tokens"], 0)
+        self.assertLess(
+            build_result["efficiency"]["packet_compaction"]["packet_tokens"],
+            build_result["efficiency"]["packet_compaction"]["local_only_tokens"],
+        )
         self.assertEqual(build_result["qa_required"], True)
         self.assertEqual(synthesis_packet["qa_required"], True)
         self.assertEqual(synthesis_packet["rewrite_strategy"], "full-rewrite")
@@ -254,11 +257,11 @@ class BuildPrReviewPacketsTests(unittest.TestCase):
 
     def test_common_path_contract_and_metrics_result_are_written(self) -> None:
         output_dir, build_result = self.run_builder(base_context(broad=False), lint_payload())
-        packet_metrics = json.loads((output_dir / "packet_metrics.json").read_text(encoding="utf-8"))
+        packet_sizing = json.loads((output_dir / "packet_sizing.json").read_text(encoding="utf-8"))
         self.assertTrue(build_result["common_path_sufficient"])
         self.assertEqual(build_result["raw_reread_count"], 0)
-        self.assertEqual(packet_metrics["common_path_packets"][:2], ["rules_packet.json", "synthesis_packet.json"])
-        self.assertTrue(packet_metrics["packet_insufficiency_is_failure"])
+        self.assertEqual(packet_sizing["packet_count"], 6)
+        self.assertEqual(build_result["common_path_contract"]["required_packets"], ["rules_packet.json", "synthesis_packet.json"])
         self.assertIn("synthesis_packet.json", build_result["packet_files"])
 
 

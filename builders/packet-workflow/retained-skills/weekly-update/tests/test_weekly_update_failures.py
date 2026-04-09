@@ -85,7 +85,7 @@ class WeeklyUpdateFailurePathTests(unittest.TestCase):
         artifacts = wl.build_packet_artifacts(quiet_context, lint)
         self.assertTrue(lint["can_proceed"])
         self.assertEqual(packets["orchestrator.json"]["review_mode"], "local-only")
-        self.assertEqual(artifacts["build_result"]["recommended_workers"], [])
+        self.assertEqual(artifacts["build_result"]["planned_workers"]["workers"], [])
         self.assertEqual(packets["changes_packet.json"]["candidate_ids"], [])
         self.assertEqual(packets["incidents_packet.json"]["candidate_ids"], [])
         self.assertEqual(packets["risks_packet.json"]["candidate_ids"], [])
@@ -104,7 +104,7 @@ class WeeklyUpdateFailurePathTests(unittest.TestCase):
         self.assertEqual(packets["orchestrator.json"]["review_mode"], "targeted-delegation")
         self.assertEqual(artifacts["build_result"]["review_mode_baseline"], "local-only")
         self.assertEqual(artifacts["build_result"]["review_mode_adjustments"], ["override_signal"])
-        self.assertGreater(len(artifacts["build_result"]["recommended_workers"]), 0)
+        self.assertGreater(len(artifacts["build_result"]["planned_workers"]["workers"]), 0)
 
     def test_build_packets_skips_build_result_only_counts(self) -> None:
         quiet_context = self.quiet_context()
@@ -118,7 +118,7 @@ class WeeklyUpdateFailurePathTests(unittest.TestCase):
 
         self.assertEqual(packets["orchestrator.json"]["review_mode"], "local-only")
 
-    def test_packet_metrics_are_recomputed_after_review_mode_rerender(self) -> None:
+    def test_packet_sizing_and_efficiency_are_recomputed_after_review_mode_rerender(self) -> None:
         quiet_context = self.quiet_context()
         lint = wl.lint_context(quiet_context)
 
@@ -126,14 +126,25 @@ class WeeklyUpdateFailurePathTests(unittest.TestCase):
             artifacts = wl.build_packet_artifacts(quiet_context, lint)
 
         self.assertEqual(artifacts["packets"]["orchestrator.json"]["review_mode"], "targeted-delegation")
-        self.assertEqual(
-            artifacts["packet_metrics"],
-            wl.compute_packet_metrics(
-                artifacts["packets"],
-                raw_local_sources={"context": quiet_context, "lint": lint},
-            ),
+        recomputed = wl.compute_packet_metrics(
+            artifacts["packets"],
+            raw_local_sources={"context": quiet_context, "lint": lint},
         )
-        self.assertEqual(artifacts["build_result"]["packet_metrics"], artifacts["packet_metrics"])
+        self.assertEqual(artifacts["packet_sizing"]["packet_count"], recomputed["packet_count"])
+        self.assertEqual(artifacts["packet_sizing"]["packet_size_bytes"], recomputed["packet_size_bytes"])
+        self.assertEqual(
+            artifacts["efficiency"]["packet_compaction"]["local_only_tokens"],
+            recomputed["local_only_tokens"],
+        )
+        self.assertEqual(
+            artifacts["efficiency"]["packet_compaction"]["packet_tokens"],
+            recomputed["packet_tokens"],
+        )
+        self.assertEqual(artifacts["build_result"]["packet_sizing"], artifacts["packet_sizing"])
+        self.assertEqual(
+            artifacts["build_result"]["efficiency"]["packet_compaction"]["savings_tokens"],
+            artifacts["efficiency"]["packet_compaction"]["savings_tokens"],
+        )
 
     def test_non_mapping_analysis_ref_is_ignored_during_packet_builds(self) -> None:
         legacy_context = dict(self.context)

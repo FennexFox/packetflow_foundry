@@ -61,6 +61,12 @@ def stamp_skill(skill_dir: Path, *, builder_version: dict[str, Any]) -> dict[str
         raise SystemExit(
             f"[ERROR] Refusing to stamp {skill_dir.name}: compatibility status is {report['status']}."
         )
+    if bool(report.get("blocking")):
+        failures = "; ".join(str(item) for item in report.get("validator_failures") or [])
+        suffix = f" {failures}" if failures else ""
+        raise SystemExit(
+            f"[ERROR] Refusing to stamp {skill_dir.name}: blocking validator failures.{suffix}"
+        )
 
     spec_path = skill_dir / "builder-spec.json"
     profile_path = skill_dir / "profiles" / "default" / "profile.json"

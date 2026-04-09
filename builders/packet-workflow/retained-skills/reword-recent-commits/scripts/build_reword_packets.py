@@ -34,6 +34,13 @@ from reword_plan_contract import (
     rules_reliability,
 )
 
+BUILDER_SCRIPTS_DIR = Path(__file__).resolve().parents[2] / "scripts"
+while str(BUILDER_SCRIPTS_DIR) in sys.path:
+    sys.path.remove(str(BUILDER_SCRIPTS_DIR))
+sys.path.insert(0, str(BUILDER_SCRIPTS_DIR))
+
+import evaluation_log_common as common  # noqa: E402
+
 
 LOCAL_COMMIT_LIMIT = 2
 LOCAL_FILE_LIMIT = 8
@@ -289,10 +296,10 @@ def maybe_apply_delegation_savings_floor(
     packet_metrics: dict[str, Any],
     adjustments: list[str],
 ) -> tuple[str, int, list[str]]:
-    estimated_savings = int(packet_metrics.get("estimated_delegation_savings", 0) or 0)
+    savings_tokens = int(packet_metrics.get("savings_tokens", 0) or 0)
     if (
         review_mode == "local-only"
-        and estimated_savings >= DELEGATION_SAVINGS_FLOOR
+        and savings_tokens >= DELEGATION_SAVINGS_FLOOR
         and "delegation_savings_floor" not in adjustments
     ):
         return "targeted-delegation", max(worker_count, 2), [*adjustments, "delegation_savings_floor"]
@@ -326,7 +333,8 @@ def build_result_payload(
     common_path_sufficient: bool,
     raw_reread_reasons: list[str],
 ) -> dict[str, Any]:
-    return {
+    return common.normalize_build_result(
+        {
         "review_mode": review_mode,
         "review_mode_baseline": review_mode_baseline,
         "review_mode_adjustments": review_mode_adjustments,
@@ -342,7 +350,9 @@ def build_result_payload(
         "raw_reread_count": len(raw_reread_reasons),
         "raw_reread_reasons": raw_reread_reasons,
         "packet_metrics": packet_metrics,
-    }
+        },
+        packet_metrics=packet_metrics,
+    )
 
 
 def main() -> int:
@@ -820,8 +830,8 @@ def main() -> int:
         local_only_sources={"rules": rules, "plan": plan},
         shared_packets=COMMON_PATH_CONTRACT["shared_packets"],
     )
-    (output_dir / "packet_metrics.json").write_text(
-        json.dumps(packet_metrics, indent=2, ensure_ascii=True) + "\n",
+    (output_dir / "packet_sizing.json").write_text(
+        json.dumps(common.normalize_packet_sizing(packet_metrics), indent=2, ensure_ascii=True) + "\n",
         encoding="utf-8",
     )
 
@@ -852,7 +862,7 @@ def main() -> int:
                 "output_dir": str(output_dir),
                 "review_mode": review_mode,
                 "packet_files": orchestrator["packet_files"],
-                "recommended_worker_count": len(recommended_workers),
+                "planned_worker_count": build_result["planned_workers"]["count"],
                 "common_path_sufficient": common_path_sufficient,
             },
             indent=2,

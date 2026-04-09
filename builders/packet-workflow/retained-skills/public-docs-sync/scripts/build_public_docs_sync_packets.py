@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,18 @@ from public_docs_sync_contract import (
 )
 
 DELEGATION_SAVINGS_FLOOR = 250
+
+
+def resolve_builder_scripts_dir() -> Path:
+    return Path(__file__).resolve().parents[2] / "scripts"
+
+
+BUILDER_SCRIPTS_DIR = resolve_builder_scripts_dir()
+while str(BUILDER_SCRIPTS_DIR) in sys.path:
+    sys.path.remove(str(BUILDER_SCRIPTS_DIR))
+sys.path.insert(0, str(BUILDER_SCRIPTS_DIR))
+
+import evaluation_log_common as common  # noqa: E402
 
 
 def parse_args() -> argparse.Namespace:
@@ -95,10 +108,10 @@ def maybe_apply_delegation_savings_floor(
     packet_metrics: dict[str, Any],
     adjustments: list[str],
 ) -> tuple[str, list[str]]:
-    estimated_savings = int(packet_metrics.get("estimated_delegation_savings", 0) or 0)
+    savings_tokens = int(packet_metrics.get("savings_tokens", 0) or 0)
     if (
         review_mode == "local-only"
-        and estimated_savings >= DELEGATION_SAVINGS_FLOOR
+        and savings_tokens >= DELEGATION_SAVINGS_FLOOR
         and "delegation_savings_floor" not in adjustments
     ):
         return "targeted-delegation", [*adjustments, "delegation_savings_floor"]
@@ -355,7 +368,8 @@ def build_result_payload(
     lint: dict[str, Any],
     uses_batch_packets: bool,
 ) -> dict[str, Any]:
-    return {
+    return common.normalize_build_result(
+        {
         "review_mode": review_mode,
         "review_mode_baseline": review_mode_baseline,
         "review_mode_adjustments": review_mode_adjustments,
@@ -370,7 +384,8 @@ def build_result_payload(
         "applied_override_signals": applied_override_signals,
         "auto_apply_candidate_count": len(lint.get("auto_apply_candidates", [])),
         "packet_metrics": packet_metrics,
-    }
+        }
+    )
 
 
 def main() -> int:
@@ -526,7 +541,7 @@ def main() -> int:
             },
         )
     write_json(output_dir / "orchestrator.json", orchestrator)
-    write_json(output_dir / "packet_metrics.json", packet_metrics)
+    write_json(output_dir / "packet_sizing.json", common.normalize_packet_sizing(packet_metrics))
 
     if args.result_output:
         final_optional_workers = optional_workers(review_mode, recommended)

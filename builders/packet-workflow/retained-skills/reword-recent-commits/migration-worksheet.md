@@ -33,20 +33,20 @@
 - new retained interface additions: `builder-spec.json`, `references/core-contract.md`, `profiles/default/profile.json`
 - scripts to update for profile metadata wiring: `collect_recent_commits.py`, `build_reword_packets.py`
 
-## Retained vs Consumer-Local 판정
-- Data-only profile로 표현 가능한 repo-specific 차이:
+## Retained vs Consumer-Local Decision
+- Data-only profile differences that should stay repo-specific:
   - commit-guidance file paths
   - review-doc ownership and path hints
   - repo markers
-- 실행 의미/정책/행동 계약까지 건드리는 차이:
-  - 없음. rewrite safety, confirmation, and apply behavior remain reusable skill-local contracts.
+- Behavior that remains skill-local:
+  - rewrite safety, confirmation, and apply behavior remain reusable skill-local contracts.
 - Decision: `retained`
 
-## Core 승격 기준
-- 반복 shared gap 여부:
+## Core Escalation Check
+- Shared gap already handled in foundry:
   - profile loading and profile metadata propagation repeat across retained skills
   - generic path/area heuristics repeat across Git-oriented retained skills
-- 일회성 우회 여부:
+- Reword-specific logic that should not move into core:
   - rewrite-plan semantics and replay safety remain one-skill logic
 - Decision:
   - shared profile-loading boundary is foundry-wide
@@ -56,6 +56,9 @@
 - `unversioned -> packet-workflow 0.1.0`
   - change reason: introduced explicit builder-version compatibility metadata and upgrade rules for packet-workflow retained skills.
   - manual migration scope: added `builder_versioning` to `builder-spec.json`, added `metadata.versioning` to `profiles/default/profile.json`, and wired collector-side `builder_compatibility` reporting.
+- `packet-workflow 0.2.0 / epoch 2`
+  - change reason: evaluation telemetry schema moved to `2.0`, build results now emit `planned_workers`, `packet_sizing`, and `efficiency`, and pricing snapshot tracking became explicit.
+  - manual migration scope: update build-result/evaluation-log consumers, migrate retained build artifacts from `packet_metrics.json` to `packet_sizing.json`, and restamp retained skill/profile version metadata to epoch 2.
 
 ## Pilot Hardening Outcome
 - Prose-only invariants moved into script or test enforcement:

@@ -410,21 +410,22 @@ def main() -> int:
         missing_packets = [name for name in EXPECTED_PACKET_FILES if name not in packet_files]
         if missing_packets:
             raise RuntimeError(f"Missing packet files: {', '.join(missing_packets)}")
-        if "packet_metrics.json" not in packet_files:
-            raise RuntimeError("packet_metrics.json was not written")
+        if "packet_sizing.json" not in packet_files:
+            raise RuntimeError("packet_sizing.json was not written")
 
         synthesis_packet = read_json(packet_dir / "synthesis_packet.json")
         orchestrator = read_json(packet_dir / "orchestrator.json")
-        packet_metrics = read_json(packet_dir / "packet_metrics.json")
+        packet_sizing = read_json(packet_dir / "packet_sizing.json")
         build_result = read_json(build_path)
+        packet_compaction = build_result.get("efficiency", {}).get("packet_compaction", {})
         if synthesis_packet.get("common_path_contract", {}).get("sufficient_for_local_final_drafting") is not True:
             raise RuntimeError("synthesis_packet.json is not marked sufficient for common-path local drafting")
-        if build_result.get("packet_metrics") != packet_metrics:
-            raise RuntimeError("build result packet_metrics disagrees with packet_metrics.json")
-        if build_result.get("packet_count") != packet_metrics.get("packet_count"):
-            raise RuntimeError("build result packet_count disagrees with packet_metrics.json")
-        if build_result.get("estimated_delegation_savings") != packet_metrics.get("estimated_delegation_savings"):
-            raise RuntimeError("build result estimated_delegation_savings disagrees with packet_metrics.json")
+        if build_result.get("packet_sizing") != packet_sizing:
+            raise RuntimeError("build result packet_sizing disagrees with packet_sizing.json")
+        if build_result.get("packet_sizing", {}).get("packet_count") != packet_sizing.get("packet_count"):
+            raise RuntimeError("build result packet_count disagrees with packet_sizing.json")
+        if packet_compaction.get("savings_tokens", 0) <= 0:
+            raise RuntimeError("build result packet-compaction savings were not recorded")
         if build_result.get("review_mode") != orchestrator.get("review_mode"):
             raise RuntimeError("build result review_mode disagrees with orchestrator.json")
         if build_result.get("common_path_sufficient") is not True:
@@ -484,10 +485,10 @@ def main() -> int:
             base_tag=context.get("base_tag"),
             target_version=context.get("target_version"),
             output_files=packet_files,
-            packet_count=packet_metrics.get("packet_count"),
-            largest_packet_bytes=packet_metrics.get("largest_packet_bytes"),
-            largest_two_packets_bytes=packet_metrics.get("largest_two_packets_bytes"),
-            estimated_delegation_savings=packet_metrics.get("estimated_delegation_savings"),
+            packet_count=packet_sizing.get("packet_count"),
+            largest_packet_bytes=packet_sizing.get("largest_packet_bytes"),
+            largest_two_packets_bytes=packet_sizing.get("largest_two_packets_bytes"),
+            packet_compaction_savings_tokens=packet_compaction.get("savings_tokens"),
             raw_reread_count=apply_result.get("raw_reread_count"),
             compensatory_reread_detected=apply_result.get("compensatory_reread_detected"),
             apply_succeeded=apply_result.get("apply_succeeded"),

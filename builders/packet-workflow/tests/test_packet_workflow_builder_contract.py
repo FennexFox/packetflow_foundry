@@ -1099,7 +1099,7 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             )
 
             self.assertFalse((packets_dir / "synthesis_packet.json").exists())
-            self.assertFalse((packets_dir / "packet_metrics.json").exists())
+            self.assertFalse((packets_dir / "packet_sizing.json").exists())
 
             build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
             self.assertEqual(build_result["orchestrator_profile"], "standard")
@@ -1359,23 +1359,29 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 orchestrator["shared_local_packet"], "synthesis_packet.json"
             )
             self.assertIn("common_path_contract", orchestrator)
-            self.assertNotIn("estimated_local_only_tokens", orchestrator)
+            self.assertNotIn("local_only_tokens", orchestrator)
             self.assertIn("review_mode_baseline", orchestrator)
             self.assertIn("review_mode_adjustments", orchestrator)
             self.assertTrue((packets_dir / "synthesis_packet.json").exists())
-            self.assertTrue((packets_dir / "packet_metrics.json").exists())
+            self.assertTrue((packets_dir / "packet_sizing.json").exists())
 
-            packet_metrics = json.loads(
-                (packets_dir / "packet_metrics.json").read_text(encoding="utf-8")
+            packet_sizing = json.loads(
+                (packets_dir / "packet_sizing.json").read_text(encoding="utf-8")
             )
-            self.assertIn("packet_count", packet_metrics)
-            self.assertIn("estimated_delegation_savings", packet_metrics)
+            self.assertIn("packet_count", packet_sizing)
+            self.assertIn("packet_size_breakdown", packet_sizing)
+            self.assertEqual(
+                packet_sizing["packet_size_bytes"],
+                sum(packet_sizing["packet_size_breakdown"].values()),
+            )
 
             build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
             self.assertEqual(
                 build_result["shared_local_packet"], "synthesis_packet.json"
             )
-            self.assertIn("packet_metrics", build_result)
+            self.assertIn("packet_sizing", build_result)
+            self.assertIn("efficiency", build_result)
+            self.assertIn("planned_workers", build_result)
             self.assertIn("review_mode_baseline", build_result)
             self.assertIn("review_mode_adjustments", build_result)
             self.assertEqual(build_result["repo_profile_name"], "sample-repo")
@@ -1417,11 +1423,9 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 str(build_result_path),
             )
             eval_log = json.loads(eval_log_path.read_text(encoding="utf-8"))
-            self.assertIn(
-                "packet_metrics",
-                eval_log["skill_specific"]["data"],
-            )
-            self.assertEqual(eval_log["measurement"]["token_source"], "estimated")
+            self.assertIn("packet_sizing", eval_log)
+            self.assertIn("efficiency", eval_log)
+            self.assertNotIn("token_source", eval_log["measurement"])
             self.assertIn("review_mode_baseline", eval_log["orchestration"])
             self.assertIn("review_mode_adjustments", eval_log["orchestration"])
 
@@ -1480,8 +1484,8 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 (packets_dir / "orchestrator.json").read_text(encoding="utf-8")
             )
             build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
-            packet_metrics = json.loads(
-                (packets_dir / "packet_metrics.json").read_text(encoding="utf-8")
+            packet_sizing = json.loads(
+                (packets_dir / "packet_sizing.json").read_text(encoding="utf-8")
             )
 
             self.assertEqual(orchestrator["review_mode_baseline"], "local-only")
@@ -1490,30 +1494,31 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 orchestrator["review_mode_adjustments"],
                 ["delegation_savings_floor"],
             )
-            self.assertEqual(orchestrator["recommended_worker_count"], 2)
-            self.assertEqual(len(orchestrator["recommended_workers"]), 2)
-            self.assertNotIn("estimated_delegation_savings", orchestrator)
-            self.assertGreater(packet_metrics["packet_size_bytes"]["orchestrator.json"], 0)
+            self.assertNotIn("savings_tokens", orchestrator)
+            self.assertGreater(
+                packet_sizing["packet_size_breakdown"]["orchestrator.json"], 0
+            )
             local_only_packets = {"orchestrator.json", orchestrator["shared_local_packet"]}
             worker_facing_bytes = sum(
                 size
-                for name, size in packet_metrics["packet_size_bytes"].items()
+                for name, size in packet_sizing["packet_size_breakdown"].items()
                 if name not in local_only_packets
             )
             expected_packet_tokens = max(1, (worker_facing_bytes + 3) // 4)
             self.assertEqual(
-                packet_metrics["estimated_packet_tokens"],
+                build_result["efficiency"]["packet_compaction"]["packet_tokens"],
                 expected_packet_tokens,
             )
             self.assertEqual(
-                packet_metrics["estimated_delegation_savings"],
+                build_result["efficiency"]["packet_compaction"]["savings_tokens"],
                 max(
                     0,
-                    packet_metrics["estimated_local_only_tokens"] - expected_packet_tokens,
+                    build_result["efficiency"]["packet_compaction"]["local_only_tokens"]
+                    - expected_packet_tokens,
                 ),
             )
             self.assertGreaterEqual(
-                packet_metrics["estimated_delegation_savings"],
+                build_result["efficiency"]["packet_compaction"]["savings_tokens"],
                 250,
             )
 
@@ -1523,7 +1528,7 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 build_result["review_mode_adjustments"],
                 ["delegation_savings_floor"],
             )
-            self.assertEqual(build_result["recommended_worker_count"], 2)
+            self.assertEqual(build_result["planned_workers"]["count"], 2)
 
             run_python(
                 scripts_dir / "write_evaluation_log.py",
@@ -1618,22 +1623,16 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 (packets_dir / "orchestrator.json").read_text(encoding="utf-8")
             )
             build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
+            planned_workers = build_result["planned_workers"]["workers"]
             assignments = {
-                (item["agent_type"], item["packet"])
-                for item in orchestrator["recommended_workers"]
+                (item["agent_type"], tuple(item["packets"]))
+                for item in planned_workers
             }
 
             self.assertEqual(orchestrator["review_mode"], "broad-delegation")
-            self.assertEqual(len(orchestrator["recommended_workers"]), 1)
-            self.assertEqual(len(assignments), len(orchestrator["recommended_workers"]))
-            self.assertEqual(
-                orchestrator["recommended_worker_count"],
-                len(orchestrator["recommended_workers"]),
-            )
-            self.assertEqual(
-                build_result["recommended_worker_count"],
-                len(orchestrator["recommended_workers"]),
-            )
+            self.assertEqual(len(planned_workers), 1)
+            self.assertEqual(len(assignments), len(planned_workers))
+            self.assertEqual(build_result["planned_workers"]["count"], len(planned_workers))
 
 
 if __name__ == "__main__":

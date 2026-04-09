@@ -1,97 +1,53 @@
 # Address Review Threads Evaluation Contract
 
-Use the shared envelope in [`evaluation-log-contract.md`](evaluation-log-contract.md) and keep workflow-specific metrics under `skill_specific.data`.
+Use the shared envelope in [`evaluation-log-contract.md`](evaluation-log-contract.md)
+and keep workflow-specific metrics under `skill_specific.data`.
 
-## Recommended Domain Fields
+## Recommended Skill-Specific Fields
 
-Record only workflow-specific counters and boundary signals that do not fit cleanly in the shared envelope.
-
-Recommended fields:
-- `pr_number`
-- `review_mode`
-- `packet_count`
-- `worker_count`
-- `thread_batch_count`
-- `singleton_thread_packet_count`
+- `threads_seen`
+- `threads_accepted`
+- `threads_rejected`
+- `threads_deferred`
+- `threads_defer_outdated`
+- `threads_resolved`
+- `outdated_threads_seen`
+- `outdated_transition_candidates`
+- `outdated_auto_resolved`
+- `outdated_recheck_ambiguous`
+- `adopted_unmarked_reply_count`
+- `skipped_outdated_count`
+- `invalid_complete_count`
+- `resolve_after_complete_count`
 - `common_path_sufficient`
-- `threads_seen`
-- `threads_accepted`
-- `threads_rejected`
-- `threads_deferred`
-- `threads_defer_outdated`
-- `threads_resolved`
-- `outdated_threads_seen`
-- `outdated_transition_candidates`
-- `outdated_auto_resolved`
-- `outdated_recheck_ambiguous`
-- `marker_conflicts`
-- `marker_conflicts_warning`
-- `marker_conflicts_adoption_blocking`
-- `marker_conflicts_hard_stop`
-- `adopted_unmarked_reply_count`
-- `skipped_outdated_count`
-- `invalid_complete_count`
-- `resolve_after_complete_count`
-- `validation_commands`
-- `final_pr_url`
-- `estimated_packet_tokens`
-- `estimated_delegation_savings`
+- `build_phase_count`
+- `build_phases`
 
-## Thread Decision Metrics
+## Shared Envelope Boundary
 
-Track the per-run decision counts separately from the raw thread total.
+Keep these shared metrics out of `skill_specific.data`:
+- `orchestration.planned_workers` and `orchestration.actual_workers`
+- `packet_sizing`
+- `efficiency.packet_compaction`
+- `efficiency.model_tier_delegation`
+- token costs under `tokens.*`
 
-- `threads_seen`
-  - total unresolved threads seen at collection time
-- `threads_accepted`
-  - threads that reached implementation and completion
-- `threads_rejected`
-  - threads the main agent explicitly rejected
-- `threads_deferred`
-  - threads intentionally left unresolved for now
-- `threads_defer_outdated`
-  - threads deferred because the reviewer comment is stale against current `HEAD`
-- `threads_resolved`
-  - threads actually resolved after completion
+## Phase Guidance
 
-## Boundary Signals
+- `build`
+  - read thread counts, review-mode metadata, and `common_path_sufficient` from
+    the build result
+  - record per-phase packet snapshots in `build_phases`
+  - keep packet sizing and token-compaction telemetry in the shared envelope
+- `apply`
+  - update accepted, rejected, deferred, resolved, and reconciliation counters
+- `finalize`
+  - record actual worker usage and any capture completeness notes through the
+    shared envelope
 
-- `outdated_threads_seen`
-  - count unresolved outdated threads surfaced by collection
-- `outdated_transition_candidates`
-  - count unresolved threads that were non-outdated before this run's push and outdated after the push
-- `outdated_auto_resolved`
-  - count transitioned outdated threads that reused the normal accepted completion-and-resolve path
-- `outdated_recheck_ambiguous`
-  - count transitioned outdated threads that stayed unresolved because current-`HEAD` proof was missing or unclear
-- `marker_conflicts`
-  - count threads with existing managed-reply marker conflicts
-- `marker_conflicts_warning`
-  - count warning-only conflict records
-- `marker_conflicts_adoption_blocking`
-  - count adoption-blocking conflict records
-- `marker_conflicts_hard_stop`
-  - count hard-stop conflict records
+## Logging Rules
 
-## Validator And Apply Counters
-
-- `adopted_unmarked_reply_count`
-  - count updates that safely reused the validator fallback from an unmarked self-authored reply
-- `skipped_outdated_count`
-  - count actions normalized to `decision=defer-outdated`
-- `invalid_complete_count`
-  - count invalid complete-phase attempts rejected by validation
-- `resolve_after_complete_count`
-  - count accepted complete actions that requested thread resolution
-
-## Expected Behavior
-
-- Keep full thread discussion bodies out of the evaluation log unless a debugging path explicitly requires them.
-- Prefer counts, booleans, enums, and short reason lists over free-form summaries.
-- Keep the contract aligned with the local reply markers, per-thread decision model, and push-before-complete rule.
-- Build-phase review mode, worker derivation, packet/thread counts, and `common_path_sufficient` come from the build result JSON.
-- Build-result-only observability fields such as `review_mode_baseline`, `review_mode_adjustments`, `override_signals`, `active_paths`, `active_areas`, `analysis_targets`, `thread_batches`, and `delegation_non_use_cases` stay eval-side and must not widen runtime routing.
-- Same-run outdated-transition candidate and ambiguous-recheck counts may come from the build result JSON.
-- Final same-run outdated auto-resolve counts come from the apply result `reconciliation_summary`.
-- Size and token-proxy metrics come only from `packet_metrics.json`.
-- `packet_metrics.json` is evaluation-only and must not be treated as a runtime routing source.
+- Keep full thread bodies and full reply bodies out of the evaluation log.
+- Prefer counts, booleans, enums, and short reason lists over summaries.
+- Treat `packet_sizing.json` as evaluation-only and never as runtime routing
+  authority.

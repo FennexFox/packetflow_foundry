@@ -110,9 +110,9 @@ class RewordRecentCommitsDriverTests(unittest.TestCase):
             build_result["review_mode_adjustments"],
             ["delegation_savings_floor"],
         )
-        self.assertEqual(build_result["recommended_worker_count"], 2)
+        self.assertEqual(build_result["planned_workers"]["count"], 2)
         self.assertGreaterEqual(
-            build_result["packet_metrics"]["estimated_delegation_savings"],
+            build_result["efficiency"]["packet_compaction"]["savings_tokens"],
             DELEGATION_SAVINGS_FLOOR,
         )
         self.assertTrue((artifact_root / "packets" / "orchestrator.json").is_file())
