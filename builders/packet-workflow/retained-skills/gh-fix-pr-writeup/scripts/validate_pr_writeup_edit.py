@@ -375,7 +375,7 @@ def validate_pr_writeup_edit(
 def main() -> int:
     args = parse_args()
     context = load_json(Path(args.context).resolve())
-    body = Path(args.body_file).resolve().read_text(encoding="utf-8")
+    body = tools.read_utf8_text(Path(args.body_file).resolve())
     qa_result = load_json(Path(args.qa_result).resolve()) if args.qa_result else None
     payload = validate_pr_writeup_edit(
         context,

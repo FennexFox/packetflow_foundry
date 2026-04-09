@@ -22,7 +22,14 @@ from thread_action_contract import build_context_fingerprint  # type: ignore  # 
 
 
 def init_repo(repo_root: Path) -> None:
-    subprocess.run(["git", "init"], cwd=repo_root, capture_output=True, text=True, check=True)
+    subprocess.run(
+        ["git", "init"],
+        cwd=repo_root,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=True,
+    )
 
 
 class SmokeGhAddressReviewThreadsTests(unittest.TestCase):

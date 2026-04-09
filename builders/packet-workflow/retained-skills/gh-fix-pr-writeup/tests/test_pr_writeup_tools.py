@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import subprocess
 import sys
 import tempfile
@@ -16,6 +17,16 @@ import pr_writeup_tools as tools  # noqa: E402
 
 
 class PrWriteupToolsTests(unittest.TestCase):
+    def test_read_utf8_text_accepts_bom_prefixed_markdown(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "body.md"
+            path.write_text("## What changed\n- Added BOM-safe read path.\n", encoding="utf-8-sig")
+
+            text = tools.read_utf8_text(path)
+
+        self.assertEqual(text.splitlines()[0], "## What changed")
+        self.assertFalse(text.startswith("\ufeff"))
+
     def test_load_local_diff_stat_uses_pr_scoped_merge_base(self) -> None:
         with tempfile.TemporaryDirectory() as tmp:
             repo_root = Path(tmp)
@@ -121,6 +132,42 @@ class PrWriteupToolsTests(unittest.TestCase):
             with self.assertRaises(RuntimeError) as exc_info:
                 tools.run_command(["gh", "auth", "status"], cwd=Path("C:/repo"))
         self.assertEqual(str(exc_info.exception), "gh executable not found")
+
+    def test_stubbed_gh_pr_edit_reads_bom_prefixed_body_file(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp:
+            tmp_path = Path(tmp)
+            state_path = tmp_path / "state.json"
+            body_path = tmp_path / "body.md"
+            state_path.write_text(
+                json.dumps(
+                    {
+                        "pr": {"number": 7, "title": "old", "body": "old body"},
+                        "changed_files": [],
+                    }
+                ),
+                encoding="utf-8",
+            )
+            body_path.write_text("## What changed\n- Updated via BOM-safe read.\n", encoding="utf-8-sig")
+
+            with mock.patch.dict(tools.os.environ, {tools.GH_STUB_STATE_ENV: str(state_path)}):
+                tools.run_command(
+                    [
+                        "gh",
+                        "pr",
+                        "edit",
+                        "7",
+                        "--title",
+                        "new title",
+                        "--body-file",
+                        str(body_path),
+                    ],
+                    cwd=tmp_path,
+                )
+
+            updated = json.loads(state_path.read_text(encoding="utf-8"))
+            self.assertEqual(updated["pr"]["title"], "new title")
+            self.assertEqual(updated["pr"]["body"].splitlines()[0], "## What changed")
+            self.assertFalse(updated["pr"]["body"].startswith("\ufeff"))
 
     def test_classify_changed_files_and_summary_cover_expected_groups(self) -> None:
         groups = tools.classify_changed_files(
