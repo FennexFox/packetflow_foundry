@@ -447,6 +447,14 @@ class WeeklyUpdateContractTests(unittest.TestCase):
             orchestrator = json.loads((output_dir / "orchestrator.json").read_text(encoding="utf-8"))
             self.assertEqual(packet_sizing["packet_count"], len(smoke.EXPECTED_PACKET_FILES))
             self.assertEqual(build_result["packet_sizing"]["packet_count"], packet_sizing["packet_count"])
+            self.assertEqual(
+                packet_sizing["packet_size_bytes"],
+                sum(packet_sizing["packet_size_breakdown"].values()),
+            )
+            self.assertEqual(
+                build_result["packet_sizing"]["packet_size_breakdown"],
+                packet_sizing["packet_size_breakdown"],
+            )
             self.assertIn("efficiency", build_result)
             self.assertEqual(orchestrator["orchestrator_profile"], "standard")
             self.assertEqual(orchestrator["repo_profile_name"], "default")

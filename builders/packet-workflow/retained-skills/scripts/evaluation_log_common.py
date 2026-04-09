@@ -1022,11 +1022,19 @@ def planned_workers_from_payload(payload: dict[str, Any]) -> tuple[dict[str, Any
             },
             [*warnings, *auto_warnings],
         )
-    return normalize_planned_workers_payload(
+    normalized, warnings = normalize_planned_workers_payload(
         payload.get("recommended_workers"),
         default_model="gpt-5.4-mini",
         default_reasoning_effort="medium",
     )
+    legacy_count = safe_int(payload.get("recommended_worker_count"))
+    if legacy_count is not None:
+        normalized["count"] = (
+            max(legacy_count, normalized["count"])
+            if normalized["workers"]
+            else legacy_count
+        )
+    return normalized, warnings
 
 
 def build_result_packet_metrics(result: dict[str, Any]) -> dict[str, Any] | None:
@@ -1358,7 +1366,10 @@ def apply_common_build_update(
     if override_signals:
         orchestration["override_signals"] = override_signals
     planned_workers, warnings = planned_workers_from_payload(result)
-    if planned_workers.get("workers"):
+    if any(
+        key in result
+        for key in ("planned_workers", "recommended_workers", "recommended_worker_count")
+    ):
         orchestration["planned_workers"] = planned_workers
     if warnings:
         log.setdefault("notes", []).extend(warnings)

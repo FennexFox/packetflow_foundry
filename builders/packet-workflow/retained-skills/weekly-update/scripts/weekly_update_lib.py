@@ -2035,6 +2035,7 @@ def compute_packet_metrics(packet_payloads: dict[str, Any], *, raw_local_sources
     return {
         "packet_count": len(packet_payloads),
         "packet_size_bytes": total_packet_bytes,
+        "packet_size_breakdown": packet_sizes,
         "largest_packet_bytes": largest_sizes[0] if largest_sizes else 0,
         "largest_two_packets_bytes": sum(largest_sizes[:2]),
         "local_only_tokens": local_only_tokens,

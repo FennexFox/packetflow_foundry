@@ -170,6 +170,34 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
         self.assertEqual(log["efficiency"]["packet_compaction"]["savings_tokens"], 800)
         self.assertEqual(log["latency"]["packet_builder_seconds"], 1.5)
 
+    def test_build_phase_preserves_legacy_recommended_worker_count_without_worker_list(self) -> None:
+        log = {
+            "skill": {"name": "weekly-update"},
+            "measurement": {},
+            "baseline": {},
+            "orchestration": {},
+            "skill_specific": {"data": {}},
+        }
+        result = {
+            "review_mode": "targeted-delegation",
+            "recommended_worker_count": 2,
+            "recommended_workers": [],
+            "packet_sizing": {
+                "packet_count": 2,
+                "packet_size_bytes": 512,
+                "packet_size_breakdown": {
+                    "orchestrator.json": 128,
+                    "mapping_packet.json": 384,
+                },
+            },
+        }
+
+        eval_log.apply_phase_update(log, "build", result, None)
+
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 2)
+        self.assertEqual(log["orchestration"]["planned_workers"]["workers"], [])
+        self.assertEqual(log["orchestration"]["planned_workers"]["roles"], [])
+
     def test_execution_fidelity_scores_local_only_empty_run_as_one(self) -> None:
         score = eval_log.common.execution_fidelity_score(
             {
