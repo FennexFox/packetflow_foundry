@@ -352,16 +352,6 @@ def dedupe_preserve(items: list[str]) -> list[str]:
     return contract_dedupe_preserve(items)
 
 
-def canonical_match_terms(token: str) -> list[str]:
-    return dedupe_preserve(
-        [
-            term
-            for part in re.split(r"[./-]+", token)
-            for term in contract_match_terms(part, canonical=True)
-        ]
-    )
-
-
 def match_terms(text: str | None, *, canonical: bool = False) -> list[str]:
     return contract_match_terms(text, canonical=canonical)
 
