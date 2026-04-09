@@ -145,6 +145,7 @@ State-gate rules:
 
 - `record-validation` requires `ack-applied`
 - `post-push` requires `ack-applied`
+- run-start git worktree state is frozen until `ack-applied`; `record-plan --phase ack` and `record-apply --phase ack` reject pre-ack worktree drift
 - manifest `state.accepted_threads` is the run-local `ack-applied` accepted set, not pre-ack decision state
 - `post-push` emits `reconciliation-input.json` with accepted thread ids, validation commands, and pre/post push `HEAD` SHAs for complete-phase seeding
 - `reconciliation-input.json` is the authoritative post-push accepted provenance surface for same-run reconciliation

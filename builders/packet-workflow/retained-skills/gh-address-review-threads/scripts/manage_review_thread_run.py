@@ -106,6 +106,11 @@ def main() -> int:
                 action_label="record-plan --phase complete",
                 allowed={"post-prepared"},
             )
+        else:
+            run_support.require_pre_ack_worktree_unchanged(
+                manifest,
+                action_label="record-plan --phase ack",
+            )
         run_support.copy_validated_plan_into_manifest(
             manifest,
             phase=str(args.phase),
@@ -125,6 +130,11 @@ def main() -> int:
             action_label=f"record-apply --phase {args.phase}",
             allowed=required_state,
         )
+        if args.phase == "ack":
+            run_support.require_pre_ack_worktree_unchanged(
+                manifest,
+                action_label="record-apply --phase ack",
+            )
         run_support.copy_apply_result_into_manifest(
             manifest,
             phase=str(args.phase),

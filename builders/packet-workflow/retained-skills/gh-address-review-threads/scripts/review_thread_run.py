@@ -13,6 +13,7 @@ RUN_MANIFEST_VERSION = 1
 SKILL_NAME = "gh-address-review-threads"
 RUNTIME_BASE_RELATIVE = Path(".codex/tmp/packet-workflow") / SKILL_NAME
 LATEST_POINTER_NAME = "latest.json"
+WORKTREE_STATUS_COMMAND = ["git", "status", "--porcelain=v1", "--untracked-files=all"]
 
 
 def isoformat_utc() -> str:
@@ -65,6 +66,68 @@ def repo_head_sha(repo_root: Path) -> str | None:
     if result.returncode != 0:
         return None
     return result.stdout.strip()
+
+
+def normalize_status_path(path: str) -> str:
+    return path.replace("\\", "/").strip()
+
+
+def status_entry_paths(entry: str) -> list[str]:
+    payload = str(entry)[3:].strip() if len(str(entry)) > 3 else str(entry).strip()
+    if not payload:
+        return []
+    if " -> " in payload:
+        return [normalize_status_path(part) for part in payload.split(" -> ") if normalize_status_path(part)]
+    return [normalize_status_path(payload)]
+
+
+def is_runtime_status_entry(entry: str) -> bool:
+    paths = status_entry_paths(entry)
+    return bool(paths) and all(path.startswith(".codex/tmp/") for path in paths)
+
+
+def repo_worktree_snapshot(repo_root: Path) -> dict[str, Any]:
+    result = subprocess.run(
+        WORKTREE_STATUS_COMMAND,
+        cwd=str(repo_root),
+        stdin=subprocess.DEVNULL,
+        text=True,
+        encoding="utf-8",
+        errors="replace",
+        capture_output=True,
+        check=False,
+    )
+    if result.returncode != 0:
+        detail = result.stderr.strip() or result.stdout.strip() or "git status failed"
+        return {
+            "available": False,
+            "status_command": " ".join(WORKTREE_STATUS_COMMAND),
+            "entries": [],
+            "error": detail,
+        }
+    entries = [
+        line.rstrip("\n")
+        for line in result.stdout.splitlines()
+        if line.strip() and not is_runtime_status_entry(line)
+    ]
+    return {
+        "available": True,
+        "status_command": " ".join(WORKTREE_STATUS_COMMAND),
+        "entries": entries,
+    }
+
+
+def pre_ack_worktree_snapshot(repo_root: Path) -> dict[str, Any]:
+    return repo_worktree_snapshot(repo_root)
+
+
+def summarize_worktree_entries(entries: list[str], limit: int = 4) -> str:
+    sample = [str(entry) for entry in entries[:limit] if str(entry).strip()]
+    if not sample:
+        return "<clean>"
+    if len(entries) > limit:
+        sample.append(f"... (+{len(entries) - limit} more)")
+    return "; ".join(sample)
 
 
 def resolved_head_identity(repo_root: Path, context: dict[str, Any]) -> str:
@@ -175,6 +238,9 @@ def initialize_run_manifest(
             # provenance together with validation commands and HEAD SHAs.
             "accepted_threads": [],
             "validation_commands": [],
+            # Freeze the run-start worktree until ack is both posted and
+            # recorded so accepted changes cannot start ahead of ack-applied.
+            "pre_ack_worktree": pre_ack_worktree_snapshot(repo_root),
             "latest_context_fingerprint": context.get("context_fingerprint"),
             "phase_apply_results": {},
             "last_completed_phase": "start",
@@ -251,6 +317,42 @@ def require_post_push_validation_provenance(manifest: dict[str, Any]) -> None:
         raise RuntimeError(
             "post-push requires recorded validation commands when accepted threads are present"
         )
+
+
+def require_pre_ack_worktree_unchanged(
+    manifest: dict[str, Any],
+    *,
+    action_label: str,
+) -> None:
+    state = manifest.get("state")
+    if not isinstance(state, dict):
+        raise RuntimeError("Malformed review-thread run manifest: missing state.")
+    snapshot = state.get("pre_ack_worktree")
+    if not isinstance(snapshot, dict):
+        raise RuntimeError(
+            f"{action_label} requires a run-start pre-ack worktree snapshot; start a new run"
+        )
+    baseline_entries = snapshot.get("entries")
+    if not isinstance(baseline_entries, list):
+        raise RuntimeError(
+            f"{action_label} requires a valid run-start pre-ack worktree snapshot; start a new run"
+        )
+    if snapshot.get("available") is not True:
+        return
+    repo_root = Path(str(manifest.get("repo_root") or ".")).resolve()
+    current_snapshot = repo_worktree_snapshot(repo_root)
+    if current_snapshot.get("available") is not True:
+        detail = str(current_snapshot.get("error") or "git status failed").strip()
+        raise RuntimeError(f"{action_label} could not refresh the git worktree status: {detail}")
+    current_entries = [str(entry) for entry in current_snapshot.get("entries", []) if str(entry).strip()]
+    normalized_baseline = [str(entry) for entry in baseline_entries if str(entry).strip()]
+    if current_entries == normalized_baseline:
+        return
+    raise RuntimeError(
+        f"{action_label} blocked because the git worktree changed after run start and before ack-applied; "
+        f"baseline={summarize_worktree_entries(normalized_baseline)}; "
+        f"current={summarize_worktree_entries(current_entries)}"
+    )
 
 
 def create_run(
