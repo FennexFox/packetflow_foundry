@@ -39,6 +39,8 @@ Automation guardrails:
 - If not tested, state why.
 
 ## Compatibility / Adoption
+<!-- Leave unchecked impact checklist items in place when they do not apply.
+Only checked boxes or explicit details below assert impact. -->
 - Consumer / vendor impact:
   - [ ] None
   - [ ] Requires regenerating builder output

@@ -72,6 +72,9 @@ not rely on merge commit bodies for routine reviewer context.
 - Call out consumer or vendoring impact only when it exists
 - Mention required regeneration, profile changes, migration notes, or
   rollout constraints when relevant
+- Keep the repository checklist items even when they stay unchecked
+- Treat unchecked checklist items as template scaffolding, not asserted
+  impact; only checked boxes or explicit details should claim impact
 
 ## Risk / Rollback
 - Call out meaningful risk areas only

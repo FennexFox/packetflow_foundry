@@ -121,6 +121,7 @@ Strict claim gates:
 - positive testing claims require exact commands from testing evidence
 - `no behavior change` is allowed only when runtime packet is empty
 - rollout, restart/reload, and consumer migration/compatibility claims fail closed by default
+- unchecked template checklist items are not treated as asserted claims until checked or rewritten as prose
 
 ## Validate Contract
 

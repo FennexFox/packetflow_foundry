@@ -108,6 +108,7 @@ def build_rules_packet(context: dict[str, Any], drafting_basis: dict[str, Any]) 
             "positive testing claims require exact commands from testing packet evidence",
             "`no behavior change` is only supportable when runtime packet is empty",
             "restart/reload, rollout, and consumer migration/compatibility claims are blocked by default",
+            "unchecked template checklist items are not treated as asserted claims until checked or rewritten as prose",
         ],
         "repo_instruction_excerpts": {
             "pull_request_title_rules_excerpt": snippets.get("pull_request_title_rules_excerpt"),
