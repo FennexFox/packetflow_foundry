@@ -335,11 +335,15 @@ def collect_candidate_findings(context: dict[str, Any], title: str, body: str) -
     bodies = section_bodies(body)
     asserted_body = asserted_claim_text(body)
     asserted_bodies = section_bodies(asserted_body)
-    issue_hints = {
-        canonical_issue_number(str(item))
-        for item in context.get("issue_reference_hints", {}).get("numbers", [])
-        if str(item).strip()
-    }
+    issue_hints: set[str] = set()
+    for item in context.get("issue_reference_hints", {}).get("numbers", []):
+        normalized_item = str(item).strip()
+        if not normalized_item:
+            continue
+        try:
+            issue_hints.add(canonical_issue_number(normalized_item))
+        except (TypeError, ValueError):
+            continue
     runtime_count = int(((context.get("changed_file_groups") or {}).get("runtime") or {}).get("count", 0))
     testing_signals = context.get("testing_signal_candidates") or {}
     allowed_commands = set(str(item).strip() for item in testing_signals.get("exact_commands", []) if str(item).strip())
