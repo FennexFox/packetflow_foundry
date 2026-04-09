@@ -135,7 +135,12 @@ def collected_context(repo_root: Path, *, repo_slug: str = "owner/repo") -> dict
         },
         "expected_template_sections": list(REPO_TEMPLATE_SECTIONS),
         "issue_reference_hints": {"numbers": ["42"], "branch": "feature/pr-create", "commit_subjects": []},
-        "testing_signal_candidates": {"exact_commands": [], "supports_positive_testing_claims": False, "test_files_changed": True},
+        "testing_signal_candidates": {
+            "exact_commands": [],
+            "operator_supplied": [],
+            "supports_positive_testing_claims": False,
+            "test_files_changed": True,
+        },
         "create_options": {
             "reviewers": ["Alice", "alice", "bob, alice"],
             "assignees": ["Carol", "carol"],
@@ -286,6 +291,38 @@ class ValidatePrCreateTests(unittest.TestCase):
 
         self.assertFalse(payload["valid"])
         self.assertIn("unsupported_claim", payload["stop_reasons"])
+
+    def test_validator_accepts_positive_testing_claim_with_trusted_command(self) -> None:
+        context = collected_context(Path.cwd())
+        context["testing_signal_candidates"]["exact_commands"] = ["python -m pytest"]
+        context["testing_signal_candidates"]["operator_supplied"] = ["python -m pytest"]
+        context["testing_signal_candidates"]["supports_positive_testing_claims"] = True
+        body = valid_body().replace("- Not run.", "- Ran `python -m pytest`.")
+        with (
+            mock.patch.object(validator.tools, "run_command", return_value="Logged in to github.com"),
+            mock.patch.object(validator.tools, "local_head_oid", return_value="abc123"),
+            mock.patch.object(validator.tools, "remote_head_oid", return_value="abc123"),
+            mock.patch.object(validator.tools, "load_changed_files_between", return_value=context["changed_files"]),
+            mock.patch.object(validator.tools, "select_pr_template", return_value=context["template_selection"]),
+            mock.patch.object(
+                validator.tools,
+                "duplicate_check_summary",
+                return_value={
+                    "status": "clear",
+                    "matched_repo_slug": "owner/repo",
+                    "matched_head": "feature/pr-create",
+                    "existing_pr_count": 0,
+                },
+            ),
+        ):
+            payload = validator.validate_pr_create(
+                context,
+                "feat(pr-create): create guarded PRs",
+                body,
+            )
+
+        self.assertTrue(payload["valid"])
+        self.assertTrue(payload["can_apply"])
 
     def test_validator_rejects_direct_consumer_migration_claim(self) -> None:
         self.assert_validator_rejects_consumer_claim("- Requires migration for consumers.")

@@ -119,6 +119,21 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--repo", default=None, help="Optional GitHub repo slug such as owner/name.")
     parser.add_argument("--base", default=None, help="Optional explicit base branch.")
     parser.add_argument("--head", default=None, help="Optional explicit head branch.")
+    parser.add_argument(
+        "--issue-hint",
+        action="append",
+        default=[],
+        help="Trusted explicit issue hint such as `15` or `#15`. Repeat as needed.",
+    )
+    parser.add_argument(
+        "--test-command",
+        action="append",
+        default=[],
+        help=(
+            "Trusted exact test command to allow in positive Testing claims. "
+            "Must be a single-line command without backticks. Repeat as needed."
+        ),
+    )
     parser.add_argument("--reviewer", action="append", default=[], help="Raw reviewer option. Repeat as needed.")
     parser.add_argument("--assignee", action="append", default=[], help="Raw assignee option. Repeat as needed.")
     parser.add_argument("--label", action="append", default=[], help="Raw label option. Repeat as needed.")
@@ -148,18 +163,23 @@ def main() -> int:
     repo_root = Path(args.repo_root).resolve()
     profile_path = resolve_profile_path(args.profile, repo_root)
     repo_profile = load_repo_profile(profile_path)
-    context = build_context(
-        repo_root=repo_root,
-        repo_slug=args.repo,
-        base_ref=args.base,
-        head_ref=args.head,
-        reviewers=list(args.reviewer or []),
-        assignees=list(args.assignee or []),
-        labels=list(args.label or []),
-        milestone=args.milestone,
-        draft=args.draft,
-        no_maintainer_edit=args.no_maintainer_edit,
-    )
+    try:
+        context = build_context(
+            repo_root=repo_root,
+            repo_slug=args.repo,
+            base_ref=args.base,
+            head_ref=args.head,
+            issue_hints=list(args.issue_hint or []),
+            test_commands=list(args.test_command or []),
+            reviewers=list(args.reviewer or []),
+            assignees=list(args.assignee or []),
+            labels=list(args.label or []),
+            milestone=args.milestone,
+            draft=args.draft,
+            no_maintainer_edit=args.no_maintainer_edit,
+        )
+    except ValueError as exc:
+        raise SystemExit(f"[ERROR] {exc}") from exc
     context["repo_profile_name"] = repo_profile.get("name")
     context["repo_profile_path"] = profile_path.as_posix()
     context["repo_profile_summary"] = repo_profile.get("summary")

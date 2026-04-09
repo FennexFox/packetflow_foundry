@@ -183,7 +183,7 @@ def init_repo(repo_root: Path, origin_root: Path) -> None:
     write_text(repo_root / "src" / "creator.py", "VALUE = 2\n")
     write_text(repo_root / "tests" / "test_creator.py", "def test_smoke_fixture():\n    assert True\n")
     run_git(repo_root, ["add", "."])
-    run_git(repo_root, ["commit", "-m", "feat(pr-create): add guarded creator #42"])
+    run_git(repo_root, ["commit", "-m", "feat(pr-create): add guarded creator"])
     run_git(repo_root, ["push", "-u", "origin", "feature/pr-create-guard"])
 
 
@@ -235,6 +235,8 @@ def main() -> int:
                 str(repo_root),
                 "--repo",
                 "owner/repo",
+                "--issue-hint",
+                "42",
                 "--draft",
                 "--reviewer",
                 "alice",

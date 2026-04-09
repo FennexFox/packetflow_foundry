@@ -20,11 +20,11 @@ def collected_context() -> dict:
         "resolved_base": "main",
         "local_head_oid": "abc123",
         "remote_head_oid": "abc123",
-        "changed_files": ["src/creator.py", "tests/test_creator.py"],
+        "changed_files": ["src/creator.py", "README.md", "tests/test_creator.py"],
         "changed_file_groups": {
             "runtime": {"count": 1, "sample_files": ["src/creator.py"]},
             "automation": {"count": 0, "sample_files": []},
-            "docs": {"count": 0, "sample_files": []},
+            "docs": {"count": 1, "sample_files": ["README.md"]},
             "tests": {"count": 1, "sample_files": ["tests/test_creator.py"]},
             "config": {"count": 0, "sample_files": []},
             "other": {"count": 0, "sample_files": []},
@@ -36,10 +36,22 @@ def collected_context() -> dict:
         },
         "expected_template_sections": list(REPO_TEMPLATE_SECTIONS),
         "duplicate_check_hint": {"status": "clear", "matched_repo_slug": "owner/repo", "matched_head": "feature/pr-create"},
-        "issue_reference_hints": {"numbers": ["42"], "branch": "feature/pr-create", "commit_subjects": []},
-        "testing_signal_candidates": {"exact_commands": [], "supports_positive_testing_claims": False, "test_files_changed": True},
+        "issue_reference_hints": {
+            "numbers": ["42"],
+            "branch": "feature/pr-create",
+            "branch_numbers": ["42"],
+            "commit_subjects": [],
+            "commit_numbers": [],
+            "operator_supplied": ["42"],
+        },
+        "testing_signal_candidates": {
+            "exact_commands": ["python -m unittest"],
+            "operator_supplied": ["python -m unittest"],
+            "supports_positive_testing_claims": True,
+            "test_files_changed": True,
+        },
         "create_options": {"reviewers": [], "assignees": [], "labels": [], "milestone": None, "draft": False, "no_maintainer_edit": False},
-        "diff_stat": " 2 files changed, 4 insertions(+), 1 deletion(-)",
+        "diff_stat": " 3 files changed, 5 insertions(+), 1 deletion(-)",
         "repo_profile_name": "default",
         "repo_profile_path": "profiles/default/profile.json",
         "repo_profile_summary": "Default profile",
@@ -64,7 +76,7 @@ def lint_report() -> dict:
             "required_sections_status": {"required": list(REPO_TEMPLATE_SECTIONS)},
             "supported_claims": [{"cluster": "runtime", "basis": "runtime files changed", "evidence_anchor": "src/creator.py"}],
             "issue_reference_hints": {"numbers": ["42"]},
-            "testing_evidence_status": {"exact_commands": []},
+            "testing_evidence_status": {"exact_commands": ["python -m unittest"]},
             "coverage_gaps": [],
             "focused_packet_hint": "runtime_packet.json",
         },
@@ -89,6 +101,9 @@ class BuildPrCreatePacketsTests(unittest.TestCase):
         self.assertNotIn("recommended_workers", packets["orchestrator.json"])
         self.assertNotIn("optional_workers", packets["orchestrator.json"])
         self.assertNotIn("review_overrides", packets["global_packet.json"])
+        self.assertEqual(packets["process_packet.json"]["issue_reference_hints"]["operator_supplied"], ["42"])
+        self.assertEqual(packets["synthesis_packet.json"]["issue_reference_hints"]["numbers"], ["42"])
+        self.assertEqual(packets["testing_packet.json"]["testing_signal_candidates"]["operator_supplied"], ["python -m unittest"])
         self.assertIn(
             "restart/reload, rollout, and consumer migration/compatibility claims are blocked by default",
             packets["rules_packet.json"]["strict_claim_gates"],
@@ -97,7 +112,7 @@ class BuildPrCreatePacketsTests(unittest.TestCase):
             "unchecked template checklist items are not treated as asserted claims until checked or rewritten as prose",
             packets["rules_packet.json"]["strict_claim_gates"],
         )
-        self.assertEqual(build_result["review_mode_baseline"], "local-only")
+        self.assertEqual(build_result["review_mode_baseline"], "targeted-delegation")
         self.assertIn("recommended_workers", build_result)
         self.assertIn("optional_workers", build_result)
         self.assertEqual(build_result["delegation_non_use_cases"], builder.contract.DELEGATION_NON_USE_CASES)

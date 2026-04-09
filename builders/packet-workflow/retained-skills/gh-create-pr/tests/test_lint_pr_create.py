@@ -151,6 +151,7 @@ def collected_context() -> dict:
         },
         "testing_signal_candidates": {
             "exact_commands": [],
+            "operator_supplied": [],
             "supports_positive_testing_claims": False,
             "test_files_changed": True,
         },
@@ -271,6 +272,34 @@ class LintPrCreateTests(unittest.TestCase):
 
         self.assertEqual(findings["detected"]["unsupported_claims"], [])
 
+    def test_candidate_findings_allow_positive_testing_claim_with_trusted_command(self) -> None:
+        context = collected_context()
+        context["testing_signal_candidates"]["exact_commands"] = ["python -m pytest"]
+        context["testing_signal_candidates"]["operator_supplied"] = ["python -m pytest"]
+        context["testing_signal_candidates"]["supports_positive_testing_claims"] = True
+
+        findings = lint.collect_candidate_findings(
+            context,
+            "feat(pr-create): create guarded PRs",
+            "\n".join(
+                [
+                    "## Why",
+                    "Open a guarded PR.",
+                    "## What changed",
+                    "- Added validator/apply gates.",
+                    "## How",
+                    "- Keep create fail-closed.",
+                    "## Risk / Rollback",
+                    "- Re-run validation.",
+                    "## Testing",
+                    "- Ran `python -m pytest`.",
+                    "Refs: #42",
+                ]
+            ),
+        )
+
+        self.assertEqual(findings["detected"]["unsupported_claims"], [])
+
     def test_candidate_findings_block_issue_reference_without_hint(self) -> None:
         context = collected_context()
         context["issue_reference_hints"]["numbers"] = []
@@ -281,6 +310,53 @@ class LintPrCreateTests(unittest.TestCase):
             candidate_body(
                 what_changed="- Added validator/apply gates.",
                 why=["- Open a guarded PR.", "- Refs: #42"],
+                how="- Keep create fail-closed.",
+                risk=[
+                    "- Risk areas:",
+                    "  - Validation could drift.",
+                    "- Rollback / mitigation:",
+                    "  - Re-run validation.",
+                ],
+            ),
+        )
+
+        self.assertIn(
+            "Issue references are present without matching issue hints from the process packet.",
+            findings["detected"]["unsupported_claims"],
+        )
+
+    def test_candidate_findings_allow_canonicalized_issue_refs(self) -> None:
+        context = collected_context()
+        context["issue_reference_hints"]["numbers"] = ["1"]
+
+        findings = lint.collect_candidate_findings(
+            context,
+            "feat(pr-create): create guarded PRs",
+            candidate_body(
+                what_changed="- Added validator/apply gates.",
+                why=["- Open a guarded PR.", "- Refs: #01", "- Fixes: #01"],
+                how="- Keep create fail-closed.",
+                risk=[
+                    "- Risk areas:",
+                    "  - Validation could drift.",
+                    "- Rollback / mitigation:",
+                    "  - Re-run validation.",
+                ],
+            ),
+        )
+
+        self.assertEqual(findings["detected"]["unsupported_claims"], [])
+
+    def test_candidate_findings_ignore_invalid_issue_hint_context_values(self) -> None:
+        context = collected_context()
+        context["issue_reference_hints"]["numbers"] = ["bogus"]
+
+        findings = lint.collect_candidate_findings(
+            context,
+            "feat(pr-create): create guarded PRs",
+            candidate_body(
+                what_changed="- Added validator/apply gates.",
+                why=["- Open a guarded PR.", "- Refs: #1"],
                 how="- Keep create fail-closed.",
                 risk=[
                     "- Risk areas:",
