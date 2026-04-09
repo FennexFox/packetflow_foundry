@@ -112,8 +112,8 @@
         "structural-only"
       ],
       "measurement_metrics": [
-        "estimated_packet_tokens",
-        "estimated_delegation_savings",
+        "packet_tokens",
+        "savings_tokens",
         "raw_reread_count",
         "common_path_sufficient"
       ],
@@ -141,8 +141,8 @@
   "metadata": {
     "versioning": {
       "builder_family": "packet-workflow",
-      "builder_semver": "0.1.0",
-      "compatibility_epoch": 1,
+      "builder_semver": "0.2.0",
+      "compatibility_epoch": 2,
       "repo_profile_schema_version": 1
     }
   }
