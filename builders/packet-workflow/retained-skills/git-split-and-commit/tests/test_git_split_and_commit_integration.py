@@ -38,8 +38,15 @@ def write_text(path: Path, content: str) -> None:
 
 
 def on_rm_error(func: object, path: str, exc_info: object) -> None:
-    os.chmod(path, 0o700)
-    func(path)
+    del exc_info
+    try:
+        os.chmod(path, 0o700)
+    except OSError:
+        return
+    try:
+        func(path)
+    except OSError:
+        return
 
 
 def remove_tree(path: Path) -> None:
