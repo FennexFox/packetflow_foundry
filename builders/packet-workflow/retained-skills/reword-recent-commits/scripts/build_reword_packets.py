@@ -823,10 +823,6 @@ def main() -> int:
                 }
             )
         orchestrator["review_mode"] = review_mode
-        (output_dir / "orchestrator.json").write_text(
-            json.dumps(orchestrator, indent=2, ensure_ascii=True) + "\n",
-            encoding="utf-8",
-        )
     active_packets = ["rules_packet.json", *commit_packet_names]
     spawn_plan = common.build_spawn_plan(
         review_mode=review_mode,

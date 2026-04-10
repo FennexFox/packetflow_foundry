@@ -2082,14 +2082,10 @@ def normalize_spawn_activation_worker(
         "fallback_reason": str(row.get("fallback_reason") or "").strip() or None,
         "resolved_as": str(row.get("resolved_as") or "").strip() or None,
     }
-    if normalized["spawn_attempted"] is None:
-        normalized["spawn_attempted"] = bool(normalized["attempt_count"])
     if normalized["spawn_succeeded"] is None and normalized["resolved_as"] == "spawned":
         normalized["spawn_succeeded"] = True
     if normalized["spawn_failed"] is None and normalized["resolved_as"] in {"local_fallback", "spawn_failed"}:
         normalized["spawn_failed"] = True
-    if normalized["attempt_count"] is None:
-        normalized["attempt_count"] = 1 if normalized["spawn_attempted"] else 0
     resolved_as = normalized["resolved_as"]
     if resolved_as not in ALLOWED_SPAWN_RESOLUTIONS:
         if normalized["spawn_succeeded"]:
@@ -2101,6 +2097,15 @@ def normalize_spawn_activation_worker(
         else:
             resolved_as = "not_activated"
     normalized["resolved_as"] = resolved_as
+    if normalized["spawn_attempted"] is None:
+        normalized["spawn_attempted"] = (
+            bool(normalized["attempt_count"])
+            or bool(normalized["spawn_succeeded"])
+            or bool(normalized["spawn_failed"])
+            or resolved_as in {"spawned", "local_fallback", "spawn_failed"}
+        )
+    if normalized["attempt_count"] is None:
+        normalized["attempt_count"] = 1 if normalized["spawn_attempted"] else 0
     normalized["spawn_attempted"] = bool(normalized["spawn_attempted"])
     normalized["spawn_succeeded"] = bool(normalized["spawn_succeeded"])
     normalized["spawn_failed"] = bool(normalized["spawn_failed"])
@@ -2351,6 +2356,7 @@ def resolve_planned_workers(log: dict[str, Any]) -> None:
             "spawned",
             "local_fallback",
             "spawn_failed",
+            "not_activated",
         }:
             resolved_ids.add(worker_id)
     resolved_ids.update(incoming_planned_worker_ids(log, worker_by_id))

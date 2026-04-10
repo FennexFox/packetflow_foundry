@@ -255,7 +255,7 @@ DEFAULT_WORKER_SELECTION_GUIDANCE = [
     "Use `evidence_summarizer` for long narrative evidence that should be condensed into decision-ready candidate records.",
     "Use `large_diff_auditor` for large diffs, high-risk hotspots, regressions, invariants, and missing tests.",
     "Use `log_triager` for logs, CI failures, runtime incidents, and earliest-useful-signal triage.",
-    "Treat `worker_selection_guidance` as explanatory metadata only. `packet_worker_map` is the routing authority, and `orchestrator.json` `spawn_plan` is the execution-ready materialization when configured.",
+    "Treat `worker_selection_guidance` as descriptive metadata only. `packet_worker_map` is the routing authority, and `orchestrator.json` `spawn_plan` is the execution-ready materialization when configured.",
 ]
 
 
