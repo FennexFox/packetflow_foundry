@@ -825,6 +825,53 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
         self.assertEqual(actual_workers["summary"]["planned_not_run_count"], 0)
         self.assertEqual(actual_workers["workers"], [])
 
+    def test_finalize_does_not_fallback_match_unknown_planned_worker_id(
+        self,
+    ) -> None:
+        worker = self._planned_worker()
+        log = {
+            "skill": {"name": "weekly-update"},
+            "measurement": {},
+            "baseline": {},
+            "orchestration": {
+                "review_mode": "targeted-delegation",
+                "spawn_plan": eval_log.common.build_spawn_plan(
+                    review_mode="targeted-delegation",
+                    required_workers=[worker],
+                    common_path_sufficient=False,
+                ),
+            },
+            "quality": {},
+            "safety": {},
+            "skill_specific": {"data": {}},
+        }
+
+        eval_log.finalize_log(
+            log,
+            {
+                "orchestration": {
+                    "actual_workers": {
+                        "summary": {"capture_complete": True},
+                        "workers": [
+                            {
+                                **worker,
+                                "planned_worker_id": "planned:stale-or-mistyped",
+                                "status": "completed",
+                            }
+                        ],
+                    }
+                }
+            },
+        )
+
+        actual_workers = log["orchestration"]["actual_workers"]
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 0)
+        self.assertEqual(actual_workers["summary"]["unplanned_row_count"], 1)
+        self.assertEqual(actual_workers["summary"]["planned_not_run_count"], 0)
+        self.assertEqual(actual_workers["workers"][0]["row_kind"], "unplanned")
+        self.assertIsNone(actual_workers["workers"][0]["planned_worker_id"])
+        self.assertEqual(actual_workers["workers"][0]["status"], "unplanned_completed")
+
     def test_finalize_keeps_drifted_worker_row_unplanned_even_when_identity_matches(self) -> None:
         log = {
             "skill": {"name": "weekly-update"},

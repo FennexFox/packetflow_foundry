@@ -2291,6 +2291,8 @@ def incoming_planned_worker_ids(
         if planned_worker_id and planned_worker_id in by_id:
             ids.add(planned_worker_id)
             continue
+        if planned_worker_id:
+            continue
         normalized = normalize_actual_worker_row(row)
         matches = by_tuple.get(actual_worker_fallback_tuple(normalized), [])
         if len(matches) != 1:
