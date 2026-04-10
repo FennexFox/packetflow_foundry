@@ -62,7 +62,7 @@ Repo profiles are intentionally data-only. Keep only declarative bindings, globs
     - `packet-heavy-orchestrator`
   - Default: `standard`
   - `standard` keeps only the common reference-grade contract layer.
-  - `packet-heavy-orchestrator` adds `synthesis_packet.json`, `packet_metrics.json`, `shared_local_packet`, and `common_path_contract`.
+  - `packet-heavy-orchestrator` adds `synthesis_packet.json`, `packet_sizing.json`, `shared_local_packet`, and `common_path_contract`.
 - `uses_batch_packets`
   - Boolean.
   - Default: `false`
@@ -143,7 +143,7 @@ Repo profiles are intentionally data-only. Keep only declarative bindings, globs
   - Duplicate agent types inside one family list are invalid.
   - Cross-family overlap is allowed.
 - `packet_worker_map`
-  - Optional concrete routing map for generated `recommended_workers`.
+  - Optional concrete routing map for generated `spawn_plan`.
   - Shape:
     - packet basename -> ordered agent type list
   - Allowed keys:
@@ -347,11 +347,11 @@ Family intent:
 - `verifiers`
   - narrow claim verification or version-sensitive checks
 
-`optional_workers` derivation:
+`spawn_plan` materialization:
 1. choose active family order
 2. concatenate family lists in that order
 3. apply first-occurrence stable dedupe
-4. remove agent types already present in `recommended_workers`
+4. remove agent types already present in default-spawn required workers
 
 Active family order:
 - `generic`
@@ -364,16 +364,16 @@ Active family order:
 
 Implications:
 - a worker may belong to multiple families
-- surfaced `optional_workers` is still a deduped list
-- when `packet_worker_map` is configured, generated delegation docs should surface the delegated-mode `optional_workers` view after subtracting explicitly mapped recommended worker types
+- non-default `spawn_plan` workers remain a deduped optional/post-draft surface
+- when `packet_worker_map` is configured, generated delegation docs should describe the non-default `spawn_plan` view after subtracting explicitly mapped default-spawn workers
 - generated docs should describe both:
   - family membership
-  - surfaced deduped optional worker list
+  - default-spawn versus non-default worker plan
 
-`recommended_workers` derivation:
+Default-spawn derivation:
 - concrete routing exists only when `packet_worker_map` is configured
-- without `packet_worker_map`, generated `recommended_workers` stays empty
-- `worker_selection_guidance` remains explanatory only
+- without `packet_worker_map`, generated `spawn_plan` stays empty
+- `worker_selection_guidance` remains descriptive metadata only
 - `packet_worker_map` is the routing authority when present
 
 Budget trim rules:
@@ -467,22 +467,23 @@ If `orchestrator_profile=packet-heavy-orchestrator`, the scaffold also emits:
 - runtime:
   - `synthesis_packet.json`
 - evaluation/regression:
-  - `packet_metrics.json`
+  - `packet_sizing.json`
 
 Runtime contract metadata and evaluation/regression metadata stay separate:
-- keep routing, authority, stop conditions, and common-path runtime signals in `orchestrator.json` / `global_packet.json`
-- keep packet sizing, byte proxies, and token-efficiency estimates in `packet_metrics.json` and evaluation logs; only derived review-mode adjustments such as `delegation_savings_floor` may flow back into runtime metadata
+- keep routing, authority, stop conditions, common-path runtime signals, and authoritative `spawn_plan` in `orchestrator.json`
+- keep worker-facing shared context in `global_packet.json`
+- keep packet sizing, byte proxies, and token-efficiency estimates in `packet_sizing.json` and evaluation logs; only derived review-mode adjustments such as `delegation_savings_floor` may flow back into runtime metadata
 - keep repo-specific path bindings and packet-review defaults in the repo profile instead of hardcoding them into the generic core contract
 
 Generated `orchestrator.json` and `global_packet.json` keep:
 - final review-mode provenance via `review_mode`, `review_mode_baseline`, and `review_mode_adjustments`
+- authoritative `spawn_plan` and `orchestrator_fingerprint` in `orchestrator.json`
 - worker return contract
 - worker output shape
 - decision-ready packet metadata
 - candidate/footer/reread contract metadata
 - preferred worker families
 - packet worker map when configured
-- worker selection guidance
 
 When `orchestrator_profile=packet-heavy-orchestrator`, generated `orchestrator.json` also keeps:
 - `shared_local_packet`

@@ -300,7 +300,7 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
         self.assertEqual(result["review_mode"], "local-only")
         self.assertEqual(result["review_mode_baseline"], "local-only")
         self.assertEqual(result["review_mode_adjustments"], [])
-        self.assertEqual(result["planned_workers"]["count"], 0)
+        self.assertEqual(result["spawn_plan_preview"]["workers"], [])
 
     def test_local_review_mode_promotes_when_savings_floor_is_met(self) -> None:
         temp_dir, repo = make_repo()
@@ -411,7 +411,92 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
             result["review_mode_adjustments"],
             ["delegation_savings_floor"],
         )
-        self.assertEqual(result["planned_workers"]["count"], 2)
+        default_workers = [
+            worker
+            for worker in result["spawn_plan_preview"]["workers"]
+            if worker.get("default_spawn")
+        ]
+        self.assertEqual(len(default_workers), 2)
+
+    def test_savings_floor_metrics_include_spawn_plan_before_promotion(self) -> None:
+        temp_dir, repo = make_repo()
+        self.addCleanup(temp_dir.cleanup)
+        head_commit = commit_file(repo, "src/app.py", "seed\n", "fix(app): seed")
+        branch = build_reword_packets.branch_state(repo)["branch"] or "main"
+
+        rules = {
+            "rules": {
+                "format": "<type>(<scope>): <subject>",
+                "allowed_types": ["fix", "docs"],
+                "scope_required": True,
+                "subject_length_limit": 72,
+                "body_rules": [],
+                "references_rules": [],
+                "scope_suggestions": ["app"],
+            },
+            "rule_derivation": {
+                "format_source": "commit_message_instructions",
+                "allowed_types_source": "commit_message_instructions",
+                "scope_required_source": "commit_message_instructions",
+                "subject_length_limit_source": "commit_message_instructions",
+                "repo_defaults_source": "commit_message_instructions",
+            },
+            "recent_scope_vocabulary": ["app"],
+            "recent_subject_samples": ["fix(app): seed"],
+        }
+        plan = {
+            "repo_root": str(repo),
+            "branch": branch,
+            "detached_head": False,
+            "count": 2,
+            "head_commit": head_commit,
+            "base_commit": head_commit,
+            "active_operation": None,
+            "commits": [
+                {
+                    "index": 1,
+                    "hash": "1" * 40,
+                    "short_hash": "1" * 12,
+                    "parent_hashes": ["0" * 40],
+                    "subject": "fix(app): first pass",
+                    "body": "",
+                    "full_message": "fix(app): first pass",
+                    "author_name": "Codex",
+                    "author_email": "codex@example.com",
+                    "author_date": "2026-03-27T00:00:00Z",
+                    "files": ["src/app.py"],
+                    "shortstat": "1 file changed, 2 insertions(+), 1 deletion(-)",
+                    "new_message": "",
+                },
+                {
+                    "index": 2,
+                    "hash": "2" * 40,
+                    "short_hash": "2" * 12,
+                    "parent_hashes": ["1" * 40],
+                    "subject": "docs(app): second pass",
+                    "body": "",
+                    "full_message": "docs(app): second pass",
+                    "author_name": "Codex",
+                    "author_email": "codex@example.com",
+                    "author_date": "2026-03-27T00:00:00Z",
+                    "files": ["src/app.py"],
+                    "shortstat": "1 file changed, 1 insertion(+)",
+                    "new_message": "",
+                },
+            ],
+        }
+
+        with mock.patch.object(
+            build_reword_packets,
+            "compute_packet_metrics",
+            wraps=build_reword_packets.compute_packet_metrics,
+        ) as compute_packet_metrics:
+            exit_code, _output_dir, _orchestrator, _result = self.run_script(rules, plan)
+
+        self.assertEqual(exit_code, 0)
+        first_packet_payloads = compute_packet_metrics.call_args_list[0].args[0]
+        self.assertIn("spawn_plan", first_packet_payloads["orchestrator.json"])
+        self.assertIn("orchestrator_fingerprint", first_packet_payloads["orchestrator.json"])
 
     def test_local_mode_surfaces_root_rewrite_blocker(self) -> None:
         temp_dir, repo = make_repo()
@@ -469,7 +554,7 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(orchestrator["review_mode"], "local-only")
-        self.assertEqual(result["planned_workers"]["count"], 0)
+        self.assertEqual(result["spawn_plan_preview"]["workers"], [])
         self.assertTrue(orchestrator["rewrite_blockers"]["root_rewrite_unsupported"])
         self.assertTrue(result["common_path_sufficient"])
 

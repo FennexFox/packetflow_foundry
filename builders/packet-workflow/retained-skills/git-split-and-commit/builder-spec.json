@@ -96,10 +96,9 @@
   },
   "builder_versioning": {
     "builder_family": "packet-workflow",
-    "builder_semver": "0.2.0",
-    "compatibility_epoch": 2,
+    "builder_semver": "0.3.0",
+    "compatibility_epoch": 3,
     "builder_spec_schema_version": 1,
     "repo_profile_schema_version": 1
   }
 }
-

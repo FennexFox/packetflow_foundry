@@ -1859,7 +1859,7 @@ def _build_runtime_packet_state(context: dict[str, Any], lint_report: dict[str, 
     ]
     worker_selection_guidance = {
         "routing_authority": "packet_worker_map",
-        "notes": "worker_selection_guidance is explanatory only; packet_worker_map is the concrete routing source.",
+        "notes": "worker_selection_guidance is descriptive metadata only; packet_worker_map is the routing authority and orchestrator.spawn_plan is its execution-ready materialization.",
         "agent_type_guidance": WORKER_SELECTION_GUIDANCE,
     }
     override_signals = sorted(
@@ -1893,12 +1893,23 @@ def _build_runtime_packet_state(context: dict[str, Any], lint_report: dict[str, 
     risks_packet["candidate_ids"] = risk_ids
     risks_packet["artifact_reference_candidate_ids"] = [candidate_id for candidate_id in risk_ids if candidate_lookup[candidate_id]["proposed_classification"] == ARTIFACT_ONLY]
 
+    raw_reread_reason_counts = count_raw_reread_reasons(context.get("candidate_inventory") or [])
+    common_path_sufficient = not raw_reread_reason_counts
+
     def render_packets(
         final_review_mode: str,
         final_adjustments: list[str],
+        *,
+        common_path_sufficient: bool,
     ) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
         workers = routed_workers_for_review_mode(final_review_mode)
         optional_workers = derived_optional_workers(workers)
+        spawn_plan = common.build_spawn_plan(
+            review_mode=final_review_mode,
+            required_workers=workers,
+            optional_workers=optional_workers,
+            common_path_sufficient=common_path_sufficient,
+        )
         global_packet = {
             "skill_name": SKILL_NAME,
             "workflow_family": WORKFLOW_FAMILY,
@@ -1948,6 +1959,7 @@ def _build_runtime_packet_state(context: dict[str, Any], lint_report: dict[str, 
             "repo_profile_summary": context.get("repo_profile_summary"),
             "analysis_ref": analysis_ref,
             "review_mode": final_review_mode,
+            "spawn_plan": spawn_plan,
             "decision_ready_packets": DECISION_READY_PACKETS,
             "worker_return_contract": WORKER_RETURN_CONTRACT,
             "worker_output_shape": WORKER_OUTPUT_SHAPE,
@@ -1960,6 +1972,7 @@ def _build_runtime_packet_state(context: dict[str, Any], lint_report: dict[str, 
             "common_path_contract": COMMON_PATH_CONTRACT,
             "review_mode_overrides": REVIEW_MODE_OVERRIDES,
         }
+        orchestrator["orchestrator_fingerprint"] = common.orchestrator_fingerprint(orchestrator)
         return (
             {
                 "orchestrator.json": orchestrator,
@@ -1970,13 +1983,15 @@ def _build_runtime_packet_state(context: dict[str, Any], lint_report: dict[str, 
                 "risks_packet.json": risks_packet,
             },
             {
-                "recommended_worker_count": len(workers),
-                "recommended_workers": workers,
-                "optional_workers": optional_workers,
+                "spawn_plan_preview": spawn_plan,
             },
         )
 
-    packets, orchestration_meta = render_packets(review_mode, review_mode_adjustments)
+    packets, orchestration_meta = render_packets(
+        review_mode,
+        review_mode_adjustments,
+        common_path_sufficient=common_path_sufficient,
+    )
     packet_metrics = compute_packet_metrics(
         packets,
         raw_local_sources={"context": context, "lint": lint_report},
@@ -1987,7 +2002,11 @@ def _build_runtime_packet_state(context: dict[str, Any], lint_report: dict[str, 
         review_mode_adjustments,
     )
     if packets["orchestrator.json"]["review_mode"] != review_mode:
-        packets, orchestration_meta = render_packets(review_mode, review_mode_adjustments)
+        packets, orchestration_meta = render_packets(
+            review_mode,
+            review_mode_adjustments,
+            common_path_sufficient=common_path_sufficient,
+        )
         packet_metrics = compute_packet_metrics(
             packets,
             raw_local_sources={"context": context, "lint": lint_report},
@@ -2066,9 +2085,7 @@ def build_packet_artifacts(context: dict[str, Any], lint_report: dict[str, Any])
         "review_mode_baseline": review_mode_baseline,
         "review_mode_adjustments": list(review_mode_adjustments),
         "selected_packets": list(packets["orchestrator.json"].get("selected_packets") or []),
-        "recommended_worker_count": orchestration_meta["recommended_worker_count"],
-        "recommended_workers": list(orchestration_meta["recommended_workers"]),
-        "optional_workers": list(orchestration_meta["optional_workers"]),
+        "spawn_plan_preview": orchestration_meta["spawn_plan_preview"],
         "override_signals": override_signals,
         "packet_metrics": packet_metrics,
         "candidate_counts_by_proposed_classification": count_candidates_by_proposed_classification(candidates),

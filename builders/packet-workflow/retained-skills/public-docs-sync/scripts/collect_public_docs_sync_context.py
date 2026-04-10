@@ -61,7 +61,7 @@ from packet_workflow_versioning import (  # type: ignore  # noqa: E402
 )
 
 SKILL_NAME = "public-docs-sync"
-SKILL_VERSION = "0.2.0"
+SKILL_VERSION = "0.3.0"
 WORKFLOW_FAMILY = "repo-audit"
 ARCHETYPE = "audit-and-apply"
 GITHUB_AUTH_POLICY = "fail-closed"

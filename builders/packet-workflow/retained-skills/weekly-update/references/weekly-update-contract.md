@@ -41,7 +41,7 @@ The final update must:
 
 ## Eval-Side Build Outputs
 
-- `packet_metrics.json`
+- `packet_sizing.json`
 - build result JSON emitted via `build_weekly_update_packets.py --result-output`
 
 Token-efficiency counters belong only in these evaluation-side artifacts, not in `orchestrator.json`.
@@ -114,7 +114,8 @@ Concrete routing uses `packet_worker_map`:
 
 Rules:
 - `packet_worker_map` is the routing authority
-- `worker_selection_guidance` is explanatory only
+- `worker_selection_guidance` is descriptive metadata only
+- `orchestrator.json` `spawn_plan` is the runtime execution surface
 - routed worker budgets still follow `local-only`, `targeted-delegation`, and `broad-delegation`
 
 ## Candidate Proposal Model
@@ -241,14 +242,14 @@ Use it to:
 
 Keep runtime routing and local-adjudication metadata here:
 - `orchestrator_profile`
+- `orchestrator_fingerprint`
 - `review_mode`
 - `decision_ready_packets`
 - `worker_return_contract`
 - `worker_output_shape`
 - `packet_worker_map`
+- `spawn_plan`
 - `preferred_worker_families`
-- `recommended_workers`
-- `optional_workers`
 - `shared_packet`
 - `selected_packets`
 - `common_path_contract`
@@ -279,6 +280,7 @@ Keep shared workflow facts here:
 - `preferred_worker_families`
 - `packet_worker_map`
 - `worker_selection_guidance`
+- `spawn_plan` does not live here; worker launch payloads carry the per-worker execution subset
 
 ### `common_path_contract`
 

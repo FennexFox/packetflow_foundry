@@ -82,8 +82,9 @@ Conditional runtime outputs:
 - `runtime_packet.json`
 - `process_packet.json`
 
-Evaluation-only output:
-- `packet_metrics.json`
+Evaluation-only outputs:
+- `packet_sizing.json`
+- optional `build-result.json` for `spawn_plan_preview` and build-phase review metadata
 
 Packet responsibilities:
 - `rules_packet.json`

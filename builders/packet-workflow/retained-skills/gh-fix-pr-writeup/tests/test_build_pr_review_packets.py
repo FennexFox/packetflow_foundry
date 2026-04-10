@@ -260,7 +260,8 @@ class BuildPrReviewPacketsTests(unittest.TestCase):
         packet_sizing = json.loads((output_dir / "packet_sizing.json").read_text(encoding="utf-8"))
         self.assertTrue(build_result["common_path_sufficient"])
         self.assertEqual(build_result["raw_reread_count"], 0)
-        self.assertEqual(packet_sizing["packet_count"], 6)
+        self.assertEqual(packet_sizing["packet_count"], len(build_result["packet_files"]))
+        self.assertEqual(build_result["packet_sizing"]["packet_count"], len(build_result["packet_files"]))
         self.assertEqual(build_result["common_path_contract"]["required_packets"], ["rules_packet.json", "synthesis_packet.json"])
         self.assertIn("synthesis_packet.json", build_result["packet_files"])
 

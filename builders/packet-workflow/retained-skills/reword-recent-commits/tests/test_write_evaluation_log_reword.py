@@ -96,7 +96,8 @@ class WriteEvaluationLogRewordTests(unittest.TestCase):
         }
         eval_log.apply_phase_update(log, "build", build_result, 0.1)
         self.assertEqual(log["orchestration"]["review_mode"], "targeted-delegation")
-        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 2)
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 0)
+        self.assertEqual(len(log["orchestration"]["spawn_plan"]["workers"]), 2)
         self.assertEqual(log["orchestration"]["override_signals"], ["aggregate_churn_threshold"])
         self.assertFalse(log["orchestration"]["raw_reread_required"])
         self.assertEqual(log["input_size"]["active_areas"], 3)

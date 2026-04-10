@@ -39,6 +39,85 @@ class BuildCommitPacketsContractTest(unittest.TestCase):
             "builders/packet-workflow/retained-skills/gh-address-review-threads/tests/test_packet_builder.py",
         )
 
+    def test_main_computes_packet_metrics_once_before_and_once_after_final_orchestrator(self) -> None:
+        rules = {
+            "rules": {
+                "format": "<type>(<scope>): <subject>",
+                "allowed_types": ["fix", "chore", "docs"],
+                "scope_required": True,
+                "subject_length_limit": 72,
+                "scope_suggestions": ["infra"],
+            },
+            "recent_scope_vocabulary": ["infra"],
+            "instruction_snippets": {},
+        }
+        worktree = {
+            "repo_root": "C:/tmp/repo",
+            "head_commit": "abc123",
+            "branch": "main",
+            "worktree_fingerprint": "sha256:deadbeef",
+            "active_operation": None,
+            "input_scope": "all-local-changes",
+            "diff_shortstat": "1 file changed, 12 insertions(+), 12 deletions(-)",
+            "changed_file_groups": {},
+            "diff_stat": [],
+            "validation_candidates": [
+                {
+                    "label": "unit-tests",
+                    "paths": ["src/app.py"],
+                    "command": "python -m unittest",
+                    "argv": ["python", "-m", "unittest"],
+                }
+            ],
+            "files": [
+                {
+                    "path": "src/app.py",
+                    "area": "runtime",
+                    "generated": False,
+                    "split_eligible": True,
+                    "change_kind": "modified",
+                    "path_tokens": ["app", "runtime"],
+                    "hunks": [
+                        {
+                            "hunk_id": "H1",
+                            "header": "@@ -1,2 +1,2 @@",
+                            "old_start": 1,
+                            "new_start": 1,
+                            "tokens": ["alpha", "beta"],
+                            "raw_body_lines": ["-old_alpha()", "+new_alpha()"],
+                            "raw_patch": "@@ -1,2 +1,2 @@\n-old_alpha()\n+new_alpha()\n",
+                            "removed_digest": "same-digest",
+                            "added_digest": "same-digest",
+                        },
+                        {
+                            "hunk_id": "H2",
+                            "header": "@@ -40,2 +40,2 @@",
+                            "old_start": 40,
+                            "new_start": 40,
+                            "tokens": ["gamma", "delta"],
+                            "raw_body_lines": ["-old_gamma()", "+new_gamma()"],
+                            "raw_patch": "@@ -40,2 +40,2 @@\n-old_gamma()\n+new_gamma()\n",
+                            "removed_digest": "same-digest",
+                            "added_digest": "same-digest",
+                        },
+                    ],
+                }
+            ],
+        }
+
+        with mock.patch.object(
+            build_commit_packets,
+            "compute_packet_metrics",
+            wraps=build_commit_packets.compute_packet_metrics,
+        ) as compute_packet_metrics:
+            exit_code, _output_dir, _orchestrator, _result = self.run_script(rules, worktree)
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(compute_packet_metrics.call_count, 2)
+        first_packet_payloads = compute_packet_metrics.call_args_list[0].args[0]
+        self.assertIn("spawn_plan", first_packet_payloads["orchestrator.json"])
+        self.assertIn("orchestrator_fingerprint", first_packet_payloads["orchestrator.json"])
+
     def run_script(self, rules: dict, worktree: dict) -> tuple[int, Path, dict, dict]:
         tmpdir = tempfile.TemporaryDirectory()
         self.addCleanup(tmpdir.cleanup)
@@ -263,8 +342,12 @@ class BuildCommitPacketsContractTest(unittest.TestCase):
         self.assertIn("efficiency", result)
         self.assertEqual(result["review_mode_baseline"], "targeted-delegation")
         self.assertEqual(result["review_mode_adjustments"], [])
-        self.assertEqual(result["planned_workers"]["count"], 2)
-        self.assertEqual(len(result["planned_workers"]["workers"]), 2)
+        default_workers = [
+            worker
+            for worker in result["spawn_plan_preview"]["workers"]
+            if worker.get("default_spawn")
+        ]
+        self.assertEqual(len(default_workers), 2)
 
     def test_edge_case_build_result_uses_explicit_reread_reason(self) -> None:
         rules = {

@@ -255,7 +255,7 @@ DEFAULT_WORKER_SELECTION_GUIDANCE = [
     "Use `evidence_summarizer` for long narrative evidence that should be condensed into decision-ready candidate records.",
     "Use `large_diff_auditor` for large diffs, high-risk hotspots, regressions, invariants, and missing tests.",
     "Use `log_triager` for logs, CI failures, runtime incidents, and earliest-useful-signal triage.",
-    "Treat `worker_selection_guidance` as explanatory only. `packet_worker_map` is the concrete routing authority when configured.",
+    "Treat `worker_selection_guidance` as descriptive metadata only. `packet_worker_map` is the routing authority, and `orchestrator.json` `spawn_plan` is the execution-ready materialization when configured.",
 ]
 
 
@@ -1121,10 +1121,11 @@ def packet_worker_map_markdown(packet_worker_map: dict[str, list[str]]) -> str:
     if not packet_worker_map:
         return (
             "- No `packet_worker_map` is configured for this scaffold.\n"
-            "- `worker_selection_guidance` stays explanatory only until a packet map is provided."
+            "- `worker_selection_guidance` stays descriptive only, and generated `spawn_plan` remains empty until a packet map is provided."
         )
     lines: list[str] = [
         "- `packet_worker_map` is the routing authority when configured.",
+        "- `orchestrator.json` `spawn_plan` is the execution-ready materialization of that routing.",
         "- The same agent type may appear on multiple packets when those assignments are intentional.",
     ]
     for packet_name, agent_types in packet_worker_map.items():
@@ -1137,7 +1138,7 @@ def packet_worker_map_markdown(packet_worker_map: dict[str, list[str]]) -> str:
 
 def worker_selection_guidance_markdown(guidance: dict) -> str:
     lines = [
-        "- `worker_selection_guidance` is explanatory only and does not override `packet_worker_map`.",
+        "- `worker_selection_guidance` is descriptive metadata only and does not override `packet_worker_map` or `orchestrator.json` `spawn_plan`.",
         "- Guidance notes:",
         bullet_list(guidance["notes"], indent="  "),
     ]
@@ -1840,7 +1841,7 @@ def profile_runtime_note(spec: dict) -> str:
         return "\n".join(
             [
                 "- Orchestrator profile: `packet-heavy-orchestrator`.",
-                "- Keep runtime contract metadata lean. Put packet sizing, byte proxies, and delegation-efficiency counters in `packet_metrics.json` and evaluation logs instead of `orchestrator.json`.",
+                "- Keep runtime contract metadata lean. Put packet sizing, byte proxies, and delegation-efficiency counters in `packet_sizing.json` and evaluation logs instead of `orchestrator.json`.",
                 "- Read `synthesis_packet.json` as the shared local drafting packet before reopening raw artifacts.",
             ]
         )
@@ -1868,7 +1869,7 @@ def profile_evaluation_artifacts(spec: dict) -> str:
         return "\n".join(
             [
                 "- Evaluation-only sidecar:",
-                "  - `packet_metrics.json` for packet sizing, byte proxies, and regression-oriented token-efficiency estimates.",
+                "  - `packet_sizing.json` for packet sizing, byte proxies, and regression-oriented token-efficiency estimates.",
             ]
         )
     return "- No orchestrator-profile-specific evaluation sidecar is required."
@@ -1877,7 +1878,7 @@ def profile_evaluation_artifacts(spec: dict) -> str:
 def build_result_note(spec: dict) -> str:
     if spec["orchestrator_profile"] == "packet-heavy-orchestrator":
         return (
-            "- Recommended: add `--result-output <build-result-json>` so evaluation logging can merge build-phase packet metrics without expanding runtime contract metadata."
+            "- Recommended: add `--result-output <build-result-json>` so evaluation logging can merge build-phase `packet_sizing` and `spawn_plan_preview` data without expanding runtime contract metadata."
         )
     return (
         "- Optional: add `--result-output <build-result-json>` when you want a machine-readable build summary for smoke runs or evaluation logging."

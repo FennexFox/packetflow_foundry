@@ -264,7 +264,7 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         )
         self.assertEqual(
             contract.runtime_field_roles()["derived_worker_fields"],
-            ["recommended_workers", "optional_workers"],
+            ["spawn_plan"],
         )
         self.assertEqual(packets.packet_worker_map()["publish_packet"], ["large_diff_auditor"])
         self.assertEqual(packets.packet_worker_map()["checklist_packet"], ["docs_verifier", "repo_mapper"])
@@ -356,12 +356,41 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
 
         orchestrator = payloads["orchestrator.json"]
         packet_sizing = payloads["packet_sizing.json"]
+        runtime_payloads = {
+            name: payload
+            for name, payload in payloads.items()
+            if name != "packet_sizing.json"
+        }
+        expected_metrics = packets.build_packet_metrics(
+            context,
+            lint,
+            runtime_payloads,
+            packet_files=orchestrator["packet_files"],
+            synthesis_packet=payloads["synthesis_packet.json"],
+        )
+        expected_efficiency = packets.common.build_efficiency_payload(
+            expected_metrics,
+            planned_workers=packets.common.default_planned_workers_from_spawn_plan(
+                orchestrator["spawn_plan"]
+            ),
+        )
         self.assertEqual(result_payload["context_fingerprint"], context["context_fingerprint"])
         self.assertEqual(result_payload["freshness_tuple"], context["freshness_tuple"])
         self.assertEqual(result_payload["review_mode"], orchestrator["review_mode"])
-        self.assertEqual(result_payload["planned_workers"]["count"], len(result_payload["planned_workers"]["workers"]))
+        self.assertEqual(
+            sum(
+                1
+                for worker in result_payload["spawn_plan_preview"]["workers"]
+                if worker.get("default_spawn")
+            ),
+            len(result_payload["spawn_plan_preview"]["workers"]),
+        )
         self.assertEqual(result_payload["packet_files"], orchestrator["packet_files"])
         self.assertEqual(result_payload["packet_sizing"], packet_sizing)
+        self.assertEqual(
+            packet_sizing,
+            packets.common.normalize_packet_sizing(expected_metrics),
+        )
         self.assertEqual(result_payload["override_signals"], [])
         self.assertTrue(result_payload["packet_sizing_file"].endswith("packet_sizing.json"))
         self.assertEqual(result_payload["packet_sizing"]["packet_count"], packet_sizing["packet_count"])
@@ -370,6 +399,10 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
             result_payload["efficiency"]["packet_compaction"]["savings_tokens"],
             result_payload["efficiency"]["packet_compaction"]["local_only_tokens"]
             - result_payload["efficiency"]["packet_compaction"]["packet_tokens"],
+        )
+        self.assertEqual(
+            result_payload["efficiency"]["packet_compaction"],
+            expected_efficiency["packet_compaction"],
         )
         self.assertTrue(result_payload["common_path_sufficient"])
         self.assertEqual(
@@ -490,6 +523,59 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         self.assertGreater(result_payload["efficiency"]["packet_compaction"]["savings_tokens"], 0)
         self.assertGreaterEqual(packet_sizing["largest_packet_bytes"], 1)
         self.assertGreaterEqual(packet_sizing["largest_two_packets_bytes"], packet_sizing["largest_packet_bytes"])
+
+    def test_main_rechecks_savings_floor_after_spawn_plan_expands_orchestrator(self) -> None:
+        context = self.build_context()
+        context["changed_files"] = [
+            "ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs",
+            "README.md",
+            "MAINTAINING.md",
+            "ExampleProduct/Properties/PublishConfiguration.xml",
+        ]
+        context["changed_file_groups"] = {
+            "runtime": {
+                "count": 1,
+                "sample_files": ["ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs"],
+            },
+            "docs": {
+                "count": 3,
+                "sample_files": [
+                    "README.md",
+                    "MAINTAINING.md",
+                    "ExampleProduct/Properties/PublishConfiguration.xml",
+                ],
+            },
+            "config": {"count": 0, "sample_files": []},
+            "automation": {"count": 0, "sample_files": []},
+            "tests": {"count": 0, "sample_files": []},
+            "other": {"count": 0, "sample_files": []},
+        }
+        lint = self.build_lint()
+
+        with mock.patch.object(packets, "DELEGATION_SAVINGS_FLOOR", 2500):
+            exit_code, _stdout, payloads, result_payload = self.run_builder(
+                context,
+                lint,
+                result_output=True,
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIsNotNone(result_payload)
+        self.assertEqual(payloads["orchestrator.json"]["review_mode"], "targeted-delegation")
+        self.assertEqual(result_payload["review_mode"], "targeted-delegation")
+        self.assertEqual(
+            result_payload["review_mode_adjustments"],
+            ["delegation_savings_floor"],
+        )
+        self.assertGreaterEqual(result_payload["efficiency"]["packet_compaction"]["savings_tokens"], 2500)
+        self.assertEqual(
+            sum(
+                1
+                for worker in result_payload["spawn_plan_preview"]["workers"]
+                if worker.get("default_spawn")
+            ),
+            2,
+        )
 
 
 if __name__ == "__main__":

@@ -61,5 +61,5 @@ If any of those stop being true, flatten the contract instead of preserving hier
 This note does not justify broader runtime packets, extra local summary packets, or token-efficiency counters in runtime metadata.
 
 - `weekly-update` stays on `orchestrator_profile=standard`
-- token/size metrics stay in `packet_metrics.json` and evaluation logs
+- token/size metrics stay in `packet_sizing.json` and evaluation logs
 - hierarchy explains worker output shape only; it does not justify packet sprawl

@@ -130,7 +130,8 @@ class RepoPublicDocsSyncEvaluationLogTests(unittest.TestCase):
         eval_log.apply_phase_update(log, "build", result, 1.25)
 
         self.assertEqual(log["orchestration"]["review_mode"], "targeted-delegation")
-        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 2)
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 0)
+        self.assertEqual(len(log["orchestration"]["spawn_plan"]["workers"]), 2)
         self.assertEqual(log["orchestration"]["override_signals"], ["high_churn"])
         self.assertEqual(log["input_size"]["active_areas"], 2)
         self.assertEqual(log["skill_specific"]["data"]["auto_apply_candidate_count"], 3)

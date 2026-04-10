@@ -913,8 +913,7 @@ def build_result_payload(
     packet_metrics: dict[str, Any],
     review_mode_baseline: str,
     review_mode_adjustments: list[str],
-    recommended_workers: list[dict[str, Any]],
-    optional_workers: list[dict[str, Any]],
+    spawn_plan_preview: dict[str, Any],
     override_signals: list[str],
 ) -> dict[str, Any]:
     orchestrator = packets["orchestrator.json"]
@@ -926,9 +925,7 @@ def build_result_payload(
         "review_mode": orchestrator["review_mode"],
         "review_mode_baseline": review_mode_baseline,
         "review_mode_adjustments": list(review_mode_adjustments),
-        "recommended_worker_count": len(recommended_workers),
-        "recommended_workers": list(recommended_workers),
-        "optional_workers": list(optional_workers),
+        "spawn_plan_preview": spawn_plan_preview,
         "override_signals": list(override_signals),
         "packet_files": list(orchestrator["packet_files"]),
         "packet_sizing_file": str(output_dir / "packet_sizing.json"),
@@ -963,6 +960,35 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return build_parser().parse_args(argv)
 
 
+def synthesis_default_modes(
+    packets: dict[str, dict[str, Any]],
+) -> tuple[str, str, str]:
+    publish_mode = (
+        "replace-fields"
+        if (packets.get("publish_packet.json") or {}).get("rewrite_required_fields")
+        else "noop"
+    )
+    synthesis_packet = packets.get("synthesis_packet.json") or {}
+    readme_rewrite = synthesis_packet.get("readme_rewrite") or {}
+    readme_mode = (
+        "replace-sections"
+        if (
+            readme_rewrite.get("rewrite_intro")
+            or (packets.get("readme_packet.json") or {}).get("rewrite_required_sections")
+        )
+        else "noop"
+    )
+    issue_mode = str(
+        (
+            (synthesis_packet.get("issue_recommendation") or {})
+            .get("issue_action_recommendation", {})
+            .get("mode")
+        )
+        or "noop"
+    )
+    return publish_mode, readme_mode, issue_mode
+
+
 def main() -> int:
     args = parse_args()
 
@@ -973,14 +999,70 @@ def main() -> int:
 
     runtime_state = _build_runtime_packet_state(context, lint_report)
     packets = runtime_state["packets"]
+    while True:
+        recommended_workers, optional_workers = recommended_worker_assignments(
+            runtime_state["review_mode"],
+            runtime_state["worker_count"],
+            has_evidence=bool(context.get("evidence")),
+        )
+        spawn_plan = common.build_spawn_plan(
+            review_mode=runtime_state["review_mode"],
+            required_workers=recommended_workers,
+            optional_workers=optional_workers,
+            common_path_sufficient=bool(
+                runtime_state["packet_metrics"].get(
+                    "synthesis_packet_sufficient_for_common_path",
+                    True,
+                )
+            ),
+        )
+        packets["orchestrator.json"]["review_mode"] = runtime_state["review_mode"]
+        packets["orchestrator.json"]["spawn_plan"] = spawn_plan
+        packets["orchestrator.json"]["orchestrator_fingerprint"] = (
+            common.orchestrator_fingerprint(packets["orchestrator.json"])
+        )
+        runtime_packet_payloads = {
+            name: payload
+            for name, payload in packets.items()
+            if name != "packet_sizing.json"
+        }
+        runtime_state["packet_metrics"] = build_packet_metrics(
+            context,
+            lint_report,
+            runtime_packet_payloads,
+            packet_files=list(packets["orchestrator.json"]["packet_files"]),
+            synthesis_packet=packets["synthesis_packet.json"],
+        )
+        next_mode, next_worker_count, next_adjustments = (
+            maybe_apply_delegation_savings_floor(
+                runtime_state["review_mode"],
+                runtime_state["worker_count"],
+                runtime_state["packet_metrics"],
+                runtime_state["review_mode_adjustments"],
+            )
+        )
+        if (
+            next_mode == runtime_state["review_mode"]
+            and next_worker_count == runtime_state["worker_count"]
+            and next_adjustments == runtime_state["review_mode_adjustments"]
+        ):
+            break
+        runtime_state["review_mode"] = next_mode
+        runtime_state["worker_count"] = next_worker_count
+        runtime_state["review_mode_adjustments"] = next_adjustments
+        publish_mode, readme_mode, issue_mode = synthesis_default_modes(packets)
+        apply_synthesis_runtime_defaults(
+            packets["synthesis_packet.json"],
+            review_mode=next_mode,
+            publish_mode=publish_mode,
+            readme_mode=readme_mode,
+            issue_mode=issue_mode,
+        )
+
+    packets["packet_sizing.json"] = common.normalize_packet_sizing(runtime_state["packet_metrics"])
     for file_name, payload in packets.items():
         contract.write_json(output_dir / file_name, payload)
 
-    recommended_workers, optional_workers = recommended_worker_assignments(
-        runtime_state["review_mode"],
-        runtime_state["worker_count"],
-        has_evidence=bool(context.get("evidence")),
-    )
     result_payload = build_result_payload(
         output_dir,
         context,
@@ -988,8 +1070,7 @@ def main() -> int:
         packet_metrics=runtime_state["packet_metrics"],
         review_mode_baseline=runtime_state["review_mode_baseline"],
         review_mode_adjustments=runtime_state["review_mode_adjustments"],
-        recommended_workers=recommended_workers,
-        optional_workers=optional_workers,
+        spawn_plan_preview=spawn_plan,
         override_signals=runtime_state["override_signals"],
     )
     if args.result_output:

@@ -432,27 +432,13 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         process_active=process_active,
         testing_relevant=testing_relevant,
     )
-    packet_files = list(packet_payloads.keys()) + ["orchestrator.json"]
-    build_result = common.normalize_build_result(
-        {
-        "review_mode": review_mode,
-        "review_mode_baseline": review_mode_baseline,
-        "review_mode_adjustments": review_mode_adjustments,
-        "recommended_worker_count": len(recommended_workers),
-        "optional_worker_count": len(optional_workers),
-        "override_signals": lint_report.get("findings", {}).get("override_signals", {}),
-        "recommended_workers": recommended_workers,
-        "optional_workers": optional_workers,
-        "delegation_non_use_cases": contract.DELEGATION_NON_USE_CASES,
-        "packet_files": packet_files,
-        "orchestrator_profile": contract.ORCHESTRATOR_PROFILE,
-        "shared_local_packet": contract.SHARED_LOCAL_PACKET,
-        "template_status": context.get("template_selection", {}).get("status"),
-        "duplicate_hint_status": context.get("duplicate_check_hint", {}).get("status"),
-        "packet_metrics": packet_metrics,
-        },
-        packet_metrics=packet_metrics,
+    spawn_plan = common.build_spawn_plan(
+        review_mode=review_mode,
+        required_workers=recommended_workers,
+        optional_workers=optional_workers,
+        common_path_sufficient=True,
     )
+    packet_files = list(packet_payloads.keys()) + ["orchestrator.json"]
     orchestrator = {
         "workflow_family": contract.WORKFLOW_FAMILY,
         "archetype": contract.ARCHETYPE,
@@ -469,6 +455,7 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         "preferred_worker_families": contract.PREFERRED_WORKER_FAMILIES,
         "packet_worker_map": contract.PACKET_WORKER_MAP,
         "routing_contract": contract.ROUTING_CONTRACT,
+        "spawn_plan": spawn_plan,
         "common_path_contract": {
             "required_packets": contract.COMMON_PATH_REQUIRED_PACKETS,
             "max_additional_focused_packets": contract.COMMON_PATH_MAX_FOCUSED_PACKETS,
@@ -482,8 +469,35 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         ],
         "packet_files": packet_files,
     }
+    orchestrator["orchestrator_fingerprint"] = common.orchestrator_fingerprint(orchestrator)
     packet_payloads["orchestrator.json"] = orchestrator
-    packet_payloads["packet_sizing.json"] = common.normalize_packet_sizing(packet_metrics)
+    final_packet_metrics = contract.compute_packet_metrics(
+        packet_payloads,
+        common_path_packet_names=common_path_packets,
+        raw_local_payload=raw_local_bundle(context, lint_report),
+    )
+    final_packet_metrics["common_path_packets"] = common_path_packets
+    final_packet_metrics["common_path_sufficient"] = True
+    final_packet_metrics["raw_reread_count"] = 0
+    final_packet_metrics["packet_insufficiency_is_failure"] = True
+    build_result = common.normalize_build_result(
+        {
+            "review_mode": review_mode,
+            "review_mode_baseline": review_mode_baseline,
+            "review_mode_adjustments": review_mode_adjustments,
+            "spawn_plan_preview": spawn_plan,
+            "override_signals": lint_report.get("findings", {}).get("override_signals", {}),
+            "delegation_non_use_cases": contract.DELEGATION_NON_USE_CASES,
+            "packet_files": packet_files,
+            "orchestrator_profile": contract.ORCHESTRATOR_PROFILE,
+            "shared_local_packet": contract.SHARED_LOCAL_PACKET,
+            "template_status": context.get("template_selection", {}).get("status"),
+            "duplicate_hint_status": context.get("duplicate_check_hint", {}).get("status"),
+            "packet_metrics": final_packet_metrics,
+        },
+        packet_metrics=final_packet_metrics,
+    )
+    packet_payloads["packet_sizing.json"] = common.normalize_packet_sizing(final_packet_metrics)
     return packet_payloads, build_result
 
 
@@ -512,7 +526,14 @@ def main() -> int:
                 "output_dir": str(output_dir),
                 "review_mode": build_result["review_mode"],
                 "packet_files": build_result["packet_files"],
-                "planned_worker_count": build_result["planned_workers"]["count"],
+                "spawn_plan_worker_count": len(build_result["spawn_plan_preview"]["workers"]),
+                "default_spawn_worker_count": len(
+                    [
+                        worker
+                        for worker in build_result["spawn_plan_preview"]["workers"]
+                        if worker.get("default_spawn")
+                    ]
+                ),
                 "packet_sizing_file": str(output_dir / "packet_sizing.json"),
             },
             indent=2,

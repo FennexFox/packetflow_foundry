@@ -96,6 +96,8 @@ class BuildPrCreatePacketsTests(unittest.TestCase):
         self.assertEqual(build_result["shared_local_packet"], "synthesis_packet.json")
         self.assertEqual(packets["orchestrator.json"]["routing_contract"], builder.contract.ROUTING_CONTRACT)
         self.assertEqual(packets["global_packet.json"]["routing_contract"], builder.contract.ROUTING_CONTRACT)
+        self.assertEqual(packets["packet_sizing.json"]["packet_count"], len(build_result["packet_files"]))
+        self.assertEqual(build_result["packet_sizing"]["packet_count"], len(build_result["packet_files"]))
         self.assertNotIn("review_mode_baseline", packets["orchestrator.json"])
         self.assertNotIn("review_mode_adjustments", packets["orchestrator.json"])
         self.assertNotIn("recommended_workers", packets["orchestrator.json"])
@@ -113,9 +115,13 @@ class BuildPrCreatePacketsTests(unittest.TestCase):
             packets["rules_packet.json"]["strict_claim_gates"],
         )
         self.assertEqual(build_result["review_mode_baseline"], "targeted-delegation")
-        self.assertIn("planned_workers", build_result)
-        self.assertIn("optional_workers", build_result)
-        self.assertEqual(build_result["planned_workers"]["count"], 2)
+        self.assertIn("spawn_plan_preview", build_result)
+        default_workers = [
+            worker
+            for worker in build_result["spawn_plan_preview"]["workers"]
+            if worker.get("default_spawn")
+        ]
+        self.assertEqual(len(default_workers), 2)
         self.assertEqual(build_result["delegation_non_use_cases"], builder.contract.DELEGATION_NON_USE_CASES)
 
 

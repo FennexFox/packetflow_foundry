@@ -676,7 +676,7 @@ def build_result_payload(
     review_mode: str,
     review_mode_baseline: str,
     review_mode_adjustments: list[str],
-    recommended_workers: list[dict[str, Any]],
+    spawn_plan_preview: dict[str, Any],
     packet_order: list[str],
     active_packets: list[str],
     applied_override_signals: list[str],
@@ -691,8 +691,7 @@ def build_result_payload(
         "review_mode": review_mode,
         "review_mode_baseline": review_mode_baseline,
         "review_mode_adjustments": review_mode_adjustments,
-        "recommended_worker_count": len(recommended_workers),
-        "recommended_workers": recommended_workers,
+        "spawn_plan_preview": spawn_plan_preview,
         "packet_order": packet_order,
         "active_packets": active_packets,
         "active_packet_count": len(active_packets),
@@ -1146,6 +1145,14 @@ def main() -> int:
         ],
         "split_candidates": split_packets,
     }
+    provisional_spawn_plan = common.build_spawn_plan(
+        review_mode=review_mode,
+        required_workers=recommended_workers,
+        optional_workers=optional_workers,
+        common_path_sufficient=common_path_sufficient,
+    )
+    orchestrator["spawn_plan"] = provisional_spawn_plan
+    orchestrator["orchestrator_fingerprint"] = common.orchestrator_fingerprint(orchestrator)
     packet_metrics = compute_packet_metrics(
         packet_payloads,
         local_only_sources={
@@ -1258,26 +1265,41 @@ def main() -> int:
             )
         orchestrator["review_mode"] = review_mode
         packet_payloads["orchestrator.json"] = orchestrator
-        packet_metrics = compute_packet_metrics(
-            packet_payloads,
-            local_only_sources={
-                "rules.json": rules,
-                "worktree.json": worktree,
-                "raw_focus_surfaces.json": local_only_surfaces,
-            },
-            shared_packets=[],
-        )
+    spawn_plan_preview = common.build_spawn_plan(
+        review_mode=review_mode,
+        required_workers=recommended_workers,
+        optional_workers=optional_workers,
+        common_path_sufficient=common_path_sufficient,
+    )
+    orchestrator["spawn_plan"] = spawn_plan_preview
+    orchestrator["orchestrator_fingerprint"] = common.orchestrator_fingerprint(orchestrator)
+    final_packet_metrics = compute_packet_metrics(
+        {
+            "orchestrator.json": orchestrator,
+            "global_packet.json": global_packet,
+            "rules_packet.json": rules_packet,
+            "worktree_packet.json": worktree_packet,
+            **candidate_payloads,
+            **split_payloads,
+        },
+        local_only_sources={
+            "rules.json": rules,
+            "worktree.json": worktree,
+            "raw_focus_surfaces.json": local_only_surfaces,
+        },
+        shared_packets=[],
+    )
     build_result = build_result_payload(
         review_mode=review_mode,
         review_mode_baseline=review_mode_baseline,
         review_mode_adjustments=review_mode_adjustments,
-        recommended_workers=recommended_workers,
+        spawn_plan_preview=spawn_plan_preview,
         packet_order=packet_order,
         active_packets=active_packets,
         applied_override_signals=applied_override_signals,
         candidate_batch_count=len(candidate_batch_names),
         split_file_count=len(split_packet_names),
-        packet_metrics=packet_metrics,
+        packet_metrics=final_packet_metrics,
         common_path_sufficient=common_path_sufficient,
         raw_reread_reasons=raw_reread_reasons,
     )
@@ -1287,7 +1309,7 @@ def main() -> int:
         ("worktree_packet.json", worktree_packet),
         ("global_packet.json", global_packet),
         ("orchestrator.json", orchestrator),
-        ("packet_sizing.json", common.normalize_packet_sizing(packet_metrics)),
+        ("packet_sizing.json", common.normalize_packet_sizing(final_packet_metrics)),
     ):
         (output_dir / path_name).write_text(
             json.dumps(payload, indent=2, ensure_ascii=True) + "\n",
@@ -1307,7 +1329,12 @@ def main() -> int:
                 "review_mode": review_mode,
                 "candidate_batch_count": len(batches),
                 "split_packet_count": len(split_packets),
-                "planned_worker_count": build_result["planned_workers"]["count"],
+                "spawn_plan_worker_count": len(build_result["spawn_plan_preview"]["workers"]),
+                "default_spawn_worker_count": sum(
+                    1
+                    for worker in build_result["spawn_plan_preview"]["workers"]
+                    if worker.get("default_spawn")
+                ),
                 "common_path_sufficient": common_path_sufficient,
                 "raw_reread_count": len(raw_reread_reasons),
             },

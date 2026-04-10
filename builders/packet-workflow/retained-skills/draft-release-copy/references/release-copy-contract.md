@@ -19,7 +19,7 @@ Read [`architecture-note.md`](architecture-note.md) for why this skill keeps the
 
 ### Eval Artifacts
 
-- `packet_metrics.json`
+- `packet_sizing.json`
 - optional build result JSON from `build_release_copy_packets.py --result-output`
 - `eval-log.json`
 
@@ -36,15 +36,15 @@ Read [`architecture-note.md`](architecture-note.md) for why this skill keeps the
 When `build_release_copy_packets.py --result-output` is supplied, the build result JSON must expose:
 
 - `review_mode`
-- `recommended_worker_count`
-- `recommended_workers`
-- `optional_workers`
+- `review_mode_baseline`
+- `review_mode_adjustments`
+- `spawn_plan_preview`
 - `packet_files`
-- `packet_metrics`
+- `packet_sizing`
 - `common_path_sufficient`
 - `qa_gate_guidance`
 
-`packet_metrics` remains the evaluation-side home for packet sizing and token-proxy fields. The build result may mirror selected metric fields at top level for evaluation-log compatibility, but runtime routing still belongs in `orchestrator.json`.
+`packet_sizing` remains the evaluation-side home for packet sizing and token-proxy fields. `spawn_plan_preview` stays a build-time preview only; runtime routing and execution authority still belong in `orchestrator.json`.
 
 ## Builder Metadata
 
@@ -112,12 +112,12 @@ The local helper is never the authority for player-facing wording.
 
 - `orchestrator.json` is the runtime contract.
   - Keep worker routing, common-path drafting, and validator/apply guardrails here.
-- `packet_metrics.json` is eval-only.
+- `packet_sizing.json` is eval-only.
   - Keep packet sizes, token-proxy estimates, and savings here.
 - build result JSON from `build_release_copy_packets.py --result-output` is eval-only.
-  - Merge build-phase review metadata and packet metrics from it without promoting those fields into runtime routing artifacts.
+  - Merge build-phase review metadata, `spawn_plan_preview`, and packet sizing from it without promoting those fields into runtime routing artifacts.
 - `eval-log.json` is the accumulated regression and run-quality artifact.
-  - Merge `packet_metrics.json` and the build result during the build phase instead of treating sizing metrics as runtime routing inputs.
+  - Merge `packet_sizing.json` and the build result during the build phase instead of treating sizing metrics as runtime routing inputs.
 
 ## Field Roles
 
@@ -125,6 +125,7 @@ The local helper is never the authority for player-facing wording.
 
 - `authority_order`
 - `packet_worker_map`
+- `spawn_plan`
 - `common_path_contract`
 - `shared_packet`
 - `shared_local_packet`
@@ -133,10 +134,9 @@ The local helper is never the authority for player-facing wording.
 
 - `preferred_worker_families`
 
-### Derived Convenience Fields
+### Build-Only Preview Fields
 
-- `recommended_workers`
-- `optional_workers`
+- `spawn_plan_preview`
 
 ### Explanatory Fields
 
@@ -144,9 +144,10 @@ The local helper is never the authority for player-facing wording.
 
 Rules:
 - `packet_worker_map` is the routing authority.
+- `spawn_plan` is the runtime execution-ready materialization of that routing.
 - `preferred_worker_families` is descriptive registry metadata only.
-- `recommended_workers` and `optional_workers` are derived convenience fields only.
-- `worker_selection_guidance` is explanatory only and must not be treated as a routing source.
+- `spawn_plan_preview` is a build-result preview only.
+- `worker_selection_guidance` is descriptive metadata only and must not be treated as a routing source.
 
 ## Common-Path Semantics
 

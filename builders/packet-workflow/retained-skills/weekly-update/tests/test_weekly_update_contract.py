@@ -388,12 +388,22 @@ class WeeklyUpdateContractTests(unittest.TestCase):
         self.assertEqual(self.build_result["packet_sizing"]["packet_count"], self.packet_sizing["packet_count"])
         self.assertEqual(self.build_result["selected_packets"], ["mapping_packet", "changes_packet", "incidents_packet", "risks_packet"])
         self.assertEqual(self.build_result["review_mode_baseline"], "targeted-delegation")
+        default_workers = [
+            worker
+            for worker in self.build_result["spawn_plan_preview"]["workers"]
+            if worker.get("default_spawn")
+        ]
+        qa_workers = [
+            worker
+            for worker in self.build_result["spawn_plan_preview"]["workers"]
+            if not worker.get("default_spawn")
+        ]
         self.assertEqual(
-            [worker["agent_type"] for worker in self.build_result["planned_workers"]["workers"]],
+            [worker["agent_type"] for worker in default_workers],
             ["repo_mapper", "large_diff_auditor", "log_triager", "evidence_summarizer"],
         )
-        self.assertEqual(self.build_result["planned_workers"]["count"], 4)
-        self.assertEqual(self.build_result["optional_workers"], ["docs_verifier"])
+        self.assertEqual(len(default_workers), 4)
+        self.assertEqual([worker["agent_type"] for worker in qa_workers], ["docs_verifier"])
         self.assertIn("candidate_counts_by_proposed_classification", self.build_result)
         self.assertIn("raw_reread_reason_counts", self.build_result)
 

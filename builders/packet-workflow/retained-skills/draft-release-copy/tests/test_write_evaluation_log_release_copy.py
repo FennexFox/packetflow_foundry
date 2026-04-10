@@ -98,7 +98,8 @@ class WriteEvaluationLogReleaseCopyTests(unittest.TestCase):
         eval_log.apply_phase_update(log, "build", result, duration=0.5)
 
         self.assertEqual(log["orchestration"]["review_mode"], "targeted-delegation")
-        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 2)
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 0)
+        self.assertEqual(len(log["orchestration"]["spawn_plan"]["workers"]), 2)
         self.assertTrue(log["skill_specific"]["data"]["qa_required"])
         self.assertIn("local QA clear", log["skill_specific"]["data"]["qa_reason"])
         self.assertEqual(log["packet_sizing"]["packet_count"], 8)

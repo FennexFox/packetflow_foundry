@@ -38,7 +38,8 @@ Surfaced optional-worker list after subtracting explicitly routed workers:
 
 Rules:
 - `packet_worker_map` is the routing authority
-- `worker_selection_guidance` is explanatory only
+- `worker_selection_guidance` is descriptive metadata only
+- `orchestrator.json` `spawn_plan` is the runtime execution surface
 - do not infer routing from packet names alone when explicit routing metadata exists
 
 ## Shared Packet Discipline

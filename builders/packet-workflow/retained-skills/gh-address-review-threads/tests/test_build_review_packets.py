@@ -500,11 +500,16 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertNotIn("active_areas", orchestrator)
             self.assertNotIn("analysis_targets", orchestrator)
             self.assertNotIn("thread_batches", orchestrator)
+            default_workers = [
+                worker
+                for worker in build_result["spawn_plan_preview"]["workers"]
+                if worker.get("default_spawn")
+            ]
             self.assertEqual(
-                [worker["packets"] for worker in build_result["planned_workers"]["workers"]],
+                [worker["packets"] for worker in default_workers],
                 [["global_packet.json", "thread-batch-01.json"], ["global_packet.json", "thread-03.json"]],
             )
-            self.assertEqual(build_result["planned_workers"]["count"], 2)
+            self.assertEqual(len(default_workers), 2)
             self.assertEqual(build_result["thread_batch_count"], 1)
             self.assertEqual(build_result["analysis_targets"], {"batch_count": 1, "singleton_count": 1})
             self.assertEqual(build_result["thread_batches"], {"batch-01": ["t-1", "t-2"]})
@@ -847,6 +852,12 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertEqual(orchestrator["review_mode"], "targeted-delegation")
             self.assertNotIn("review_mode_overrides", orchestrator)
             self.assertFalse(build_result["common_path_sufficient"])
+            self.assertFalse(orchestrator["spawn_plan"]["default_spawn_enabled"])
+            self.assertIn(
+                "common_path_sufficient=false",
+                orchestrator["spawn_plan"]["default_spawn_blockers"],
+            )
+            self.assertFalse(build_result["spawn_plan_preview"]["default_spawn_enabled"])
             self.assertTrue(build_result["override_signals"])
             failure_reasons = build_result["common_path_failures"][0]["explicit_reread_reasons"]
             self.assertIn("missing_required_evidence", failure_reasons)
@@ -903,8 +914,7 @@ class BuildReviewPacketsTests(unittest.TestCase):
         self.assertEqual(build_result["review_mode"], "local-only")
         self.assertEqual(build_result["review_mode_baseline"], "local-only")
         self.assertEqual(build_result["review_mode_adjustments"], [])
-        self.assertEqual(build_result["planned_workers"]["count"], 0)
-        self.assertEqual(build_result["planned_workers"]["workers"], [])
+        self.assertEqual(build_result["spawn_plan_preview"]["workers"], [])
         self.assertEqual(context["conversation_comments"][0]["author_login"], "reviewer-a")
 
     def test_main_keeps_packet_sizing_observational_when_estimated_savings_are_high(self) -> None:

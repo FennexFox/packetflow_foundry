@@ -306,12 +306,22 @@ class BuildPublicDocsSyncPacketsContractTests(unittest.TestCase):
             self.assertEqual(build_result["review_mode_baseline"], "broad-delegation")
             self.assertEqual(build_result["review_mode_adjustments"], ["override_signal"])
             self.assertEqual(build_result["applied_override_signals"], ["lint"])
+            default_workers = [
+                worker
+                for worker in build_result["spawn_plan_preview"]["workers"]
+                if worker.get("default_spawn")
+            ]
+            nondefault_workers = [
+                worker
+                for worker in build_result["spawn_plan_preview"]["workers"]
+                if not worker.get("default_spawn")
+            ]
             self.assertEqual(
-                [worker["agent_type"] for worker in build_result["planned_workers"]["workers"]],
+                [worker["agent_type"] for worker in default_workers],
                 ["large_diff_auditor", "evidence_summarizer", "docs_verifier", "docs_verifier"],
             )
-            self.assertEqual(build_result["planned_workers"]["workers"][-1]["packets"], ["batch-packet-01.json"])
-            self.assertEqual([worker["agent_type"] for worker in build_result["optional_workers"]], ["repo_mapper", "log_triager"])
+            self.assertEqual(default_workers[-1]["packets"], ["batch-packet-01.json"])
+            self.assertEqual([worker["agent_type"] for worker in nondefault_workers], ["repo_mapper", "log_triager"])
             self.assertEqual(global_packet["orchestrator_profile"], "standard")
             self.assertEqual(global_packet["review_mode_overrides"], contract.REVIEW_MODE_OVERRIDES)
             self.assertEqual(global_packet["packet_worker_map"]["batch-packet-01"], ["docs_verifier"])
