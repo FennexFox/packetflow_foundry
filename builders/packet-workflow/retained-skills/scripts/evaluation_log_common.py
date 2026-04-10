@@ -1391,18 +1391,46 @@ def default_planned_workers_from_spawn_plan(
     }
 
 
+def has_spawn_plan_workers(value: Any) -> bool:
+    if not isinstance(value, dict):
+        return False
+    workers = value.get("workers")
+    return isinstance(workers, list) and any(isinstance(item, dict) for item in workers)
+
+
+def has_legacy_worker_payload(payload: dict[str, Any]) -> bool:
+    planned = payload.get("planned_workers")
+    if isinstance(planned, dict):
+        workers = planned.get("workers")
+        if isinstance(workers, list) and any(isinstance(item, dict) for item in workers):
+            return True
+    for key in ("recommended_workers", "optional_workers"):
+        workers = payload.get(key)
+        if isinstance(workers, list) and any(
+            isinstance(item, dict) or str(item or "").strip() for item in workers
+        ):
+            return True
+    return False
+
+
 def spawn_plan_from_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
     common_path_sufficient = to_bool(payload.get("common_path_sufficient"))
-    if isinstance(payload.get("spawn_plan"), dict):
+    spawn_plan = payload.get("spawn_plan")
+    if isinstance(spawn_plan, dict) and (
+        has_spawn_plan_workers(spawn_plan) or not has_legacy_worker_payload(payload)
+    ):
         return normalize_spawn_plan_payload(
-            payload.get("spawn_plan"),
+            spawn_plan,
             review_mode=payload.get("review_mode"),
             common_path_sufficient=common_path_sufficient,
             explicit_local_only_safety_gate=payload.get("explicit_local_only_safety_gate"),
         )
-    if isinstance(payload.get("spawn_plan_preview"), dict):
+    spawn_plan_preview = payload.get("spawn_plan_preview")
+    if isinstance(spawn_plan_preview, dict) and (
+        has_spawn_plan_workers(spawn_plan_preview) or not has_legacy_worker_payload(payload)
+    ):
         return normalize_spawn_plan_payload(
-            payload.get("spawn_plan_preview"),
+            spawn_plan_preview,
             review_mode=payload.get("review_mode"),
             common_path_sufficient=common_path_sufficient,
             explicit_local_only_safety_gate=payload.get("explicit_local_only_safety_gate"),

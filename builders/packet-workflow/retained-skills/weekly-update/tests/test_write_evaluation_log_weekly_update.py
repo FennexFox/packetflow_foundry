@@ -314,6 +314,54 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
         self.assertFalse(worker["default_spawn"])
         self.assertFalse(worker["blocking"])
 
+    def test_finalize_migrates_legacy_planned_workers_when_spawn_plan_is_empty(self) -> None:
+        worker = self._planned_worker()
+        log = {
+            "skill": {"name": "weekly-update"},
+            "measurement": {},
+            "baseline": {},
+            "orchestration": {
+                "review_mode": "targeted-delegation",
+                "spawn_plan": eval_log.common.empty_spawn_plan(),
+            },
+            "quality": {},
+            "safety": {},
+            "skill_specific": {"data": {}},
+        }
+
+        eval_log.finalize_log(
+            log,
+            {
+                "orchestration": {
+                    "planned_workers": {
+                        "count": 1,
+                        "roles": ["repo_mapper"],
+                        "workers": [worker],
+                    },
+                    "actual_workers": {
+                        "summary": {"capture_complete": True},
+                        "workers": [
+                            {
+                                "planned_worker_id": worker["worker_id"],
+                                "agent_type": "repo_mapper",
+                                "model": "gpt-5.4-mini",
+                                "reasoning_effort": "medium",
+                                "status": "completed",
+                            }
+                        ],
+                    },
+                }
+            },
+        )
+
+        self.assertEqual(len(log["orchestration"]["spawn_plan"]["workers"]), 1)
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 1)
+        actual_workers = log["orchestration"]["actual_workers"]
+        self.assertEqual(actual_workers["summary"]["planned_row_count"], 1)
+        self.assertEqual(actual_workers["summary"]["planned_not_run_count"], 0)
+        self.assertEqual(actual_workers["workers"][0]["row_kind"], "planned")
+        self.assertEqual(actual_workers["workers"][0]["status"], "completed")
+
     def test_finalize_preserves_started_status_when_capture_is_incomplete(self) -> None:
         worker = self._planned_worker()
         log = {

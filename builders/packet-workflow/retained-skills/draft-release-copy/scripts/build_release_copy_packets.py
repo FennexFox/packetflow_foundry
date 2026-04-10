@@ -990,10 +990,15 @@ def main() -> int:
     packets["orchestrator.json"]["orchestrator_fingerprint"] = common.orchestrator_fingerprint(
         packets["orchestrator.json"]
     )
+    runtime_packet_payloads = {
+        name: payload
+        for name, payload in packets.items()
+        if name != "packet_sizing.json"
+    }
     runtime_state["packet_metrics"] = build_packet_metrics(
         context,
         lint_report,
-        packets,
+        runtime_packet_payloads,
         packet_files=list(packets["orchestrator.json"]["packet_files"]),
         synthesis_packet=packets["synthesis_packet.json"],
     )

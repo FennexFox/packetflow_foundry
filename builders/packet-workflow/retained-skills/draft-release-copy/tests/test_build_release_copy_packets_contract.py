@@ -356,6 +356,24 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
 
         orchestrator = payloads["orchestrator.json"]
         packet_sizing = payloads["packet_sizing.json"]
+        runtime_payloads = {
+            name: payload
+            for name, payload in payloads.items()
+            if name != "packet_sizing.json"
+        }
+        expected_metrics = packets.build_packet_metrics(
+            context,
+            lint,
+            runtime_payloads,
+            packet_files=orchestrator["packet_files"],
+            synthesis_packet=payloads["synthesis_packet.json"],
+        )
+        expected_efficiency = packets.common.build_efficiency_payload(
+            expected_metrics,
+            planned_workers=packets.common.default_planned_workers_from_spawn_plan(
+                orchestrator["spawn_plan"]
+            ),
+        )
         self.assertEqual(result_payload["context_fingerprint"], context["context_fingerprint"])
         self.assertEqual(result_payload["freshness_tuple"], context["freshness_tuple"])
         self.assertEqual(result_payload["review_mode"], orchestrator["review_mode"])
@@ -369,6 +387,10 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         )
         self.assertEqual(result_payload["packet_files"], orchestrator["packet_files"])
         self.assertEqual(result_payload["packet_sizing"], packet_sizing)
+        self.assertEqual(
+            packet_sizing,
+            packets.common.normalize_packet_sizing(expected_metrics),
+        )
         self.assertEqual(result_payload["override_signals"], [])
         self.assertTrue(result_payload["packet_sizing_file"].endswith("packet_sizing.json"))
         self.assertEqual(result_payload["packet_sizing"]["packet_count"], packet_sizing["packet_count"])
@@ -377,6 +399,10 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
             result_payload["efficiency"]["packet_compaction"]["savings_tokens"],
             result_payload["efficiency"]["packet_compaction"]["local_only_tokens"]
             - result_payload["efficiency"]["packet_compaction"]["packet_tokens"],
+        )
+        self.assertEqual(
+            result_payload["efficiency"]["packet_compaction"],
+            expected_efficiency["packet_compaction"],
         )
         self.assertTrue(result_payload["common_path_sufficient"])
         self.assertEqual(
