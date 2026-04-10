@@ -46,7 +46,7 @@ Use this skill to handle unresolved GitHub PR review threads on the current bran
 - `record-apply` sees `apply_succeeded=true`, `fingerprint_match=true`, and a non-dry-run result for live runs.
 - `apply_thread_action_plan.py` consumes only normalized validator output.
 - `packet_worker_map` is the runtime routing authority.
-- `packet_metrics.json` and build-result worker derivation are evaluation-side only.
+- `packet_sizing.json` and `build-result.json` `spawn_plan_preview` stay evaluation-side only.
 - manifest `state.accepted_threads` is the run-local `ack-applied` accepted set, while post-push accepted provenance lives in `reconciliation-input.json`.
 - same-run accepted non-outdated auto-resolve uses post-push `HEAD` delta evidence from the manifest reconciliation input, not the full PR base-to-head diff.
 - same-run outdated auto-resolve has accepted-before-push provenance, current-`HEAD` evidence, and real validation evidence.

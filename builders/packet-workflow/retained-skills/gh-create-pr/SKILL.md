@@ -37,7 +37,7 @@ Use this skill to open a new GitHub pull request from a branch already pushed to
 
 - `rules_packet.json` stays the hard-rule authority and final drafting stays local
 - `packet_worker_map` is the routing authority for delegated packet analysis
-- `packet_metrics.json`, worker recommendations, baseline/adjustment metadata, and delegation fallback metadata stay evaluation-only
+- `packet_sizing.json`, `build-result.json` `spawn_plan_preview`, baseline/adjustment metadata, and delegation fallback metadata stay out of runtime packets
 - validation re-checks auth, base/head state, template selection, changed-file fingerprint, and same-head open PR state before mutation
 - apply consumes `normalized_create_request` only
 

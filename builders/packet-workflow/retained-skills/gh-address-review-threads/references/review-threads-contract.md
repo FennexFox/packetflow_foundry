@@ -76,9 +76,9 @@ Use evidence in this order:
 Rules:
 - `packet_worker_map` is the routing authority for delegated thread analysis
 - `preferred_worker_families` is registry metadata only
-- `recommended_workers` and `optional_workers` are build-result convenience fields only
+- `build-result.json` `spawn_plan_preview` is preview-only metadata
 - final per-thread decisions, reply wording, pushes, and resolution stay local
-- runtime logic must never infer routing from `preferred_worker_families`, `recommended_workers`, or `optional_workers`
+- runtime logic must never infer routing from `preferred_worker_families` or `build-result.json` preview fields; use `packet_worker_map` and `orchestrator.json` `spawn_plan`
 
 ## Delegation Non-Use Classification
 
@@ -228,7 +228,7 @@ Each `thread-batch-*.json` packet keeps:
   - `thread-*.json`
 - eval-side artifacts:
   - build result JSON for `review_mode_baseline`, `review_mode_adjustments`, worker derivation, override signals, `active_paths`, `active_areas`, `analysis_targets`, `thread_batches`, `delegation_non_use_cases`, `common_path_sufficient`, and same-run outdated-transition counters
-  - `packet_metrics.json` for size and token-proxy metrics only
+  - `packet_sizing.json` for size and token-proxy metrics only
   - evaluation-log build merges should use distinct labels such as `pre` and `post` when a run emits more than one build result
 - runtime `orchestrator.json` keeps the final `review_mode`, routing authority, packet files, and safety context only
 - do not duplicate token-efficiency counters or build-result-only observability fields into runtime packets

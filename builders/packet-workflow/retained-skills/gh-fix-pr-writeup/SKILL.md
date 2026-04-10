@@ -35,7 +35,7 @@ Use this skill to repair one PR title/body with a guarded `collect -> lint -> bu
 
 - `rules_packet.json` stays the hard-rule authority and final drafting stays local
 - `packet_worker_map` is the routing authority for delegated packet analysis
-- `packet_metrics.json`, worker recommendations, baseline/adjustment metadata, and delegation fallback metadata stay evaluation-only
+- `packet_sizing.json`, `build-result.json` `spawn_plan_preview`, baseline/adjustment metadata, and delegation fallback metadata stay out of runtime packets
 - raw reread is exceptional and limited to the allowed reason set
 - validation re-checks GitHub auth, the live PR snapshot, changed files, and QA gating before any mutation
 - apply consumes validator-normalized output only

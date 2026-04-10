@@ -14,9 +14,9 @@ This file defines the packet, worker, validator, and apply contract for `gh-fix-
 ## Runtime vs Evaluation Split
 
 - `orchestrator.json` is a lean runtime contract.
-- `packet_metrics.json` is evaluation/regression metadata only.
+- `packet_sizing.json` is evaluation/regression metadata only.
 - Runtime packets must not carry token-efficiency counters.
-- Build-phase metrics are merged into the evaluation log from `build-result.json` / `packet_metrics.json`, not read from runtime routing metadata.
+- Build-phase metrics are merged into the evaluation log from `build-result.json` / `packet_sizing.json`, not read from runtime routing metadata.
 
 ## Required Packet Outputs
 
@@ -27,7 +27,7 @@ This file defines the packet, worker, validator, and apply contract for `gh-fix-
 - `process_packet.json` when workflow/docs/config evidence is active
 - `testing_packet.json`
 - `synthesis_packet.json`
-- `packet_metrics.json`
+- `packet_sizing.json`
 
 ## Packet Semantics
 
@@ -95,7 +95,7 @@ Rules:
 
 Rules:
 - `packet_worker_map` is the routing authority
-- `worker_selection_guidance` is explanatory only
+- `worker_selection_guidance` is descriptive metadata only, and `orchestrator.json` `spawn_plan` is the runtime execution surface
 - `rules_packet.json` remains local-first even when a rules verifier is available
 
 ## QA Trigger Policy

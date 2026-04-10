@@ -78,7 +78,7 @@ Profile-specific additions:
   - shared local drafting packet for the common path
 - `common_path_contract`
   - runtime rule that common-path drafting should finish from `global_packet.json`, `synthesis_packet.json`, and at most one focused packet reread
-- `packet_metrics.json`
+- `packet_sizing.json`
   - evaluation/regression sidecar for packet sizing and byte/token proxies
 
 Do not make this the blanket default.
@@ -165,13 +165,14 @@ Candidate-producing workers:
 Routing rules:
 - `worker_selection_guidance` explains when each family is useful
 - `packet_worker_map` is the only concrete routing authority
+- `spawn_plan` is the execution-ready materialization of that routing
 - the builder should not infer packet-to-agent routing from packet names alone
 
 Optional worker surface:
 - family membership may overlap
-- surfaced `optional_workers` is still a deduped list
-- when explicit packet routing exists, delegation docs should surface the delegated-mode optional list after removing mapped recommended worker types
-- the same worker type may still appear on multiple packet assignments in `recommended_workers`
+- non-default `spawn_plan` workers are still a deduped optional/post-draft surface
+- when explicit packet routing exists, delegation docs should surface the delegated-mode non-default view after removing mapped default-spawn workers
+- the same worker type may still appear on multiple packet assignments in `spawn_plan`
 
 ## Domain Overlay Pattern
 

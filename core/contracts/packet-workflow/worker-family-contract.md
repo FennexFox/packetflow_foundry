@@ -13,8 +13,9 @@ Shared worker families:
   - `docs_verifier`
 
 Routing rules:
-- `worker_selection_guidance` is explanatory only
+- `worker_selection_guidance` is descriptive metadata only
 - `packet_worker_map` is the routing authority when present
+- `orchestrator.json.spawn_plan` is the execution-ready materialization of that routing
 - family overlap is allowed
 - surfaced optional workers are deduped after family composition
 

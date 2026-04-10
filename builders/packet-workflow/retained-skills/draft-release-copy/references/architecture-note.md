@@ -47,7 +47,7 @@ If this path fails because the packet set is not sufficient, treat that as packe
   - runtime packets
   - validator/apply inputs and outputs
 - eval contract:
-  - `packet_metrics.json`
+  - `packet_sizing.json`
   - optional build result JSON from `build_release_copy_packets.py --result-output`
   - `eval-log.json`
   - smoke summaries
@@ -59,12 +59,12 @@ Token-efficiency data belongs to the eval side. It is for regression visibility,
 - authority:
   - `authority_order`
   - `packet_worker_map`
+  - `spawn_plan`
   - `common_path_contract`
 - metadata:
   - `preferred_worker_families`
-- derived convenience:
-  - `recommended_workers`
-  - `optional_workers`
+- build preview:
+  - `spawn_plan_preview`
 - explanatory:
   - `worker_selection_guidance`
 

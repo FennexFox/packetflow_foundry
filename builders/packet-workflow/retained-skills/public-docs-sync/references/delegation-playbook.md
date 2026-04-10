@@ -65,7 +65,7 @@ Read this file only when `orchestrator.json` sets `review_mode` to `targeted-del
   - `packet_explorer`
 - `forms_batch_packet`
   - `docs_verifier`
-- `worker_selection_guidance` is explanatory only and does not override `packet_worker_map`.
+- `worker_selection_guidance` is descriptive metadata only and does not override `packet_worker_map`.
 - Guidance notes:
   - Use `repo_mapper` when packet membership, execution path, touched surfaces, or authority mapping is unclear.
   - Use `packet_explorer` when one focused packet needs narrow code, behavior, or workflow analysis grounded by only the explicitly referenced file slices.
@@ -73,7 +73,7 @@ Read this file only when `orchestrator.json` sets `review_mode` to `targeted-del
   - Use `evidence_summarizer` for long narrative evidence that should be condensed into decision-ready candidate records.
   - Use `large_diff_auditor` for large diffs, high-risk hotspots, regressions, invariants, and missing tests.
   - Use `log_triager` for logs, CI failures, runtime incidents, and earliest-useful-signal triage.
-  - Treat `worker_selection_guidance` as explanatory only. `packet_worker_map` is the concrete routing authority when configured.
+  - Treat `worker_selection_guidance` as descriptive metadata only. `packet_worker_map` is the concrete routing authority, and `orchestrator.json` `spawn_plan` is the execution-ready materialization when configured.
 
 ## Analysis Worker Contract
 

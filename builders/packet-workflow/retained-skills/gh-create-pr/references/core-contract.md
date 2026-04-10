@@ -26,11 +26,12 @@ Conditionally emitted runtime packets:
 - `runtime_packet.json` when runtime files changed
 - `process_packet.json` when automation/docs/config files changed
 
-Evaluation-only output:
-- `packet_metrics.json`
+Evaluation-only outputs:
+- `packet_sizing.json`
+- optional `build-result.json` for `spawn_plan_preview` and build-phase review metadata
 
 Rules:
-- keep `packet_metrics.json` out of runtime routing
+- keep `packet_sizing.json` and `build-result.json` out of runtime routing
 - keep final title/body synthesis local
 - keep `rules_packet.json` authoritative for template, title, and claim gates
 - keep validator/apply mutation gates local
@@ -59,7 +60,8 @@ Optional local cross-check workers:
 - `runtime_packet.json -> large_diff_auditor`
 
 Rules:
-- `worker_selection_guidance` is explanatory only
+- `worker_selection_guidance` is descriptive metadata only
+- `orchestrator.json` `spawn_plan` is the execution-ready delegation surface
 - `rules_packet.json` remains local-first even when a rules verifier is available
 - final PR draft synthesis never delegates away from the orchestrator
 
@@ -72,7 +74,7 @@ Keep in runtime packets and `orchestrator.json`:
 - local responsibilities
 - packet file lists
 
-Keep in `packet_metrics.json` or evaluation logs only:
+Keep in `packet_sizing.json`, `build-result.json`, or evaluation logs only:
 - packet sizing
 - byte proxies
 - token-efficiency estimates

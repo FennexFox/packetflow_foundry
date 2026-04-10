@@ -8,7 +8,7 @@ Shared rules:
 - raw rereads remain exception-only
 - packet insufficiency on the common path is a failure, not a reason to guess
 - runtime metadata stays in runtime packets
-- token-efficiency and packet-sizing metrics stay in evaluation artifacts such as `packet_metrics.json`
+- token-efficiency and packet-sizing metrics stay in evaluation artifacts such as `packet_sizing.json` and evaluation logs
 
 Profiles may opt into this contract.
 They must not redefine its meaning.

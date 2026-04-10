@@ -27,7 +27,7 @@ The authoritative runtime source is `scripts/reword_plan_contract.py`.
   - `rules_packet.json`
   - `commit-XX.json`
   - `orchestrator.json`
-  - `packet_metrics.json`
+  - `packet_sizing.json`
 - optional build artifact:
   - `build-result.json` when `--result-output` is supplied
 
@@ -83,8 +83,9 @@ Each item in `commits` must include:
 `build-result.json` must expose:
 
 - `review_mode`
-- `recommended_worker_count`
-- `recommended_workers`
+- `review_mode_baseline`
+- `review_mode_adjustments`
+- `spawn_plan_preview`
 - `packet_files`
 - `active_packets`
 - `active_packet_count`
@@ -94,9 +95,9 @@ Each item in `commits` must include:
 - `common_path_sufficient`
 - `raw_reread_count`
 - `raw_reread_reasons`
-- `packet_metrics`
+- `packet_sizing`
 
-`packet_metrics` must use this calculation policy:
+`packet_sizing` must use this calculation policy:
 
 - local-only baseline: `rules.json + collected plan.json`
 - packet-path estimate: `rules_packet.json + largest commit packet`

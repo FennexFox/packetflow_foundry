@@ -127,7 +127,7 @@ Domain overlay:
 - `risks_packet`
   - `evidence_summarizer`
 
-- `worker_selection_guidance` is explanatory only and does not override `packet_worker_map`.
+- `worker_selection_guidance` is descriptive metadata only and does not override `packet_worker_map`.
 
 ## Repo Profile Boundary
 
@@ -175,7 +175,7 @@ Domain overlay:
 ## Runtime vs Evaluation Metadata
 
 - Keep runtime routing, authority, stop conditions, review mode, domain overlay, and adjudication support in `orchestrator.json` and `global_packet.json`.
-- Keep packet sizing, byte proxies, and delegation-efficiency metrics in evaluation logs or `packet_metrics.json`, not in the core runtime packets.
+- Keep packet sizing, byte proxies, and delegation-efficiency metrics in evaluation logs or `packet_sizing.json`, not in the core runtime packets.
 - Keep any repo-local temporary, helper, scratch, or ad hoc operator-input file under `.codex/tmp/`, not at repo root or in tracked source directories.
 - Keep repo-specific file layout and weekly-update conventions in the repo profile instead of hardcoding them into this core contract.
 - Keep the repo profile declarative. Scripts may consume its data, but the profile itself should not define executable behavior.

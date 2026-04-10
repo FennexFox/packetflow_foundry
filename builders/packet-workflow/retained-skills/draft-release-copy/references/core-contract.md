@@ -80,7 +80,7 @@ Stop conditions:
 - `evidence_packet`
   - `docs_verifier`
 
-- `worker_selection_guidance` is explanatory only and does not override `packet_worker_map`.
+- `worker_selection_guidance` is descriptive metadata only and does not override `packet_worker_map`.
 - Guidance notes:
   - Use `repo_mapper` when packet membership, execution path, touched surfaces, or authority mapping is unclear.
   - Use `packet_explorer` when one focused packet needs narrow code, behavior, or workflow analysis grounded by only the explicitly referenced file slices.
@@ -88,7 +88,7 @@ Stop conditions:
   - Use `evidence_summarizer` for long narrative evidence that should be condensed into decision-ready candidate records.
   - Use `large_diff_auditor` for large diffs, high-risk hotspots, regressions, invariants, and missing tests.
   - Use `log_triager` for logs, CI failures, runtime incidents, and earliest-useful-signal triage.
-  - Treat `worker_selection_guidance` as explanatory only. `packet_worker_map` is the concrete routing authority when configured.
+  - Treat `worker_selection_guidance` as descriptive metadata only. `packet_worker_map` is the concrete routing authority, and `orchestrator.json` `spawn_plan` is the execution-ready materialization when configured.
 
 ## Repo Profile Boundary
 
@@ -146,7 +146,7 @@ Stop conditions:
 ## Runtime vs Evaluation Metadata
 
 - Keep runtime routing, authority, stop conditions, and adjudication support in `orchestrator.json` and `global_packet.json`.
-- Keep packet sizing, byte proxies, and delegation-efficiency metrics in evaluation logs or `packet_metrics.json`, not in the core runtime packets.
+- Keep packet sizing, byte proxies, and delegation-efficiency metrics in evaluation logs or `packet_sizing.json`, not in the core runtime packets.
 - Keep any repo-local temporary, helper, scratch, or ad hoc operator-input file under `.codex/tmp/`, not at repo root or in tracked source directories.
 - Keep repo-specific file layout and doc ownership in the repo profile instead of hardcoding them into this core contract.
 - Keep the repo profile declarative. Scripts may consume its data, but the profile itself should not define executable behavior.

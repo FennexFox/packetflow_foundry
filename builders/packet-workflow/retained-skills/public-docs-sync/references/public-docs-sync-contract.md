@@ -27,7 +27,7 @@ Required packet outputs:
 - `reporting_packet.json`
 - `workflow_packet.json`
 - `forms_batch_packet.json`
-- `packet_metrics.json` for evaluation and regression only
+- `packet_sizing.json` for evaluation and regression only
 
 Optional grouped packet:
 - `batch-packet-01.json` when multiple public issue forms should be reviewed together
@@ -86,9 +86,10 @@ Concrete routing uses `packet_worker_map`:
 
 Rules:
 - `packet_worker_map` is the routing authority
-- `worker_selection_guidance` is explanatory only
+- `worker_selection_guidance` is descriptive metadata only
+- `orchestrator.json` `spawn_plan` is the runtime execution surface
 - routed worker budgets still follow `local-only`, `targeted-delegation`, and `broad-delegation`
-- runtime packets stay lean; token and size counters belong in `packet_metrics.json` or evaluation logs, not in `orchestrator.json`
+- runtime packets stay lean; token and size counters belong in `packet_sizing.json` or evaluation logs, not in `orchestrator.json`
 
 ## Ref Discovery And Remote Evidence
 
@@ -277,7 +278,7 @@ The written marker should capture:
 
 ## Evaluation-Side Metrics
 
-`packet_metrics.json` is evaluation-only and should contain:
+`packet_sizing.json` is evaluation-only and should contain:
 - `packet_count`
 - `packet_size_bytes`
 - `largest_packet_bytes`
