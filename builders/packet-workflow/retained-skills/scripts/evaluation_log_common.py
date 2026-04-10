@@ -2212,6 +2212,7 @@ def normalize_spawn_activation(log: dict[str, Any]) -> None:
     for worker_id in activation["skipped_worker_ids"]:
         synthesize_list_only_row(worker_id, resolved_as="not_activated")
 
+    default_spawn_enabled = bool(spawn_plan.get("default_spawn_enabled"))
     for worker in spawn_plan.get("workers", []):
         if not isinstance(worker, dict):
             continue
@@ -2225,6 +2226,8 @@ def normalize_spawn_activation(log: dict[str, Any]) -> None:
         if worker_id in activation["local_fallback_worker_ids"]:
             continue
         if worker_id in incoming_ids:
+            continue
+        if not default_spawn_enabled or not bool(worker.get("default_spawn")):
             continue
         normalized_rows.append(
             normalize_spawn_activation_worker(

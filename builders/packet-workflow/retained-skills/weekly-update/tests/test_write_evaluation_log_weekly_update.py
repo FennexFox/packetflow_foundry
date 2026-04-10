@@ -767,6 +767,64 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
         self.assertEqual(actual_workers["summary"]["planned_not_run_count"], 1)
         self.assertEqual(actual_workers["workers"][0]["status"], "planned_not_run")
 
+    def test_finalize_ignores_optional_worker_without_activation_payload(self) -> None:
+        spawn_plan = eval_log.common.build_spawn_plan(
+            review_mode="targeted-delegation",
+            optional_workers=["repo_mapper"],
+            common_path_sufficient=True,
+        )
+        log = {
+            "skill": {"name": "weekly-update"},
+            "measurement": {},
+            "baseline": {},
+            "orchestration": {
+                "review_mode": "targeted-delegation",
+                "spawn_plan": spawn_plan,
+            },
+            "quality": {},
+            "safety": {},
+            "skill_specific": {"data": {}},
+        }
+
+        eval_log.finalize_log(log, {"orchestration": {}})
+
+        activation = log["orchestration"]["spawn_activation"]
+        actual_workers = log["orchestration"]["actual_workers"]
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 0)
+        self.assertEqual(activation["summary"]["not_activated_count"], 0)
+        self.assertEqual(activation["workers"], [])
+        self.assertEqual(actual_workers["summary"]["planned_not_run_count"], 0)
+        self.assertEqual(actual_workers["workers"], [])
+
+    def test_finalize_ignores_blocked_default_spawn_without_activation_payload(self) -> None:
+        worker = self._planned_worker()
+        log = {
+            "skill": {"name": "weekly-update"},
+            "measurement": {},
+            "baseline": {},
+            "orchestration": {
+                "review_mode": "targeted-delegation",
+                "spawn_plan": eval_log.common.build_spawn_plan(
+                    review_mode="targeted-delegation",
+                    required_workers=[worker],
+                    common_path_sufficient=False,
+                ),
+            },
+            "quality": {},
+            "safety": {},
+            "skill_specific": {"data": {}},
+        }
+
+        eval_log.finalize_log(log, {"orchestration": {}})
+
+        activation = log["orchestration"]["spawn_activation"]
+        actual_workers = log["orchestration"]["actual_workers"]
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 0)
+        self.assertEqual(activation["summary"]["not_activated_count"], 0)
+        self.assertEqual(activation["workers"], [])
+        self.assertEqual(actual_workers["summary"]["planned_not_run_count"], 0)
+        self.assertEqual(actual_workers["workers"], [])
+
     def test_finalize_keeps_drifted_worker_row_unplanned_even_when_identity_matches(self) -> None:
         log = {
             "skill": {"name": "weekly-update"},
