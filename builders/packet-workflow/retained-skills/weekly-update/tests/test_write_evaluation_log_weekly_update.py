@@ -470,6 +470,36 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
         self.assertEqual(activation["summary"]["local_fallback_count"], 1)
         self.assertEqual(activation["summary"]["not_activated_count"], 1)
 
+    def test_normalize_spawn_activation_preserves_distinct_actual_worker_id(self) -> None:
+        worker = self._planned_worker()
+        log = {
+            "orchestration": {
+                "spawn_plan": eval_log.common.build_spawn_plan(
+                    review_mode="targeted-delegation",
+                    required_workers=[worker],
+                    common_path_sufficient=True,
+                ),
+                "spawn_activation": {
+                    "workers": [
+                        {
+                            "worker_id": "actual:spawn:repo_mapper:run-2",
+                            "planned_worker_id": worker["worker_id"],
+                            "resolved_as": "spawned",
+                            "spawn_attempted": True,
+                            "spawn_succeeded": True,
+                        }
+                    ],
+                },
+            }
+        }
+
+        eval_log.common.normalize_spawn_activation(log)
+
+        activation_row = log["orchestration"]["spawn_activation"]["workers"][0]
+        self.assertEqual(activation_row["worker_id"], "actual:spawn:repo_mapper:run-2")
+        self.assertEqual(activation_row["planned_worker_id"], worker["worker_id"])
+        self.assertEqual(activation_row["resolved_as"], "spawned")
+
     def test_finalize_marks_list_only_local_fallback_as_spawn_failed(self) -> None:
         worker = self._planned_worker()
         log = {
@@ -510,6 +540,53 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
         self.assertEqual(actual_workers["summary"]["planned_not_run_count"], 0)
         self.assertEqual(actual_workers["workers"][0]["row_kind"], "planned")
         self.assertEqual(actual_workers["workers"][0]["status"], "spawn_failed")
+
+    def test_finalize_marks_list_only_spawned_worker_as_started_when_capture_incomplete(self) -> None:
+        worker = self._planned_worker()
+        log = {
+            "skill": {"name": "weekly-update"},
+            "measurement": {},
+            "baseline": {},
+            "orchestration": {
+                "review_mode": "targeted-delegation",
+                "spawn_plan": eval_log.common.build_spawn_plan(
+                    review_mode="targeted-delegation",
+                    required_workers=[worker],
+                    common_path_sufficient=True,
+                ),
+            },
+            "quality": {},
+            "safety": {},
+            "skill_specific": {"data": {}},
+        }
+
+        eval_log.finalize_log(
+            log,
+            {
+                "orchestration": {
+                    "spawn_activation": {
+                        "activated_worker_ids": [worker["worker_id"]],
+                    },
+                    "actual_workers": {
+                        "summary": {
+                            "capture_complete": False,
+                            "capture_incomplete_reason": "worker telemetry pending",
+                        },
+                        "workers": [],
+                    },
+                }
+            },
+        )
+
+        activation = log["orchestration"]["spawn_activation"]
+        actual_workers = log["orchestration"]["actual_workers"]
+        self.assertEqual(activation["summary"]["attempted_count"], 1)
+        self.assertEqual(activation["summary"]["succeeded_count"], 1)
+        self.assertEqual(activation["workers"][0]["resolved_as"], "spawned")
+        self.assertFalse(actual_workers["summary"]["capture_complete"])
+        self.assertEqual(actual_workers["summary"]["planned_not_run_count"], 0)
+        self.assertEqual(actual_workers["workers"][0]["row_kind"], "planned")
+        self.assertEqual(actual_workers["workers"][0]["status"], "started")
 
     def test_finalize_keeps_drifted_worker_row_unplanned_even_when_identity_matches(self) -> None:
         log = {

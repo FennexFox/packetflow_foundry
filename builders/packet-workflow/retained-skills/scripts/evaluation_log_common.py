@@ -2174,15 +2174,16 @@ def normalize_spawn_activation(log: dict[str, Any]) -> None:
         plan_worker = by_id.get(candidate_id)
         if not plan_worker:
             continue
-        worker_id = str(plan_worker.get("worker_id") or "").strip()
-        if worker_id in seen_worker_ids:
+        planned_worker_id = str(plan_worker.get("worker_id") or "").strip()
+        if planned_worker_id in seen_worker_ids:
             continue
-        seen_worker_ids.add(worker_id)
+        seen_worker_ids.add(planned_worker_id)
+        worker_id = str(row.get("worker_id") or planned_worker_id).strip() or planned_worker_id
         normalized_rows.append(
             normalize_spawn_activation_worker(
                 row,
                 worker_id=worker_id,
-                planned_worker_id=worker_id,
+                planned_worker_id=planned_worker_id,
                 default_stage=str(plan_worker.get("stage") or "initial_parallel"),
             )
         )
@@ -2349,8 +2350,14 @@ def status_from_spawn_activation(
         candidate_id = str(row.get("planned_worker_id") or row.get("worker_id") or "").strip()
         if candidate_id != worker_id:
             continue
+        if row.get("resolved_as") == "spawned":
+            return "started"
         if row.get("resolved_as") in {"local_fallback", "spawn_failed"}:
             return "spawn_failed"
+    if worker_id in stable_dedupe(
+        list_of_strings(activation.get("activated_worker_ids"))
+    ):
+        return "started"
     if worker_id in stable_dedupe(
         list_of_strings(activation.get("local_fallback_worker_ids"))
     ):
