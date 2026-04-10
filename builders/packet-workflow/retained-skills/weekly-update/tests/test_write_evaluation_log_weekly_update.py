@@ -406,6 +406,111 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
                 },
             )
 
+    def test_normalize_spawn_activation_materializes_rows_from_id_lists(self) -> None:
+        required_worker = self._planned_worker()
+        optional_worker = {
+            **required_worker,
+            "name": "qa-repo-mapper",
+            "packets": ["qa_packet.json"],
+            "worker_id": eval_log.common.planned_worker_id(
+                {
+                    "name": "qa-repo-mapper",
+                    "agent_type": "repo_mapper",
+                    "model": "gpt-5.4-mini",
+                    "reasoning_effort": "medium",
+                    "packets": ["qa_packet.json"],
+                    "responsibility": "QA repo surfaces",
+                }
+            ),
+        }
+        skipped_worker = {
+            **required_worker,
+            "name": "risk-repo-mapper",
+            "packets": ["risk_packet.json"],
+            "worker_id": eval_log.common.planned_worker_id(
+                {
+                    "name": "risk-repo-mapper",
+                    "agent_type": "repo_mapper",
+                    "model": "gpt-5.4-mini",
+                    "reasoning_effort": "medium",
+                    "packets": ["risk_packet.json"],
+                    "responsibility": "Review risk surfaces",
+                }
+            ),
+        }
+        log = {
+            "orchestration": {
+                "spawn_plan": eval_log.common.build_spawn_plan(
+                    review_mode="targeted-delegation",
+                    required_workers=[required_worker, optional_worker, skipped_worker],
+                    common_path_sufficient=False,
+                ),
+                "spawn_activation": {
+                    "activated_worker_ids": [optional_worker["worker_id"]],
+                    "skipped_worker_ids": [skipped_worker["worker_id"]],
+                    "local_fallback_worker_ids": [required_worker["worker_id"]],
+                    "workers": [],
+                },
+            }
+        }
+
+        eval_log.common.normalize_spawn_activation(log)
+
+        activation = log["orchestration"]["spawn_activation"]
+        rows = {
+            row["worker_id"]: row["resolved_as"]
+            for row in activation["workers"]
+        }
+        self.assertEqual(rows[required_worker["worker_id"]], "local_fallback")
+        self.assertEqual(rows[optional_worker["worker_id"]], "spawned")
+        self.assertEqual(rows[skipped_worker["worker_id"]], "not_activated")
+        self.assertEqual(activation["summary"]["attempted_count"], 2)
+        self.assertEqual(activation["summary"]["succeeded_count"], 1)
+        self.assertEqual(activation["summary"]["failed_count"], 1)
+        self.assertEqual(activation["summary"]["local_fallback_count"], 1)
+        self.assertEqual(activation["summary"]["not_activated_count"], 1)
+
+    def test_finalize_marks_list_only_local_fallback_as_spawn_failed(self) -> None:
+        worker = self._planned_worker()
+        log = {
+            "skill": {"name": "weekly-update"},
+            "measurement": {},
+            "baseline": {},
+            "orchestration": {
+                "review_mode": "targeted-delegation",
+                "spawn_plan": eval_log.common.build_spawn_plan(
+                    review_mode="targeted-delegation",
+                    required_workers=[worker],
+                    common_path_sufficient=False,
+                ),
+            },
+            "quality": {},
+            "safety": {},
+            "skill_specific": {"data": {}},
+        }
+
+        eval_log.finalize_log(
+            log,
+            {
+                "orchestration": {
+                    "spawn_activation": {
+                        "local_fallback_worker_ids": [worker["worker_id"]],
+                    }
+                }
+            },
+        )
+
+        activation = log["orchestration"]["spawn_activation"]
+        actual_workers = log["orchestration"]["actual_workers"]
+        self.assertEqual(activation["summary"]["attempted_count"], 1)
+        self.assertEqual(activation["summary"]["failed_count"], 1)
+        self.assertEqual(activation["workers"][0]["resolved_as"], "local_fallback")
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 1)
+        self.assertEqual(actual_workers["summary"]["spawn_failed_count"], 1)
+        self.assertEqual(actual_workers["summary"]["planned_not_run_count"], 0)
+        self.assertEqual(actual_workers["workers"][0]["row_kind"], "planned")
+        self.assertEqual(actual_workers["workers"][0]["status"], "spawn_failed")
+
     def test_finalize_keeps_drifted_worker_row_unplanned_even_when_identity_matches(self) -> None:
         log = {
             "skill": {"name": "weekly-update"},

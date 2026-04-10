@@ -2126,6 +2126,45 @@ def normalize_spawn_activation(log: dict[str, Any]) -> None:
     }
     normalized_rows: list[dict[str, Any]] = []
     seen_worker_ids: set[str] = set()
+
+    def synthesize_list_only_row(
+        worker_id: str,
+        *,
+        resolved_as: str,
+    ) -> None:
+        plan_worker = by_id.get(worker_id)
+        if not plan_worker or worker_id in seen_worker_ids:
+            return
+        seed: dict[str, Any]
+        if resolved_as == "spawned":
+            seed = {
+                "resolved_as": "spawned",
+                "spawn_attempted": True,
+                "spawn_succeeded": True,
+            }
+        elif resolved_as == "local_fallback":
+            seed = {
+                "resolved_as": "local_fallback",
+                "spawn_attempted": True,
+                "spawn_failed": True,
+            }
+        else:
+            seed = {
+                "resolved_as": "not_activated",
+                "spawn_attempted": False,
+                "spawn_succeeded": False,
+                "spawn_failed": False,
+            }
+        seen_worker_ids.add(worker_id)
+        normalized_rows.append(
+            normalize_spawn_activation_worker(
+                seed,
+                worker_id=worker_id,
+                planned_worker_id=worker_id,
+                default_stage=str(plan_worker.get("stage") or "initial_parallel"),
+            )
+        )
+
     for row in incoming_rows:
         if not isinstance(row, dict):
             continue
@@ -2147,6 +2186,13 @@ def normalize_spawn_activation(log: dict[str, Any]) -> None:
                 default_stage=str(plan_worker.get("stage") or "initial_parallel"),
             )
         )
+
+    for worker_id in activation["local_fallback_worker_ids"]:
+        synthesize_list_only_row(worker_id, resolved_as="local_fallback")
+    for worker_id in activation["activated_worker_ids"]:
+        synthesize_list_only_row(worker_id, resolved_as="spawned")
+    for worker_id in activation["skipped_worker_ids"]:
+        synthesize_list_only_row(worker_id, resolved_as="not_activated")
 
     default_spawn_enabled = bool(spawn_plan.get("default_spawn_enabled"))
     for worker in spawn_plan.get("workers", []):
@@ -2305,6 +2351,10 @@ def status_from_spawn_activation(
             continue
         if row.get("resolved_as") in {"local_fallback", "spawn_failed"}:
             return "spawn_failed"
+    if worker_id in stable_dedupe(
+        list_of_strings(activation.get("local_fallback_worker_ids"))
+    ):
+        return "spawn_failed"
     return "planned_not_run"
 
 
