@@ -133,9 +133,10 @@ class WeeklyUpdateFailurePathTests(unittest.TestCase):
         quiet_context = self.quiet_context()
         lint = wl.lint_context(quiet_context)
 
-        with (
-            patch.object(wl, "count_candidates_by_proposed_classification", side_effect=AssertionError("build_result-only helper should not run")),
-            patch.object(wl, "count_raw_reread_reasons", side_effect=AssertionError("build_result-only helper should not run")),
+        with patch.object(
+            wl,
+            "count_candidates_by_proposed_classification",
+            side_effect=AssertionError("build_result-only helper should not run"),
         ):
             packets = wl.build_packets(quiet_context, lint)
 
@@ -168,6 +169,29 @@ class WeeklyUpdateFailurePathTests(unittest.TestCase):
             artifacts["build_result"]["efficiency"]["packet_compaction"]["savings_tokens"],
             artifacts["efficiency"]["packet_compaction"]["savings_tokens"],
         )
+
+    def test_raw_reread_candidates_disable_default_spawn_even_in_delegated_mode(self) -> None:
+        context = dict(self.context)
+        context["override_signals"] = {
+            "high_churn": True,
+            "multi_surface_active": False,
+            "nested_lineage_complexity": False,
+        }
+        context["candidate_inventory"] = [dict(candidate) for candidate in self.context["candidate_inventory"]]
+        context["candidate_inventory"][0]["raw_reread_reason"] = "conflicting_signals"
+
+        lint = wl.lint_context(context)
+        packets = wl.build_packets(context, lint)
+        artifacts = wl.build_packet_artifacts(context, lint)
+
+        self.assertNotEqual(packets["orchestrator.json"]["review_mode"], "local-only")
+        self.assertFalse(artifacts["build_result"]["common_path_sufficient"])
+        self.assertFalse(packets["orchestrator.json"]["spawn_plan"]["default_spawn_enabled"])
+        self.assertIn(
+            "common_path_sufficient=false",
+            packets["orchestrator.json"]["spawn_plan"]["default_spawn_blockers"],
+        )
+        self.assertFalse(artifacts["build_result"]["spawn_plan_preview"]["default_spawn_enabled"])
 
     def test_non_mapping_analysis_ref_is_ignored_during_packet_builds(self) -> None:
         legacy_context = dict(self.context)

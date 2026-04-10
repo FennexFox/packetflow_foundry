@@ -744,8 +744,19 @@ def main() -> int:
         "rules_packet.json": rules_packet,
         **commit_payloads,
     }
+    provisional_spawn_plan = common.build_spawn_plan(
+        review_mode=review_mode,
+        required_workers=recommended_workers,
+        optional_workers=optional_workers,
+        common_path_sufficient=common_path_sufficient,
+    )
+    orchestrator["spawn_plan"] = provisional_spawn_plan
+    orchestrator["orchestrator_fingerprint"] = common.orchestrator_fingerprint(orchestrator)
     packet_metrics = compute_packet_metrics(
-        packet_payloads,
+        {
+            **packet_payloads,
+            "orchestrator.json": orchestrator,
+        },
         local_only_sources={"rules": rules, "plan": plan},
         shared_packets=COMMON_PATH_CONTRACT["shared_packets"],
     )

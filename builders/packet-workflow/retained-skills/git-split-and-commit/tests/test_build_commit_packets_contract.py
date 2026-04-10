@@ -114,6 +114,9 @@ class BuildCommitPacketsContractTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(compute_packet_metrics.call_count, 2)
+        first_packet_payloads = compute_packet_metrics.call_args_list[0].args[0]
+        self.assertIn("spawn_plan", first_packet_payloads["orchestrator.json"])
+        self.assertIn("orchestrator_fingerprint", first_packet_payloads["orchestrator.json"])
 
     def run_script(self, rules: dict, worktree: dict) -> tuple[int, Path, dict, dict]:
         tmpdir = tempfile.TemporaryDirectory()

@@ -1893,9 +1893,14 @@ def _build_runtime_packet_state(context: dict[str, Any], lint_report: dict[str, 
     risks_packet["candidate_ids"] = risk_ids
     risks_packet["artifact_reference_candidate_ids"] = [candidate_id for candidate_id in risk_ids if candidate_lookup[candidate_id]["proposed_classification"] == ARTIFACT_ONLY]
 
+    raw_reread_reason_counts = count_raw_reread_reasons(context.get("candidate_inventory") or [])
+    common_path_sufficient = not raw_reread_reason_counts
+
     def render_packets(
         final_review_mode: str,
         final_adjustments: list[str],
+        *,
+        common_path_sufficient: bool,
     ) -> tuple[dict[str, dict[str, Any]], dict[str, Any]]:
         workers = routed_workers_for_review_mode(final_review_mode)
         optional_workers = derived_optional_workers(workers)
@@ -1903,7 +1908,7 @@ def _build_runtime_packet_state(context: dict[str, Any], lint_report: dict[str, 
             review_mode=final_review_mode,
             required_workers=workers,
             optional_workers=optional_workers,
-            common_path_sufficient=True,
+            common_path_sufficient=common_path_sufficient,
         )
         global_packet = {
             "skill_name": SKILL_NAME,
@@ -1982,7 +1987,11 @@ def _build_runtime_packet_state(context: dict[str, Any], lint_report: dict[str, 
             },
         )
 
-    packets, orchestration_meta = render_packets(review_mode, review_mode_adjustments)
+    packets, orchestration_meta = render_packets(
+        review_mode,
+        review_mode_adjustments,
+        common_path_sufficient=common_path_sufficient,
+    )
     packet_metrics = compute_packet_metrics(
         packets,
         raw_local_sources={"context": context, "lint": lint_report},
@@ -1993,7 +2002,11 @@ def _build_runtime_packet_state(context: dict[str, Any], lint_report: dict[str, 
         review_mode_adjustments,
     )
     if packets["orchestrator.json"]["review_mode"] != review_mode:
-        packets, orchestration_meta = render_packets(review_mode, review_mode_adjustments)
+        packets, orchestration_meta = render_packets(
+            review_mode,
+            review_mode_adjustments,
+            common_path_sufficient=common_path_sufficient,
+        )
         packet_metrics = compute_packet_metrics(
             packets,
             raw_local_sources={"context": context, "lint": lint_report},

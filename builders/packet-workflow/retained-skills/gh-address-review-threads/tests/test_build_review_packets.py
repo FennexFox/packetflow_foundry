@@ -852,6 +852,12 @@ class BuildReviewPacketsTests(unittest.TestCase):
             self.assertEqual(orchestrator["review_mode"], "targeted-delegation")
             self.assertNotIn("review_mode_overrides", orchestrator)
             self.assertFalse(build_result["common_path_sufficient"])
+            self.assertFalse(orchestrator["spawn_plan"]["default_spawn_enabled"])
+            self.assertIn(
+                "common_path_sufficient=false",
+                orchestrator["spawn_plan"]["default_spawn_blockers"],
+            )
+            self.assertFalse(build_result["spawn_plan_preview"]["default_spawn_enabled"])
             self.assertTrue(build_result["override_signals"])
             failure_reasons = build_result["common_path_failures"][0]["explicit_reread_reasons"]
             self.assertIn("missing_required_evidence", failure_reasons)

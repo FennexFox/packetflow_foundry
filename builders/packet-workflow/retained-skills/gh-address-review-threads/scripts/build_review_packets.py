@@ -1459,13 +1459,6 @@ def main() -> int:
         global_packet_name=global_packet_name,
         optional_qa_packets=(batch_files + singleton_packets)[:6],
     )
-    spawn_plan = common.build_spawn_plan(
-        review_mode=review_mode,
-        required_workers=recommended_workers,
-        optional_workers=optional_workers,
-        common_path_sufficient=True,
-    )
-
     common_path_failures = [
         {
             "packet": item["packet"],
@@ -1479,6 +1472,12 @@ def main() -> int:
         if not bool(item["common_path_sufficient"])
     ]
     common_path_sufficient = not common_path_failures
+    spawn_plan = common.build_spawn_plan(
+        review_mode=review_mode,
+        required_workers=recommended_workers,
+        optional_workers=optional_workers,
+        common_path_sufficient=common_path_sufficient,
+    )
 
     global_packet["orchestrator_profile"] = ORCHESTRATOR_PROFILE
     global_packet["common_path_contract"] = COMMON_PATH_CONTRACT

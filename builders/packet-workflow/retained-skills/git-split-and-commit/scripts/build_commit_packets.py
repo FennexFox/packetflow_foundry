@@ -1145,6 +1145,14 @@ def main() -> int:
         ],
         "split_candidates": split_packets,
     }
+    provisional_spawn_plan = common.build_spawn_plan(
+        review_mode=review_mode,
+        required_workers=recommended_workers,
+        optional_workers=optional_workers,
+        common_path_sufficient=common_path_sufficient,
+    )
+    orchestrator["spawn_plan"] = provisional_spawn_plan
+    orchestrator["orchestrator_fingerprint"] = common.orchestrator_fingerprint(orchestrator)
     packet_metrics = compute_packet_metrics(
         packet_payloads,
         local_only_sources={
@@ -1257,15 +1265,6 @@ def main() -> int:
             )
         orchestrator["review_mode"] = review_mode
         packet_payloads["orchestrator.json"] = orchestrator
-        packet_metrics = compute_packet_metrics(
-            packet_payloads,
-            local_only_sources={
-                "rules.json": rules,
-                "worktree.json": worktree,
-                "raw_focus_surfaces.json": local_only_surfaces,
-            },
-            shared_packets=[],
-        )
     spawn_plan_preview = common.build_spawn_plan(
         review_mode=review_mode,
         required_workers=recommended_workers,
