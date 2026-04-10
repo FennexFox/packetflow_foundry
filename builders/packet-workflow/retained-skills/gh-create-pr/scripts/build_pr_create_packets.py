@@ -439,23 +439,6 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         common_path_sufficient=True,
     )
     packet_files = list(packet_payloads.keys()) + ["orchestrator.json"]
-    build_result = common.normalize_build_result(
-        {
-        "review_mode": review_mode,
-        "review_mode_baseline": review_mode_baseline,
-        "review_mode_adjustments": review_mode_adjustments,
-        "spawn_plan_preview": spawn_plan,
-        "override_signals": lint_report.get("findings", {}).get("override_signals", {}),
-        "delegation_non_use_cases": contract.DELEGATION_NON_USE_CASES,
-        "packet_files": packet_files,
-        "orchestrator_profile": contract.ORCHESTRATOR_PROFILE,
-        "shared_local_packet": contract.SHARED_LOCAL_PACKET,
-        "template_status": context.get("template_selection", {}).get("status"),
-        "duplicate_hint_status": context.get("duplicate_check_hint", {}).get("status"),
-        "packet_metrics": packet_metrics,
-        },
-        packet_metrics=packet_metrics,
-    )
     orchestrator = {
         "workflow_family": contract.WORKFLOW_FAMILY,
         "archetype": contract.ARCHETYPE,
@@ -488,7 +471,33 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
     }
     orchestrator["orchestrator_fingerprint"] = common.orchestrator_fingerprint(orchestrator)
     packet_payloads["orchestrator.json"] = orchestrator
-    packet_payloads["packet_sizing.json"] = common.normalize_packet_sizing(packet_metrics)
+    final_packet_metrics = contract.compute_packet_metrics(
+        packet_payloads,
+        common_path_packet_names=common_path_packets,
+        raw_local_payload=raw_local_bundle(context, lint_report),
+    )
+    final_packet_metrics["common_path_packets"] = common_path_packets
+    final_packet_metrics["common_path_sufficient"] = True
+    final_packet_metrics["raw_reread_count"] = 0
+    final_packet_metrics["packet_insufficiency_is_failure"] = True
+    build_result = common.normalize_build_result(
+        {
+            "review_mode": review_mode,
+            "review_mode_baseline": review_mode_baseline,
+            "review_mode_adjustments": review_mode_adjustments,
+            "spawn_plan_preview": spawn_plan,
+            "override_signals": lint_report.get("findings", {}).get("override_signals", {}),
+            "delegation_non_use_cases": contract.DELEGATION_NON_USE_CASES,
+            "packet_files": packet_files,
+            "orchestrator_profile": contract.ORCHESTRATOR_PROFILE,
+            "shared_local_packet": contract.SHARED_LOCAL_PACKET,
+            "template_status": context.get("template_selection", {}).get("status"),
+            "duplicate_hint_status": context.get("duplicate_check_hint", {}).get("status"),
+            "packet_metrics": final_packet_metrics,
+        },
+        packet_metrics=final_packet_metrics,
+    )
+    packet_payloads["packet_sizing.json"] = common.normalize_packet_sizing(final_packet_metrics)
     return packet_payloads, build_result
 
 

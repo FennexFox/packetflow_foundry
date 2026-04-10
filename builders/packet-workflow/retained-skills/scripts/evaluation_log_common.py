@@ -1969,8 +1969,6 @@ def normalize_tokens(log: dict[str, Any]) -> None:
 def unplanned_status(status: str) -> str:
     if status in ALLOWED_UNPLANNED_LEDGER_STATUSES:
         return status
-    if status.startswith("unplanned_") and status in ALLOWED_UNPLANNED_LEDGER_STATUSES:
-        return status
     if status == "started":
         return "unplanned_started"
     if status in {"completed", "failed", "cancelled"}:

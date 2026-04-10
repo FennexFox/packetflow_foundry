@@ -96,6 +96,8 @@ class BuildPrCreatePacketsTests(unittest.TestCase):
         self.assertEqual(build_result["shared_local_packet"], "synthesis_packet.json")
         self.assertEqual(packets["orchestrator.json"]["routing_contract"], builder.contract.ROUTING_CONTRACT)
         self.assertEqual(packets["global_packet.json"]["routing_contract"], builder.contract.ROUTING_CONTRACT)
+        self.assertEqual(packets["packet_sizing.json"]["packet_count"], len(build_result["packet_files"]))
+        self.assertEqual(build_result["packet_sizing"]["packet_count"], len(build_result["packet_files"]))
         self.assertNotIn("review_mode_baseline", packets["orchestrator.json"])
         self.assertNotIn("review_mode_adjustments", packets["orchestrator.json"])
         self.assertNotIn("recommended_workers", packets["orchestrator.json"])
