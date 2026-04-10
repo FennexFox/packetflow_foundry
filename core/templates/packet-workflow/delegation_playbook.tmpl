@@ -26,7 +26,6 @@ Read this file only when the final `orchestrator.json` `review_mode` is `targete
 - review mode overrides
 - preferred worker families
 - packet worker map when configured
-- worker selection guidance
 - worker return contract
 - worker output shape
 - xHigh reread policy
@@ -35,6 +34,11 @@ Read this file only when the final `orchestrator.json` `review_mode` is `targete
 - reread reason values when decision-ready packets are enabled
 - domain overlay semantics when configured
 - optional local helper policy
+
+`orchestrator.json` is the execution authority:
+- treat `spawn_plan` as the authoritative runtime worker roster
+- use `packet_worker_map` as the routing authority inside that plan
+- do not infer execution intent from `global_packet.json` alone
 
 ## Worker Return Modes
 
@@ -48,8 +52,8 @@ Read this file only when the final `orchestrator.json` `review_mode` is `targete
 
 - Preferred worker families for this scaffold:
 __WORKER_FAMILY_MARKDOWN__
-- Surfaced optional worker list below is the delegated-mode exposed list after stable dedupe and after subtracting explicitly mapped recommended worker types:
-__SURFACED_OPTIONAL_WORKERS_BULLETS__
+- `spawn_plan` preview/default-spawn surface should drive actual worker launch decisions.
+- Non-default workers stay inactive until the runtime trigger policy activates them.
 __PACKET_WORKER_MAP_MARKDOWN__
 __WORKER_SELECTION_GUIDANCE_MARKDOWN__
 

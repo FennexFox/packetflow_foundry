@@ -64,7 +64,7 @@ WORKER_SELECTION_GUIDANCE = {
 ROUTING_CONTRACT = {
     "routing_authority": "packet_worker_map",
     "preferred_worker_families_role": "registry_metadata_only",
-    "derived_worker_fields": ["recommended_workers", "optional_workers"],
+    "derived_worker_fields": ["spawn_plan"],
 }
 
 DELEGATION_NON_USE_CASES = {

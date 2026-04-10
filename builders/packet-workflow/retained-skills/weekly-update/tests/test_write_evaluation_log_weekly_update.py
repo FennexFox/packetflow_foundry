@@ -157,7 +157,8 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
         eval_log.apply_phase_update(log, "build", result, 1.5)
 
         self.assertEqual(log["orchestration"]["review_mode"], "targeted-delegation")
-        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 2)
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 0)
+        self.assertEqual(len(log["orchestration"]["spawn_plan"]["workers"]), 2)
         self.assertEqual(log["skill_specific"]["data"]["selected_packets"], ["mapping_packet", "changes_packet", "risks_packet"])
         self.assertNotIn("packet_count", log["skill_specific"]["data"])
         self.assertNotIn("packet_tokens", log["skill_specific"]["data"])
@@ -194,7 +195,8 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
 
         eval_log.apply_phase_update(log, "build", result, None)
 
-        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 2)
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 0)
+        self.assertEqual(log["orchestration"]["spawn_plan"]["workers"], [])
         self.assertEqual(log["orchestration"]["planned_workers"]["workers"], [])
         self.assertEqual(log["orchestration"]["planned_workers"]["roles"], [])
 
@@ -274,7 +276,7 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
         actual_workers = log["orchestration"]["actual_workers"]
         self.assertEqual(actual_workers["summary"]["executed_count"], 1)
         self.assertEqual(actual_workers["summary"]["planned_not_run_count"], 1)
-        self.assertEqual(actual_workers["summary"]["unplanned_count"], 1)
+        self.assertEqual(actual_workers["summary"]["unplanned_row_count"], 1)
         self.assertEqual(actual_workers["workers"][0]["planned_worker_id"], None)
         self.assertEqual(actual_workers["workers"][0]["status"], "unplanned_completed")
         self.assertEqual(actual_workers["workers"][1]["status"], "planned_not_run")

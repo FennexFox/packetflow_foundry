@@ -263,8 +263,12 @@ class BuildCommitPacketsContractTest(unittest.TestCase):
         self.assertIn("efficiency", result)
         self.assertEqual(result["review_mode_baseline"], "targeted-delegation")
         self.assertEqual(result["review_mode_adjustments"], [])
-        self.assertEqual(result["planned_workers"]["count"], 2)
-        self.assertEqual(len(result["planned_workers"]["workers"]), 2)
+        default_workers = [
+            worker
+            for worker in result["spawn_plan_preview"]["workers"]
+            if worker.get("default_spawn")
+        ]
+        self.assertEqual(len(default_workers), 2)
 
     def test_edge_case_build_result_uses_explicit_reread_reason(self) -> None:
         rules = {

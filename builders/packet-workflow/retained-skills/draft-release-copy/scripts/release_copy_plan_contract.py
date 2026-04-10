@@ -49,7 +49,7 @@ AUTHORITY_ORDER = [
 
 ROUTING_AUTHORITY = "packet_worker_map"
 PREFERRED_WORKER_FAMILIES_ROLE = "registry_metadata_only"
-DERIVED_WORKER_FIELDS = ["recommended_workers", "optional_workers"]
+DERIVED_WORKER_FIELDS = ["spawn_plan"]
 EXPLANATORY_WORKER_FIELDS = ["worker_selection_guidance"]
 
 SMOKE_OUTPUT_FIELDS = [
@@ -202,7 +202,7 @@ PACKET_WORKER_MAP = {
 
 WORKER_SELECTION_GUIDANCE = {
     "routing_authority": "packet_worker_map",
-    "notes": "worker_selection_guidance is explanatory only; packet_worker_map is the concrete routing source.",
+    "notes": "worker_selection_guidance is descriptive metadata only; packet_worker_map is the routing authority and orchestrator.spawn_plan is its execution-ready materialization.",
     "agent_type_guidance": {
         "repo_mapper": "Use for authority order questions, packet membership, and scope mapping.",
         "docs_verifier": "Use for checklist policy, README wording, and release-policy verification.",

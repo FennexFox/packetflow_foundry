@@ -264,7 +264,7 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         )
         self.assertEqual(
             contract.runtime_field_roles()["derived_worker_fields"],
-            ["recommended_workers", "optional_workers"],
+            ["spawn_plan"],
         )
         self.assertEqual(packets.packet_worker_map()["publish_packet"], ["large_diff_auditor"])
         self.assertEqual(packets.packet_worker_map()["checklist_packet"], ["docs_verifier", "repo_mapper"])
@@ -359,7 +359,14 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         self.assertEqual(result_payload["context_fingerprint"], context["context_fingerprint"])
         self.assertEqual(result_payload["freshness_tuple"], context["freshness_tuple"])
         self.assertEqual(result_payload["review_mode"], orchestrator["review_mode"])
-        self.assertEqual(result_payload["planned_workers"]["count"], len(result_payload["planned_workers"]["workers"]))
+        self.assertEqual(
+            sum(
+                1
+                for worker in result_payload["spawn_plan_preview"]["workers"]
+                if worker.get("default_spawn")
+            ),
+            len(result_payload["spawn_plan_preview"]["workers"]),
+        )
         self.assertEqual(result_payload["packet_files"], orchestrator["packet_files"])
         self.assertEqual(result_payload["packet_sizing"], packet_sizing)
         self.assertEqual(result_payload["override_signals"], [])

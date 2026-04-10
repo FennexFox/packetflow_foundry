@@ -36,7 +36,7 @@ PACKET_WORKER_MAP = {
 
 WORKER_SELECTION_GUIDANCE = {
     "routing_authority": "packet_worker_map",
-    "notes": "worker_selection_guidance is explanatory only; packet_worker_map is the concrete routing source.",
+    "notes": "worker_selection_guidance is descriptive metadata only; packet_worker_map is the routing authority and orchestrator.spawn_plan is its execution-ready materialization.",
     "agent_type_guidance": {
         "repo_mapper": "Use for baseline reuse questions, packet ownership, and relevant-ref mapping when the selected ref is ambiguous.",
         "docs_verifier": "Use for public docs wording, workflow docs, and issue-template or policy verification.",

@@ -164,7 +164,7 @@ class PacketWorkflowVersioningTests(unittest.TestCase):
             report = versioning.evaluate_skill_dir(skill_dir)
             self.assertEqual(report["status"], versioning.STATUS_CURRENT)
             self.assertFalse(report["blocking"])
-            self.assertEqual(report["evaluation_schema_version"], "2.0")
+            self.assertEqual(report["evaluation_schema_version"], "3.0")
             self.assertTrue(report["migration_entry_present"])
 
     def test_canonical_pricing_snapshot_matches_openai_2026_04_09_rates(self) -> None:

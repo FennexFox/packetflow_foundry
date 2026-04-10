@@ -57,9 +57,9 @@
 - `unversioned -> packet-workflow 0.1.0`
   - change reason: introduced explicit builder-version compatibility metadata and upgrade rules for packet-workflow retained skills.
   - manual migration scope: added `builder_versioning` to `builder-spec.json`, added `metadata.versioning` to `profiles/default/profile.json`, and wired collector-side `builder_compatibility` reporting.
-- `packet-workflow 0.2.0 / epoch 2`
-  - change reason: evaluation telemetry schema moved to `2.0`, build results now emit `planned_workers`, `packet_sizing`, and `efficiency`, and pricing snapshot tracking became explicit.
-  - manual migration scope: update build-result/evaluation-log consumers, migrate retained build artifacts from `packet_metrics.json` to `packet_sizing.json`, and restamp retained skill/profile version metadata to epoch 2.
+- `packet-workflow 0.3.0 / epoch 3`
+  - change reason: evaluation telemetry schema moved to `3.0`, runtime execution is now driven by `orchestrator.spawn_plan`, build results now emit `spawn_plan_preview`, and eval logs resolve `planned_workers` plus `spawn_activation` from runtime execution outcomes.
+  - manual migration scope: update build-result/evaluation-log consumers, migrate retained build artifacts from `packet_metrics.json` to `packet_sizing.json`, and restamp retained skill/profile version metadata to epoch 3.
 
 ## Pilot Hardening Outcome
 - Prose-only invariants moved into script or test enforcement:
@@ -70,7 +70,7 @@
   - record-only: `review_mode_local_only`, `code_change_guardrail_blockers`, `broad_or_cross_cutting_fix_kept_local`, `validation_path_unclear`, `optional_qa_not_requested`
   - fatal: none in this pilot; lifecycle, fingerprint, marker-conflict, and missing-target failures stay on separate fatal gates
 - Runtime to eval-only moves:
-  - moved from runtime packets into build-result/eval-side artifacts: `review_mode_baseline`, `review_mode_adjustments`, `override_signals`, `recommended_workers`, `optional_workers`, `active_paths`, `active_areas`, `analysis_targets`, `thread_batches`, `delegation_non_use_cases`
+  - moved from runtime packets into build-result/eval-side artifacts: `review_mode_baseline`, `review_mode_adjustments`, `override_signals`, `spawn_plan_preview`, `active_paths`, `active_areas`, `analysis_targets`, `thread_batches`, `delegation_non_use_cases`
   - kept in runtime: final `review_mode`, `packet_worker_map`, `routing_contract`, `same_run_reconciliation`, `context_fingerprint`, and marker-conflict safety context
 - Retained `SKILL.md` reduction:
   - reduced from 179 lines to 73 lines while keeping the minimum operator execution contract in the retained file

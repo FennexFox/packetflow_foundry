@@ -84,8 +84,8 @@ class WriteEvaluationLogReviewThreadsTests(unittest.TestCase):
             eval_log.apply_phase_update(log, "build", result, duration=0.25)
 
             self.assertEqual(log["orchestration"]["review_mode"], "targeted-delegation")
-            self.assertEqual(log["orchestration"]["planned_workers"]["count"], 2)
-            self.assertEqual(log["orchestration"]["planned_workers"]["roles"], ["packet_explorer"])
+            self.assertEqual(log["orchestration"]["planned_workers"]["count"], 0)
+            self.assertEqual(len(log["orchestration"]["spawn_plan"]["workers"]), 2)
             self.assertEqual(log["orchestration"]["override_signals"], ["core_files_across_groups"])
             self.assertFalse(log["orchestration"]["raw_reread_required"])
             self.assertEqual(log["input_size"]["candidate_batches"], 1)

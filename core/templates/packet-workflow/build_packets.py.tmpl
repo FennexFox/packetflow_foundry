@@ -170,15 +170,43 @@ def dedupe_preserve(items: list[str]) -> list[str]:
     return deduped
 
 
-def surfaced_optional_workers(recommended_workers: list[dict]) -> list[str]:
-    ordered: list[str] = []
-    for family_name in active_worker_family_order():
-        ordered.extend(SPEC_METADATA["preferred_worker_families"].get(family_name, []))
-    recommended_agent_types = {worker["agent_type"] for worker in recommended_workers}
-    return [
+def post_draft_qa_workers(required_workers: list[dict], review_mode: str) -> list[dict]:
+    if review_mode == "local-only":
+        return []
+    required_agent_types = {
+        str(worker.get("agent_type") or "").strip() for worker in required_workers
+    }
+    verifier_types = [
         agent_type
-        for agent_type in dedupe_preserve(ordered)
-        if agent_type not in recommended_agent_types
+        for agent_type in dedupe_preserve(
+            SPEC_METADATA["preferred_worker_families"].get("verifiers", [])
+        )
+        if agent_type not in required_agent_types
+    ]
+    if not verifier_types:
+        return []
+    packets = ["global_packet.json"]
+    if SPEC_METADATA.get("shared_local_packet"):
+        packets.append(SPEC_METADATA["shared_local_packet"])
+    if USES_BATCH_PACKETS:
+        packets.append("batch-packet-01.json")
+    else:
+        packets.extend(f"{packet_name}.json" for packet_name in PACKET_NAMES)
+    return [
+        {
+            "name": "post-draft-qa",
+            "agent_type": verifier_types[0],
+            "model": "gpt-5.4-mini",
+            "reasoning_effort": "medium",
+            "packets": dedupe_preserve(packets),
+            "responsibility": (
+                "Cross-check the local synthesis against packet evidence and "
+                "flag coverage gaps, unsupported claims, or high-risk drift "
+                "before finalize."
+            ),
+            "execution_class": "post_draft_qa",
+            "stage": "post_draft",
+        }
     ]
 
 
@@ -236,6 +264,7 @@ def orchestrator_payload(
     review_mode_adjustments: list[str],
     override: bool,
     ordered_packets: list[str],
+    spawn_plan: dict,
 ) -> dict:
     payload = {
         "skill_name": SPEC_METADATA["skill_name"],
@@ -259,6 +288,7 @@ def orchestrator_payload(
         "packet_order": ordered_packets,
         "review_mode_overrides": REVIEW_MODE_OVERRIDES,
         "override_applied": override,
+        "spawn_plan": spawn_plan,
         "preferred_worker_families": SPEC_METADATA["preferred_worker_families"],
         "packet_worker_map": SPEC_METADATA["packet_worker_map"],
         "worker_selection_guidance": SPEC_METADATA["worker_selection_guidance"],
@@ -377,8 +407,15 @@ __LINT_LOAD_BLOCK__
         lint,
     )
 
-    def build_runtime_packets(final_review_mode: str) -> tuple[dict[str, dict], list[dict]]:
+    def build_runtime_packets(final_review_mode: str) -> tuple[dict[str, dict], list[dict], dict]:
         concrete_workers = recommended_workers(final_review_mode, review_mode_adjustments)
+        qa_workers = post_draft_qa_workers(concrete_workers, final_review_mode)
+        spawn_plan = common.build_spawn_plan(
+            review_mode=final_review_mode,
+            required_workers=concrete_workers,
+            post_draft_qa_workers=qa_workers,
+            common_path_sufficient=True,
+        )
         packet_payloads: dict[str, dict] = {
             "orchestrator.json": orchestrator_payload(
                 context,
@@ -387,9 +424,13 @@ __LINT_LOAD_BLOCK__
                 review_mode_adjustments,
                 override,
                 ordered_packets,
+                spawn_plan,
             ),
             "global_packet.json": global_packet_payload(context),
         }
+        packet_payloads["orchestrator.json"]["orchestrator_fingerprint"] = (
+            common.orchestrator_fingerprint(packet_payloads["orchestrator.json"])
+        )
         if SPEC_METADATA.get("shared_local_packet"):
             packet_payloads[SPEC_METADATA["shared_local_packet"]] = synthesis_packet_payload(
                 context,
@@ -407,9 +448,9 @@ __LINT_LOAD_BLOCK__
                 "context_id": context.get("context_id"),
                 "todo": "Group related singleton packets here when the workflow benefits from clustering.",
             }
-        return packet_payloads, concrete_workers
+        return packet_payloads, concrete_workers, spawn_plan
 
-    packet_payloads, concrete_workers = build_runtime_packets(review_mode)
+    packet_payloads, concrete_workers, spawn_plan = build_runtime_packets(review_mode)
     provisional_packet_metrics = packet_metrics_payload(context, lint, packet_payloads)
     review_mode, review_mode_adjustments = maybe_apply_delegation_savings_floor(
         review_mode,
@@ -417,21 +458,16 @@ __LINT_LOAD_BLOCK__
         review_mode_adjustments,
     )
     if review_mode != packet_payloads["orchestrator.json"]["review_mode"]:
-        packet_payloads, concrete_workers = build_runtime_packets(review_mode)
+        packet_payloads, concrete_workers, spawn_plan = build_runtime_packets(review_mode)
 
     for file_name, payload in packet_payloads.items():
         write_json(output_dir / file_name, payload)
 
     packet_metrics = packet_metrics_payload(context, lint, packet_payloads)
-    planned_workers, warnings = common.normalize_planned_workers_payload(
-        concrete_workers,
-        default_model="gpt-5.4-mini",
-        default_reasoning_effort="medium",
-    )
     packet_sizing = common.normalize_packet_sizing(packet_metrics)
     efficiency = common.build_efficiency_payload(
         packet_metrics,
-        planned_workers=planned_workers,
+        planned_workers=common.default_planned_workers_from_spawn_plan(spawn_plan),
     )
 
     if SPEC_METADATA["orchestrator_profile"] == "packet-heavy-orchestrator":
@@ -447,14 +483,10 @@ __LINT_LOAD_BLOCK__
         "review_mode": review_mode,
         "review_mode_baseline": review_mode_baseline,
         "review_mode_adjustments": review_mode_adjustments,
-        "planned_workers": {
-            **planned_workers,
-            "warnings": warnings,
-        },
+        "spawn_plan_preview": spawn_plan,
         "packet_files": ordered_packets,
         "packet_sizing": packet_sizing,
         "efficiency": efficiency,
-        "optional_workers": surfaced_optional_workers(concrete_workers),
     }
     if SPEC_METADATA.get("shared_local_packet"):
         result["shared_local_packet"] = SPEC_METADATA["shared_local_packet"]

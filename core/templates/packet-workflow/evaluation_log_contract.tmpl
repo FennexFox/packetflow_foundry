@@ -47,6 +47,7 @@ Use this top-level shape:
 - Label estimated or unavailable data explicitly through shared provenance fields.
 - Do not reintroduce legacy shared fields such as `baseline`, `measurement.token_source`, or `measurement.efficiency_source`.
 - Keep packet sizing and packet-compaction telemetry in shared `packet_sizing` and `efficiency` blocks, not in `skill_specific.data`.
+- Build-phase logs may record `spawn_plan`, but `planned_workers` should stay empty until finalize resolves activation outcomes.
 - Renormalize scoring weights when a signal is missing.
 
 ## Helper Workflow
@@ -62,3 +63,10 @@ Use `scripts/write_evaluation_log.py` in three modes:
 Build-phase merge should populate shared `packet_sizing` and `efficiency`
 fields, using `packet_sizing.json` only as an evaluation-side sidecar when
 present.
+
+Runtime-orchestration fields mirrored into the shared envelope:
+- `orchestration.orchestrator_fingerprint`
+- `orchestration.spawn_plan`
+- `orchestration.spawn_activation`
+- finalize-resolved `orchestration.planned_workers`
+- execution-ledger `orchestration.actual_workers`

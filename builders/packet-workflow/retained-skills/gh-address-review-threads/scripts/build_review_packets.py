@@ -1459,6 +1459,12 @@ def main() -> int:
         global_packet_name=global_packet_name,
         optional_qa_packets=(batch_files + singleton_packets)[:6],
     )
+    spawn_plan = common.build_spawn_plan(
+        review_mode=review_mode,
+        required_workers=recommended_workers,
+        optional_workers=optional_workers,
+        common_path_sufficient=True,
+    )
 
     common_path_failures = [
         {
@@ -1485,7 +1491,7 @@ def main() -> int:
     global_packet["routing_contract"] = {
         "routing_authority": "packet_worker_map",
         "preferred_worker_families_role": "registry_metadata_only",
-        "derived_worker_fields": ["recommended_workers", "optional_workers"],
+        "derived_worker_fields": ["spawn_plan"],
     }
     global_packet["marker_conflict_summary"] = marker_conflict_summary(unresolved_threads)
     global_packet["same_run_reconciliation"] = {
@@ -1537,6 +1543,7 @@ def main() -> int:
         "common_path_contract": COMMON_PATH_CONTRACT,
         "preferred_worker_families": PREFERRED_WORKER_FAMILIES,
         "packet_worker_map": packet_worker_map,
+        "spawn_plan": spawn_plan,
         "thread_counts": thread_counts,
         "marker_conflict_summary": marker_conflict_summary(unresolved_threads),
         "same_run_reconciliation": global_packet["same_run_reconciliation"],
@@ -1553,6 +1560,7 @@ def main() -> int:
         },
         "packet_files": packet_files,
     }
+    orchestrator["orchestrator_fingerprint"] = common.orchestrator_fingerprint(orchestrator)
     write_json(output_dir / "orchestrator.json", orchestrator)
     runtime_payloads["orchestrator.json"] = orchestrator
 
@@ -1582,8 +1590,7 @@ def main() -> int:
         review_mode=review_mode,
         review_mode_baseline=review_mode_baseline,
         review_mode_adjustments=review_mode_adjustments,
-        recommended_workers=recommended_workers,
-        optional_workers=optional_workers,
+        spawn_plan_preview=spawn_plan,
         thread_batch_count=len(batch_files),
         singleton_thread_packet_count=len(thread_files),
         active_paths=active_paths,
@@ -1618,7 +1625,14 @@ def main() -> int:
                 "output_dir": str(output_dir),
                 "review_mode": review_mode,
                 "packet_files": packet_files,
-                "planned_worker_count": build_result["planned_workers"]["count"],
+                "spawn_plan_worker_count": len(build_result["spawn_plan_preview"]["workers"]),
+                "default_spawn_worker_count": len(
+                    [
+                        worker
+                        for worker in build_result["spawn_plan_preview"]["workers"]
+                        if worker.get("default_spawn")
+                    ]
+                ),
                 "common_path_sufficient": common_path_sufficient,
                 "result_output": str(args.result_output) if args.result_output else None,
             },

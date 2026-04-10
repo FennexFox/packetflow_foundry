@@ -85,7 +85,16 @@ class WeeklyUpdateFailurePathTests(unittest.TestCase):
         artifacts = wl.build_packet_artifacts(quiet_context, lint)
         self.assertTrue(lint["can_proceed"])
         self.assertEqual(packets["orchestrator.json"]["review_mode"], "local-only")
-        self.assertEqual(artifacts["build_result"]["planned_workers"]["workers"], [])
+        spawn_plan_preview = artifacts["build_result"]["spawn_plan_preview"]
+        self.assertFalse(spawn_plan_preview["default_spawn_enabled"])
+        self.assertEqual(spawn_plan_preview["default_spawn_blockers"], ["review_mode=local-only"])
+        self.assertEqual(
+            [worker["worker_id"] for worker in spawn_plan_preview["workers"] if worker.get("default_spawn")],
+            [],
+        )
+        self.assertTrue(
+            all(worker["execution_class"] == "post_draft_qa" for worker in spawn_plan_preview["workers"])
+        )
         self.assertEqual(packets["changes_packet.json"]["candidate_ids"], [])
         self.assertEqual(packets["incidents_packet.json"]["candidate_ids"], [])
         self.assertEqual(packets["risks_packet.json"]["candidate_ids"], [])
@@ -104,7 +113,7 @@ class WeeklyUpdateFailurePathTests(unittest.TestCase):
         self.assertEqual(packets["orchestrator.json"]["review_mode"], "targeted-delegation")
         self.assertEqual(artifacts["build_result"]["review_mode_baseline"], "local-only")
         self.assertEqual(artifacts["build_result"]["review_mode_adjustments"], ["override_signal"])
-        self.assertGreater(len(artifacts["build_result"]["planned_workers"]["workers"]), 0)
+        self.assertGreater(len(artifacts["build_result"]["spawn_plan_preview"]["workers"]), 0)
 
     def test_build_packets_skips_build_result_only_counts(self) -> None:
         quiet_context = self.quiet_context()

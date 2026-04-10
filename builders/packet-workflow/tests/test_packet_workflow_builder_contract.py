@@ -1381,7 +1381,7 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             )
             self.assertIn("packet_sizing", build_result)
             self.assertIn("efficiency", build_result)
-            self.assertIn("planned_workers", build_result)
+            self.assertIn("spawn_plan_preview", build_result)
             self.assertIn("review_mode_baseline", build_result)
             self.assertIn("review_mode_adjustments", build_result)
             self.assertEqual(build_result["repo_profile_name"], "sample-repo")
@@ -1528,7 +1528,12 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 build_result["review_mode_adjustments"],
                 ["delegation_savings_floor"],
             )
-            self.assertEqual(build_result["planned_workers"]["count"], 2)
+            default_workers = [
+                worker
+                for worker in build_result["spawn_plan_preview"]["workers"]
+                if worker.get("default_spawn")
+            ]
+            self.assertEqual(len(default_workers), 2)
 
             run_python(
                 scripts_dir / "write_evaluation_log.py",
@@ -1623,7 +1628,11 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 (packets_dir / "orchestrator.json").read_text(encoding="utf-8")
             )
             build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
-            planned_workers = build_result["planned_workers"]["workers"]
+            planned_workers = [
+                worker
+                for worker in build_result["spawn_plan_preview"]["workers"]
+                if worker.get("default_spawn")
+            ]
             assignments = {
                 (item["agent_type"], tuple(item["packets"]))
                 for item in planned_workers
@@ -1632,7 +1641,7 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             self.assertEqual(orchestrator["review_mode"], "broad-delegation")
             self.assertEqual(len(planned_workers), 1)
             self.assertEqual(len(assignments), len(planned_workers))
-            self.assertEqual(build_result["planned_workers"]["count"], len(planned_workers))
+            self.assertEqual(len(planned_workers), 1)
 
 
 if __name__ == "__main__":

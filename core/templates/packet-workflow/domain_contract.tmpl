@@ -54,7 +54,6 @@ __REPO_PROFILE_NOTES_MARKDOWN__
 - review mode overrides
 - preferred worker families
 - packet worker map when configured
-- worker selection guidance
 - worker return contract
 - worker output shape
 - xHigh reread policy
@@ -96,7 +95,8 @@ __APPLY_PLAN_CONTRACT__
 
 - Keep runtime contract metadata in `orchestrator.json` and `global_packet.json` only when the orchestrator or local drafter needs it to operate safely.
 - Keep packet sizing, byte proxies, delegation-efficiency estimates, and other regression metrics out of runtime packets by default.
-- When `orchestrator_profile=packet-heavy-orchestrator`, write packet-efficiency metrics to `packet_metrics.json` and merge them into evaluation logs instead of expanding `orchestrator.json`.
+- Runtime execution authority belongs to `orchestrator.json` `spawn_plan`; `global_packet.json` should stay a worker-facing shared-context subset.
+- When `orchestrator_profile=packet-heavy-orchestrator`, write packet-sizing sidecars to `packet_sizing.json` and merge sizing/efficiency telemetry into evaluation logs instead of expanding `orchestrator.json`.
 
 ## Notes
 

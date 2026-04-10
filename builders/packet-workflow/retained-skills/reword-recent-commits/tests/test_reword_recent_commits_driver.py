@@ -110,7 +110,16 @@ class RewordRecentCommitsDriverTests(unittest.TestCase):
             build_result["review_mode_adjustments"],
             ["delegation_savings_floor"],
         )
-        self.assertEqual(build_result["planned_workers"]["count"], 2)
+        self.assertEqual(
+            len(
+                [
+                    worker
+                    for worker in build_result["spawn_plan_preview"]["workers"]
+                    if worker.get("default_spawn")
+                ]
+            ),
+            2,
+        )
         self.assertGreaterEqual(
             build_result["efficiency"]["packet_compaction"]["savings_tokens"],
             DELEGATION_SAVINGS_FLOOR,

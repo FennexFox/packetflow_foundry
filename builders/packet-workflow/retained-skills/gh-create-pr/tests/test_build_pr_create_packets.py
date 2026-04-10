@@ -113,9 +113,13 @@ class BuildPrCreatePacketsTests(unittest.TestCase):
             packets["rules_packet.json"]["strict_claim_gates"],
         )
         self.assertEqual(build_result["review_mode_baseline"], "targeted-delegation")
-        self.assertIn("planned_workers", build_result)
-        self.assertIn("optional_workers", build_result)
-        self.assertEqual(build_result["planned_workers"]["count"], 2)
+        self.assertIn("spawn_plan_preview", build_result)
+        default_workers = [
+            worker
+            for worker in build_result["spawn_plan_preview"]["workers"]
+            if worker.get("default_spawn")
+        ]
+        self.assertEqual(len(default_workers), 2)
         self.assertEqual(build_result["delegation_non_use_cases"], builder.contract.DELEGATION_NON_USE_CASES)
 
 

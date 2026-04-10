@@ -360,8 +360,7 @@ def build_result_payload(
     review_mode_adjustments: list[str],
     applied_override_signals: list[str],
     active_packet_names: list[str],
-    recommended: list[dict[str, str]],
-    optional: list[dict[str, Any]],
+    spawn_plan: dict[str, Any],
     selected_packets: list[str],
     packet_order: list[str],
     packet_metrics: dict[str, int],
@@ -373,9 +372,7 @@ def build_result_payload(
         "review_mode": review_mode,
         "review_mode_baseline": review_mode_baseline,
         "review_mode_adjustments": review_mode_adjustments,
-        "recommended_worker_count": len(recommended),
-        "recommended_workers": recommended,
-        "optional_workers": optional,
+        "spawn_plan_preview": spawn_plan,
         "selected_packets": selected_packets,
         "packet_order": packet_order,
         "active_packets": active_packet_names,
@@ -422,10 +419,18 @@ def main() -> int:
         review_mode,
         review_mode_adjustments,
     )
+    final_optional_workers = optional_workers(review_mode, recommended)
+    spawn_plan = common.build_spawn_plan(
+        review_mode=review_mode,
+        required_workers=recommended,
+        optional_workers=final_optional_workers,
+        common_path_sufficient=True,
+    )
     packet_order = ["global_packet.json", *selected_packets]
 
     def build_orchestrator_payload(
         final_review_mode: str,
+        final_spawn_plan: dict[str, Any],
     ) -> dict[str, Any]:
         return {
             "skill_name": context.get("skill_name"),
@@ -433,6 +438,7 @@ def main() -> int:
             "archetype": ARCHETYPE,
             "orchestrator_profile": ORCHESTRATOR_PROFILE,
             "review_mode": final_review_mode,
+            "spawn_plan": final_spawn_plan,
             "decision_ready_packets": DECISION_READY_PACKETS,
             "worker_return_contract": WORKER_RETURN_CONTRACT,
             "worker_output_shape": WORKER_OUTPUT_SHAPE,
@@ -454,7 +460,8 @@ def main() -> int:
             "raw_reread_allowed_reasons": RAW_REREAD_ALLOWED_REASONS,
         }
 
-    orchestrator = build_orchestrator_payload(review_mode)
+    orchestrator = build_orchestrator_payload(review_mode, spawn_plan)
+    orchestrator["orchestrator_fingerprint"] = common.orchestrator_fingerprint(orchestrator)
 
     global_packet = {
         "skill_name": context.get("skill_name"),
@@ -531,7 +538,15 @@ def main() -> int:
             review_mode,
             review_mode_adjustments,
         )
-        orchestrator = build_orchestrator_payload(review_mode)
+        final_optional_workers = optional_workers(review_mode, recommended)
+        spawn_plan = common.build_spawn_plan(
+            review_mode=review_mode,
+            required_workers=recommended,
+            optional_workers=final_optional_workers,
+            common_path_sufficient=True,
+        )
+        orchestrator = build_orchestrator_payload(review_mode, spawn_plan)
+        orchestrator["orchestrator_fingerprint"] = common.orchestrator_fingerprint(orchestrator)
         packet_payloads["orchestrator.json"] = orchestrator
         packet_metrics = compute_packet_metrics(
             packet_payloads,
@@ -544,15 +559,13 @@ def main() -> int:
     write_json(output_dir / "packet_sizing.json", common.normalize_packet_sizing(packet_metrics))
 
     if args.result_output:
-        final_optional_workers = optional_workers(review_mode, recommended)
         build_result = build_result_payload(
             review_mode=review_mode,
             review_mode_baseline=review_mode_baseline,
             review_mode_adjustments=review_mode_adjustments,
             applied_override_signals=applied_override_signals,
             active_packet_names=active_packet_names,
-            recommended=recommended,
-            optional=final_optional_workers,
+            spawn_plan=spawn_plan,
             selected_packets=selected_packets,
             packet_order=packet_order,
             packet_metrics=packet_metrics,

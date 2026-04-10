@@ -93,7 +93,11 @@ class WriteEvaluationLogGhCreatePrTests(unittest.TestCase):
         self.assertEqual(log["orchestration"]["review_mode_baseline"], "local-only")
         self.assertEqual(log["orchestration"]["review_mode_adjustments"], ["delegation_savings_floor"])
         self.assertEqual(log["orchestration"]["override_signals"], ["multi_group_core_files"])
-        self.assertEqual(log["orchestration"]["planned_workers"]["roles"], ["packet_explorer", "evidence_summarizer"])
+        self.assertEqual(log["orchestration"]["planned_workers"]["roles"], [])
+        self.assertEqual(
+            [worker["agent_type"] for worker in log["orchestration"]["spawn_plan"]["workers"]],
+            ["packet_explorer", "evidence_summarizer"],
+        )
         self.assertEqual(
             log["skill_specific"]["data"]["delegation_non_use_cases"],
             contract.DELEGATION_NON_USE_CASES,

@@ -51,7 +51,8 @@ __BUILD_RESULT_NOTE__
 - Read `<packet-dir>/orchestrator.json` first.
 - Keep `<packet-dir>/global_packet.json` in view before reading any focused packet.
 - Read `references/delegation-playbook.md` only when the final packet review mode is not `local-only`.
-- Use `packet_worker_map` from the built packets as the routing authority when delegation is configured.
+- Use `orchestrator.json` `spawn_plan` as the runtime execution authority when delegation is configured.
+- Use `packet_worker_map` inside the built packets as the routing authority for that plan.
 - Focus packet set:
 __TASK_PACKET_BULLETS__
 __COMMON_PATH_NOTE__

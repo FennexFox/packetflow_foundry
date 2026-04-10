@@ -324,7 +324,7 @@ def build_result_payload(
     review_mode: str,
     review_mode_baseline: str,
     review_mode_adjustments: list[str],
-    recommended_workers: list[dict[str, Any]],
+    spawn_plan_preview: dict[str, Any],
     packet_files: list[str],
     active_packets: list[str],
     applied_override_signals: list[str],
@@ -338,8 +338,7 @@ def build_result_payload(
         "review_mode": review_mode,
         "review_mode_baseline": review_mode_baseline,
         "review_mode_adjustments": review_mode_adjustments,
-        "recommended_worker_count": len(recommended_workers),
-        "recommended_workers": recommended_workers,
+        "spawn_plan_preview": spawn_plan_preview,
         "packet_files": packet_files,
         "active_packets": active_packets,
         "active_packet_count": len(active_packets),
@@ -739,10 +738,6 @@ def main() -> int:
         ],
         "packet_files": ["global_packet.json", "rules_packet.json", *commit_packet_names, "orchestrator.json"],
     }
-    (output_dir / "orchestrator.json").write_text(
-        json.dumps(orchestrator, indent=2, ensure_ascii=True) + "\n",
-        encoding="utf-8",
-    )
 
     packet_payloads: dict[str, dict[str, Any]] = {
         "global_packet.json": global_packet,
@@ -821,6 +816,15 @@ def main() -> int:
             json.dumps(orchestrator, indent=2, ensure_ascii=True) + "\n",
             encoding="utf-8",
         )
+    active_packets = ["rules_packet.json", *commit_packet_names]
+    spawn_plan = common.build_spawn_plan(
+        review_mode=review_mode,
+        required_workers=recommended_workers,
+        optional_workers=optional_workers,
+        common_path_sufficient=common_path_sufficient,
+    )
+    orchestrator["spawn_plan"] = spawn_plan
+    orchestrator["orchestrator_fingerprint"] = common.orchestrator_fingerprint(orchestrator)
     final_packet_payloads = {
         **packet_payloads,
         "orchestrator.json": orchestrator,
@@ -834,13 +838,15 @@ def main() -> int:
         json.dumps(common.normalize_packet_sizing(packet_metrics), indent=2, ensure_ascii=True) + "\n",
         encoding="utf-8",
     )
-
-    active_packets = ["rules_packet.json", *commit_packet_names]
+    (output_dir / "orchestrator.json").write_text(
+        json.dumps(orchestrator, indent=2, ensure_ascii=True) + "\n",
+        encoding="utf-8",
+    )
     build_result = build_result_payload(
         review_mode=review_mode,
         review_mode_baseline=review_mode_baseline,
         review_mode_adjustments=review_mode_adjustments,
-        recommended_workers=recommended_workers,
+        spawn_plan_preview=spawn_plan,
         packet_files=orchestrator["packet_files"],
         active_packets=active_packets,
         applied_override_signals=[str(item.get("reason")) for item in override_signals if str(item.get("reason") or "").strip()],
@@ -862,7 +868,12 @@ def main() -> int:
                 "output_dir": str(output_dir),
                 "review_mode": review_mode,
                 "packet_files": orchestrator["packet_files"],
-                "planned_worker_count": build_result["planned_workers"]["count"],
+                "spawn_plan_worker_count": len(build_result["spawn_plan_preview"]["workers"]),
+                "default_spawn_worker_count": sum(
+                    1
+                    for worker in build_result["spawn_plan_preview"]["workers"]
+                    if worker.get("default_spawn")
+                ),
                 "common_path_sufficient": common_path_sufficient,
             },
             indent=2,

@@ -109,7 +109,8 @@ class GitSplitAndCommitEvaluationLogTests(unittest.TestCase):
         eval_log.apply_phase_update(log, "build", result, 1.5)
 
         self.assertEqual(log["orchestration"]["review_mode"], "targeted-delegation")
-        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 2)
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 0)
+        self.assertEqual(len(log["orchestration"]["spawn_plan"]["workers"]), 2)
         self.assertEqual(log["orchestration"]["override_signals"], ["diff_stat_threshold"])
         self.assertEqual(log["input_size"]["active_areas"], 3)
         self.assertEqual(log["input_size"]["candidate_batches"], 1)

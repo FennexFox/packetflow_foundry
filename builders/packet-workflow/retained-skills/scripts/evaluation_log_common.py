@@ -13,30 +13,45 @@ from pathlib import Path
 from typing import Any, Callable
 
 
-SCHEMA_VERSION = "2.0"
+SCHEMA_VERSION = "3.0"
 SKILL_FAMILY = "repo-packet-workflow"
-DEFAULT_FORMULA_VERSION = "2.0"
+DEFAULT_FORMULA_VERSION = "3.0"
 DEFAULT_MAIN_MODEL = "gpt-5.4"
 DEFAULT_MAIN_REASONING_EFFORT = "xhigh"
 DEFAULT_PRICING_SNAPSHOT_ID = "openai-2026-04-09"
-ALLOWED_ACTUAL_STATUSES = {
-    "planned_not_run",
-    "started",
+DEFAULT_SPAWN_PLAN_SCHEMA_VERSION = "1.0"
+ALLOWED_EXECUTION_CLASSES = {"required", "optional", "post_draft_qa"}
+ALLOWED_SPAWN_STAGES = {"initial_parallel", "post_draft"}
+ALLOWED_SPAWN_TRIGGERS = {
+    "conflicting_worker_findings",
+    "coverage_gap_after_synthesis",
+    "high_risk_mutation_surface",
+    "manual_local_escalation",
+}
+ALLOWED_ROW_KINDS = {"planned", "unplanned"}
+ALLOWED_PLANNED_LEDGER_STATUSES = {
     "completed",
     "failed",
     "cancelled",
-    "unplanned_started",
+    "spawn_failed",
+    "planned_not_run",
+}
+ALLOWED_UNPLANNED_LEDGER_STATUSES = {
     "unplanned_completed",
     "unplanned_failed",
     "unplanned_cancelled",
 }
-NONTERMINAL_ACTUAL_STATUSES = {"started", "unplanned_started"}
-PLANNED_EXECUTED_STATUSES = {"started", "completed", "failed", "cancelled"}
-UNPLANNED_STATUSES = {
-    "unplanned_started",
-    "unplanned_completed",
-    "unplanned_failed",
-    "unplanned_cancelled",
+ALLOWED_ACTUAL_STATUSES = {
+    *ALLOWED_PLANNED_LEDGER_STATUSES,
+    *ALLOWED_UNPLANNED_LEDGER_STATUSES,
+}
+PLANNED_EXECUTED_STATUSES = {"completed", "failed", "cancelled"}
+UNPLANNED_STATUSES = set(ALLOWED_UNPLANNED_LEDGER_STATUSES)
+ALLOWED_SPAWN_RESOLUTIONS = {
+    "spawned",
+    "local_fallback",
+    "spawn_failed",
+    "not_activated",
 }
 
 
@@ -507,6 +522,21 @@ def canonical_json(value: Any) -> str:
 
 def short_hash(value: Any) -> str:
     return hashlib.sha256(str(value).encode("utf-8")).hexdigest()[:12]
+
+
+def json_fingerprint(value: Any) -> str:
+    return "sha256:" + hashlib.sha256(
+        canonical_json(value).encode("utf-8")
+    ).hexdigest()
+
+
+def orchestrator_fingerprint(payload: dict[str, Any]) -> str:
+    filtered = {
+        key: value
+        for key, value in payload.items()
+        if key != "orchestrator_fingerprint"
+    }
+    return json_fingerprint(filtered)
 
 
 def packet_list_from_worker(worker: dict[str, Any]) -> list[str]:
@@ -998,43 +1028,393 @@ def build_efficiency_payload(
     }
 
 
-def planned_workers_from_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
-    if isinstance(payload.get("planned_workers"), dict):
-        planned = payload["planned_workers"]
-        warnings = list_of_strings(planned.get("warnings"))
-        workers = planned.get("workers")
-        normalized, auto_warnings = normalize_planned_workers_payload(
-            workers,
-            default_model="gpt-5.4-mini",
-            default_reasoning_effort="medium",
-        )
-        return (
-            {
-                "count": (
-                    safe_int(planned.get("count"))
-                    if safe_int(planned.get("count")) is not None
-                    else normalized.get("count")
-                ),
-                "roles": stable_dedupe(
-                    list_of_strings(planned.get("roles")) or normalized["roles"]
-                ),
-                "workers": normalized["workers"],
-            },
-            [*warnings, *auto_warnings],
-        )
-    normalized, warnings = normalize_planned_workers_payload(
-        payload.get("recommended_workers"),
-        default_model="gpt-5.4-mini",
-        default_reasoning_effort="medium",
+def empty_planned_workers() -> dict[str, Any]:
+    return {"count": 0, "roles": [], "workers": []}
+
+
+def default_spawn_retry_policy() -> dict[str, Any]:
+    return {
+        "required_spawn_retries": 1,
+        "optional_spawn_retries": 0,
+        "post_draft_qa_spawn_retries": 1,
+        "substitute_worker_on_failure": False,
+    }
+
+
+def empty_spawn_activation_summary() -> dict[str, Any]:
+    return {
+        "attempted_count": 0,
+        "succeeded_count": 0,
+        "failed_count": 0,
+        "local_fallback_count": 0,
+        "not_activated_count": 0,
+    }
+
+
+def empty_spawn_activation() -> dict[str, Any]:
+    return {
+        "activated_worker_ids": [],
+        "skipped_worker_ids": [],
+        "local_fallback_worker_ids": [],
+        "trigger_events": [],
+        "summary": empty_spawn_activation_summary(),
+        "workers": [],
+        "drift_events": [],
+    }
+
+
+def empty_spawn_plan() -> dict[str, Any]:
+    return {
+        "schema_version": DEFAULT_SPAWN_PLAN_SCHEMA_VERSION,
+        "routing_authority": "packet_worker_map",
+        "default_spawn_enabled": False,
+        "default_spawn_blockers": [],
+        "retry_policy": default_spawn_retry_policy(),
+        "workers": [],
+    }
+
+
+def default_activation_triggers(execution_class: str) -> list[str]:
+    if execution_class == "post_draft_qa":
+        return [
+            "conflicting_worker_findings",
+            "coverage_gap_after_synthesis",
+            "high_risk_mutation_surface",
+            "manual_local_escalation",
+        ]
+    if execution_class == "optional":
+        return ["manual_local_escalation"]
+    return []
+
+
+def execution_defaults(
+    execution_class: str,
+    stage: str,
+) -> tuple[bool, bool]:
+    if execution_class == "required" and stage == "initial_parallel":
+        return True, True
+    if execution_class == "optional" and stage == "initial_parallel":
+        return False, False
+    if execution_class == "post_draft_qa":
+        return True, False
+    return False, False
+
+
+def normalize_spawn_trigger_list(
+    value: Any,
+    *,
+    execution_class: str,
+) -> list[str]:
+    triggers = stable_dedupe(list_of_strings(value))
+    if not triggers:
+        triggers = default_activation_triggers(execution_class)
+    return [trigger for trigger in triggers if trigger in ALLOWED_SPAWN_TRIGGERS]
+
+
+def legacy_optional_worker_to_dict(worker: Any, *, index: int) -> dict[str, Any] | None:
+    if isinstance(worker, dict):
+        return dict(worker)
+    agent_type = str(worker or "").strip()
+    if not agent_type:
+        return None
+    return {
+        "name": f"optional-{slugify(agent_type)}-{index}",
+        "agent_type": agent_type,
+        "packets": ["global_packet.json"],
+        "reasoning_effort": "medium",
+        "model": "gpt-5.4-mini",
+        "responsibility": None,
+        "execution_class": "post_draft_qa",
+        "stage": "post_draft",
+    }
+
+
+def infer_optional_execution_class(worker: dict[str, Any]) -> str:
+    explicit = str(worker.get("execution_class") or "").strip()
+    if explicit in ALLOWED_EXECUTION_CLASSES:
+        return explicit
+    stage = str(worker.get("stage") or "").strip()
+    if stage == "post_draft":
+        return "post_draft_qa"
+    signal_text = " ".join(
+        str(worker.get(key) or "")
+        for key in ("name", "responsibility", "when")
+    ).lower()
+    if any(
+        token in signal_text
+        for token in ("qa", "cross-check", "coverage", "compare", "unsupported")
+    ):
+        return "post_draft_qa"
+    return "optional"
+
+
+def normalize_spawn_plan_worker(
+    worker: dict[str, Any],
+    *,
+    default_execution_class: str = "required",
+    default_model: str = "gpt-5.4-mini",
+    default_reasoning_effort: str = "medium",
+) -> dict[str, Any]:
+    normalized = normalize_planned_worker(
+        worker,
+        default_model=default_model,
+        default_reasoning_effort=default_reasoning_effort,
     )
-    legacy_count = safe_int(payload.get("recommended_worker_count"))
-    if legacy_count is not None:
-        normalized["count"] = (
-            max(legacy_count, normalized["count"])
-            if normalized["workers"]
-            else legacy_count
+    execution_class = str(
+        worker.get("execution_class") or default_execution_class
+    ).strip()
+    if execution_class not in ALLOWED_EXECUTION_CLASSES:
+        execution_class = default_execution_class
+    default_stage = "post_draft" if execution_class == "post_draft_qa" else "initial_parallel"
+    stage = str(worker.get("stage") or default_stage).strip()
+    if stage not in ALLOWED_SPAWN_STAGES:
+        stage = default_stage
+    default_blocking, default_spawn = execution_defaults(execution_class, stage)
+    blocking = to_bool(worker.get("blocking"))
+    if blocking is None:
+        blocking = default_blocking
+    spawn_by_default = to_bool(worker.get("default_spawn"))
+    if spawn_by_default is None:
+        spawn_by_default = default_spawn
+    normalized["execution_class"] = execution_class
+    normalized["stage"] = stage
+    normalized["blocking"] = bool(blocking)
+    normalized["default_spawn"] = bool(spawn_by_default)
+    normalized["activation_triggers"] = normalize_spawn_trigger_list(
+        worker.get("activation_triggers"),
+        execution_class=execution_class,
+    )
+    return normalized
+
+
+def spawn_plan_enabled_and_blockers(
+    *,
+    review_mode: Any = None,
+    common_path_sufficient: Any = None,
+    explicit_local_only_safety_gate: Any = None,
+    workers: list[dict[str, Any]] | None = None,
+) -> tuple[bool, list[str]]:
+    blockers: list[str] = []
+    if str(review_mode or "").strip() == "local-only":
+        blockers.append("review_mode=local-only")
+    if common_path_sufficient is False:
+        blockers.append("common_path_sufficient=false")
+    if to_bool(explicit_local_only_safety_gate):
+        blockers.append("explicit_local_only_safety_gate")
+    enabled = not blockers and any(
+        bool(worker.get("default_spawn")) for worker in (workers or [])
+    )
+    return enabled, blockers
+
+
+def normalize_retry_policy(value: Any) -> dict[str, Any]:
+    normalized = default_spawn_retry_policy()
+    if not isinstance(value, dict):
+        return normalized
+    for key in (
+        "required_spawn_retries",
+        "optional_spawn_retries",
+        "post_draft_qa_spawn_retries",
+    ):
+        count = safe_int(value.get(key))
+        if count is not None and count >= 0:
+            normalized[key] = count
+    substitute = to_bool(value.get("substitute_worker_on_failure"))
+    if substitute is not None:
+        normalized["substitute_worker_on_failure"] = substitute
+    return normalized
+
+
+def normalize_spawn_plan_payload(
+    spawn_plan: Any,
+    *,
+    review_mode: Any = None,
+    common_path_sufficient: Any = None,
+    explicit_local_only_safety_gate: Any = None,
+) -> tuple[dict[str, Any], list[str]]:
+    payload = spawn_plan if isinstance(spawn_plan, dict) else {}
+    warnings = list_of_strings(payload.get("warnings"))
+    workers = payload.get("workers")
+    items = workers if isinstance(workers, list) else []
+    normalized_workers: list[dict[str, Any]] = []
+    seen_ids: set[str] = set()
+    seen_identity: set[tuple[str, str, str, str, tuple[str, ...]]] = set()
+    seen_names: set[str] = set()
+    for index, item in enumerate(items):
+        if not isinstance(item, dict):
+            continue
+        worker = normalize_spawn_plan_worker(item)
+        identity = canonical_worker_identity_tuple(worker)
+        if identity in seen_identity:
+            raise ValueError(
+                "Duplicate spawn-plan worker identity tuple at index "
+                f"{index}: {worker['name']} / {worker['agent_type']}"
+            )
+        seen_identity.add(identity)
+        if worker["worker_id"] in seen_ids:
+            raise ValueError(
+                f"Duplicate spawn-plan worker_id at index {index}: {worker['worker_id']}"
+            )
+        seen_ids.add(worker["worker_id"])
+        if worker["name"] in seen_names:
+            warnings.append(
+                f"Duplicate spawn worker name allowed with warning only: {worker['name']}"
+            )
+        seen_names.add(worker["name"])
+        normalized_workers.append(worker)
+    enabled, blockers = spawn_plan_enabled_and_blockers(
+        review_mode=review_mode,
+        common_path_sufficient=common_path_sufficient,
+        explicit_local_only_safety_gate=explicit_local_only_safety_gate,
+        workers=normalized_workers,
+    )
+    default_spawn_enabled = to_bool(payload.get("default_spawn_enabled"))
+    if default_spawn_enabled is None:
+        default_spawn_enabled = enabled
+    normalized_blockers = stable_dedupe(
+        list_of_strings(payload.get("default_spawn_blockers")) or blockers
+    )
+    return (
+        {
+            "schema_version": (
+                str(payload.get("schema_version") or DEFAULT_SPAWN_PLAN_SCHEMA_VERSION).strip()
+                or DEFAULT_SPAWN_PLAN_SCHEMA_VERSION
+            ),
+            "routing_authority": "packet_worker_map",
+            "default_spawn_enabled": bool(default_spawn_enabled),
+            "default_spawn_blockers": normalized_blockers,
+            "retry_policy": normalize_retry_policy(payload.get("retry_policy")),
+            "workers": normalized_workers,
+        },
+        warnings,
+    )
+
+
+def build_spawn_plan(
+    *,
+    review_mode: Any,
+    required_workers: list[dict[str, Any]] | None = None,
+    optional_workers: list[dict[str, Any]] | None = None,
+    post_draft_qa_workers: list[dict[str, Any]] | None = None,
+    common_path_sufficient: bool = True,
+    explicit_local_only_safety_gate: bool = False,
+    retry_policy: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    combined: list[dict[str, Any]] = []
+    for worker in required_workers or []:
+        if not isinstance(worker, dict):
+            continue
+        combined.append(
+            {
+                **worker,
+                "execution_class": "required",
+                "stage": "initial_parallel",
+                "blocking": True,
+                "default_spawn": True,
+                "activation_triggers": [],
+            }
         )
-    return normalized, warnings
+    for worker in optional_workers or []:
+        optional = worker if isinstance(worker, dict) else legacy_optional_worker_to_dict(worker, index=len(combined) + 1)
+        if not isinstance(optional, dict):
+            continue
+        execution_class = infer_optional_execution_class(optional)
+        combined.append(
+            {
+                **optional,
+                "execution_class": execution_class,
+                "stage": optional.get("stage")
+                or ("post_draft" if execution_class == "post_draft_qa" else "initial_parallel"),
+            }
+        )
+    for worker in post_draft_qa_workers or []:
+        if not isinstance(worker, dict):
+            continue
+        combined.append(
+            {
+                **worker,
+                "execution_class": "post_draft_qa",
+                "stage": "post_draft",
+                "blocking": True,
+                "default_spawn": False,
+            }
+        )
+    normalized, _warnings = normalize_spawn_plan_payload(
+        {
+            "schema_version": DEFAULT_SPAWN_PLAN_SCHEMA_VERSION,
+            "routing_authority": "packet_worker_map",
+            "retry_policy": retry_policy or default_spawn_retry_policy(),
+            "workers": combined,
+        },
+        review_mode=review_mode,
+        common_path_sufficient=common_path_sufficient,
+        explicit_local_only_safety_gate=explicit_local_only_safety_gate,
+    )
+    return normalized
+
+
+def default_planned_workers_from_spawn_plan(
+    spawn_plan: dict[str, Any],
+) -> dict[str, Any]:
+    workers = [
+        worker
+        for worker in spawn_plan.get("workers", [])
+        if isinstance(worker, dict)
+        and bool(spawn_plan.get("default_spawn_enabled"))
+        and bool(worker.get("default_spawn"))
+    ]
+    return {
+        "count": len(workers),
+        "roles": stable_dedupe(
+            [str(worker.get("agent_type") or "").strip() for worker in workers]
+        ),
+        "workers": workers,
+    }
+
+
+def spawn_plan_from_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    common_path_sufficient = to_bool(payload.get("common_path_sufficient"))
+    if isinstance(payload.get("spawn_plan"), dict):
+        return normalize_spawn_plan_payload(
+            payload.get("spawn_plan"),
+            review_mode=payload.get("review_mode"),
+            common_path_sufficient=common_path_sufficient,
+            explicit_local_only_safety_gate=payload.get("explicit_local_only_safety_gate"),
+        )
+    if isinstance(payload.get("spawn_plan_preview"), dict):
+        return normalize_spawn_plan_payload(
+            payload.get("spawn_plan_preview"),
+            review_mode=payload.get("review_mode"),
+            common_path_sufficient=common_path_sufficient,
+            explicit_local_only_safety_gate=payload.get("explicit_local_only_safety_gate"),
+        )
+    legacy_required = []
+    if isinstance(payload.get("planned_workers"), dict):
+        legacy_required = (payload.get("planned_workers") or {}).get("workers") or []
+    elif isinstance(payload.get("recommended_workers"), list):
+        legacy_required = payload.get("recommended_workers") or []
+    legacy_optional = payload.get("optional_workers") or []
+    return (
+        build_spawn_plan(
+            review_mode=payload.get("review_mode"),
+            required_workers=[
+                item for item in legacy_required if isinstance(item, dict)
+            ],
+            optional_workers=list(legacy_optional)
+            if isinstance(legacy_optional, list)
+            else [],
+            common_path_sufficient=common_path_sufficient is not False,
+            explicit_local_only_safety_gate=bool(
+                to_bool(payload.get("explicit_local_only_safety_gate"))
+            ),
+        ),
+        [],
+    )
+
+
+def planned_workers_from_payload(payload: dict[str, Any]) -> tuple[dict[str, Any], list[str]]:
+    spawn_plan, warnings = spawn_plan_from_payload(payload)
+    return default_planned_workers_from_spawn_plan(spawn_plan), warnings
 
 
 def build_result_packet_metrics(result: dict[str, Any]) -> dict[str, Any] | None:
@@ -1063,6 +1443,8 @@ LEGACY_BUILD_RESULT_FIELDS = {
     "recommended_worker_count",
     "recommended_workers",
     "optional_worker_count",
+    "optional_workers",
+    "planned_workers",
     "packet_metrics",
     "packet_metrics_file",
     "packet_count",
@@ -1084,14 +1466,10 @@ def normalize_build_result(
     packet_metrics: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     normalized = dict(result)
-    planned_workers, warnings = planned_workers_from_payload(normalized)
-    normalized["planned_workers"] = {
-        "count": planned_workers.get("count"),
-        "roles": planned_workers.get("roles") or [],
-        "workers": planned_workers.get("workers") or [],
-    }
+    spawn_plan_preview, warnings = spawn_plan_from_payload(normalized)
+    normalized["spawn_plan_preview"] = spawn_plan_preview
     if warnings:
-        normalized["planned_workers"]["warnings"] = warnings
+        normalized["spawn_plan_preview"]["warnings"] = warnings
 
     resolved_packet_metrics = packet_metrics or build_result_packet_metrics(normalized)
     if isinstance(normalized.get("packet_sizing"), dict):
@@ -1106,7 +1484,9 @@ def normalize_build_result(
     else:
         normalized["efficiency"] = build_efficiency_payload(
             resolved_packet_metrics,
-            planned_workers=normalized["planned_workers"],
+            planned_workers=default_planned_workers_from_spawn_plan(
+                normalized["spawn_plan_preview"]
+            ),
         )
 
     for field in LEGACY_BUILD_RESULT_FIELDS:
@@ -1117,12 +1497,14 @@ def normalize_build_result(
 def empty_actual_summary() -> dict[str, Any]:
     return {
         "materialized_count": 0,
+        "planned_row_count": 0,
+        "unplanned_row_count": 0,
         "executed_count": 0,
         "completed_count": 0,
         "failed_count": 0,
         "cancelled_count": 0,
+        "spawn_failed_count": 0,
         "planned_not_run_count": 0,
-        "unplanned_count": 0,
         "capture_complete": None,
         "capture_incomplete_reason": None,
     }
@@ -1159,7 +1541,11 @@ def build_base_log(
         find_head_sha_fn=find_head_sha_fn,
     )
     lint_summary = summarize_findings(lint_report)
-    planned_workers, warnings = planned_workers_from_payload(orchestrator)
+    spawn_plan, warnings = spawn_plan_from_payload(orchestrator)
+    resolved_orchestrator_fingerprint = str(
+        orchestrator.get("orchestrator_fingerprint")
+        or orchestrator_fingerprint(orchestrator)
+    ).strip()
     return {
         "schema_version": SCHEMA_VERSION,
         "run_id": run_id,
@@ -1204,7 +1590,10 @@ def build_base_log(
                 orchestrator.get("review_mode_adjustments")
             ),
             "override_signals": normalize_override_signals(orchestrator),
-            "planned_workers": planned_workers,
+            "orchestrator_fingerprint": resolved_orchestrator_fingerprint,
+            "spawn_plan": spawn_plan,
+            "spawn_activation": empty_spawn_activation(),
+            "planned_workers": empty_planned_workers(),
             "actual_workers": {
                 "summary": empty_actual_summary(),
                 "workers": [],
@@ -1365,12 +1754,19 @@ def apply_common_build_update(
     override_signals = normalize_override_signals(result)
     if override_signals:
         orchestration["override_signals"] = override_signals
-    planned_workers, warnings = planned_workers_from_payload(result)
+    spawn_plan, warnings = spawn_plan_from_payload(result)
     if any(
         key in result
-        for key in ("planned_workers", "recommended_workers", "recommended_worker_count")
+        for key in (
+            "spawn_plan_preview",
+            "spawn_plan",
+            "planned_workers",
+            "recommended_workers",
+            "recommended_worker_count",
+        )
     ):
-        orchestration["planned_workers"] = planned_workers
+        orchestration["spawn_plan"] = spawn_plan
+        orchestration["planned_workers"] = empty_planned_workers()
     if warnings:
         log.setdefault("notes", []).extend(warnings)
     packet_metrics = build_result_packet_metrics(result)
@@ -1383,7 +1779,9 @@ def apply_common_build_update(
     elif packet_metrics is not None:
         log["efficiency"] = build_efficiency_payload(
             packet_metrics,
-            planned_workers=orchestration.get("planned_workers"),
+            planned_workers=default_planned_workers_from_spawn_plan(
+                orchestration.get("spawn_plan") or empty_spawn_plan()
+            ),
             main_model=(log.get("tokens") or {}).get("main_model"),
             subagents=(log.get("tokens") or {}).get("subagents") or [],
         )
@@ -1549,12 +1947,24 @@ def normalize_tokens(log: dict[str, Any]) -> None:
         tokens["main_model_cost_share"] = None
 
 
-def actual_status_for_unplanned(status: str) -> str:
-    if status.startswith("unplanned_"):
+def unplanned_status(status: str) -> str:
+    if status in ALLOWED_UNPLANNED_LEDGER_STATUSES:
         return status
-    if status in {"started", "completed", "failed", "cancelled"}:
+    if status.startswith("unplanned_") and status in ALLOWED_UNPLANNED_LEDGER_STATUSES:
+        return status
+    if status in {"completed", "failed", "cancelled"}:
         return f"unplanned_{status}"
     return "unplanned_completed"
+
+
+def planned_status(status: str) -> str:
+    if status.startswith("unplanned_"):
+        status = status[len("unplanned_") :]
+    if status in ALLOWED_PLANNED_LEDGER_STATUSES:
+        return status
+    if status in PLANNED_EXECUTED_STATUSES:
+        return status
+    return "completed"
 
 
 def normalize_actual_worker_row(row: dict[str, Any]) -> dict[str, Any]:
@@ -1563,6 +1973,8 @@ def normalize_actual_worker_row(row: dict[str, Any]) -> dict[str, Any]:
     normalized["cached_input_tokens"] = safe_int(normalized.get("cached_input_tokens"))
     normalized["output_tokens"] = safe_int(normalized.get("output_tokens"))
     normalized["reasoning_tokens"] = safe_int(normalized.get("reasoning_tokens"))
+    row_kind = str(normalized.get("row_kind") or "").strip()
+    normalized["row_kind"] = row_kind if row_kind in ALLOWED_ROW_KINDS else None
     return normalized
 
 
@@ -1600,12 +2012,293 @@ def build_planned_lookup(
     return by_id, by_tuple
 
 
+def normalize_spawn_activation_worker(
+    row: dict[str, Any],
+    *,
+    worker_id: str,
+    planned_worker_id: str | None,
+    default_stage: str,
+) -> dict[str, Any]:
+    normalized = {
+        "worker_id": worker_id,
+        "planned_worker_id": planned_worker_id,
+        "stage": (
+            str(row.get("stage") or default_stage).strip()
+            if str(row.get("stage") or default_stage).strip() in ALLOWED_SPAWN_STAGES
+            else default_stage
+        ),
+        "spawn_attempted": to_bool(row.get("spawn_attempted")),
+        "spawn_succeeded": to_bool(row.get("spawn_succeeded")),
+        "spawn_failed": to_bool(row.get("spawn_failed")),
+        "attempt_count": safe_int(row.get("attempt_count")),
+        "failure_kind": str(row.get("failure_kind") or "").strip() or None,
+        "fallback_reason": str(row.get("fallback_reason") or "").strip() or None,
+        "resolved_as": str(row.get("resolved_as") or "").strip() or None,
+    }
+    if normalized["spawn_attempted"] is None:
+        normalized["spawn_attempted"] = bool(normalized["attempt_count"])
+    if normalized["spawn_succeeded"] is None and normalized["resolved_as"] == "spawned":
+        normalized["spawn_succeeded"] = True
+    if normalized["spawn_failed"] is None and normalized["resolved_as"] in {"local_fallback", "spawn_failed"}:
+        normalized["spawn_failed"] = True
+    if normalized["attempt_count"] is None:
+        normalized["attempt_count"] = 1 if normalized["spawn_attempted"] else 0
+    resolved_as = normalized["resolved_as"]
+    if resolved_as not in ALLOWED_SPAWN_RESOLUTIONS:
+        if normalized["spawn_succeeded"]:
+            resolved_as = "spawned"
+        elif normalized["fallback_reason"]:
+            resolved_as = "local_fallback"
+        elif normalized["spawn_failed"]:
+            resolved_as = "spawn_failed"
+        else:
+            resolved_as = "not_activated"
+    normalized["resolved_as"] = resolved_as
+    normalized["spawn_attempted"] = bool(normalized["spawn_attempted"])
+    normalized["spawn_succeeded"] = bool(normalized["spawn_succeeded"])
+    normalized["spawn_failed"] = bool(normalized["spawn_failed"])
+    return normalized
+
+
+def normalize_spawn_activation(log: dict[str, Any]) -> None:
+    orchestration = log.setdefault("orchestration", {})
+    spawn_plan = orchestration.get("spawn_plan")
+    if not isinstance(spawn_plan, dict):
+        spawn_plan = empty_spawn_plan()
+        orchestration["spawn_plan"] = spawn_plan
+    activation = orchestration.get("spawn_activation")
+    if not isinstance(activation, dict):
+        activation = empty_spawn_activation()
+        orchestration["spawn_activation"] = activation
+    summary = activation.get("summary")
+    if not isinstance(summary, dict):
+        summary = empty_spawn_activation_summary()
+    else:
+        merged_summary = empty_spawn_activation_summary()
+        merged_summary.update(summary)
+        summary = merged_summary
+    activation["activated_worker_ids"] = stable_dedupe(
+        list_of_strings(activation.get("activated_worker_ids"))
+    )
+    activation["skipped_worker_ids"] = stable_dedupe(
+        list_of_strings(activation.get("skipped_worker_ids"))
+    )
+    activation["local_fallback_worker_ids"] = stable_dedupe(
+        list_of_strings(activation.get("local_fallback_worker_ids"))
+    )
+    trigger_events = activation.get("trigger_events")
+    activation["trigger_events"] = (
+        [item for item in trigger_events if isinstance(item, dict)]
+        if isinstance(trigger_events, list)
+        else []
+    )
+    drift_events = activation.get("drift_events")
+    activation["drift_events"] = (
+        [item for item in drift_events if isinstance(item, dict)]
+        if isinstance(drift_events, list)
+        else []
+    )
+    workers = activation.get("workers")
+    incoming_rows = workers if isinstance(workers, list) else []
+    by_id = {
+        str(worker.get("worker_id") or "").strip(): worker
+        for worker in spawn_plan.get("workers", [])
+        if isinstance(worker, dict) and str(worker.get("worker_id") or "").strip()
+    }
+    normalized_rows: list[dict[str, Any]] = []
+    seen_worker_ids: set[str] = set()
+    for row in incoming_rows:
+        if not isinstance(row, dict):
+            continue
+        candidate_id = str(
+            row.get("planned_worker_id") or row.get("worker_id") or ""
+        ).strip()
+        plan_worker = by_id.get(candidate_id)
+        if not plan_worker:
+            continue
+        worker_id = str(plan_worker.get("worker_id") or "").strip()
+        if worker_id in seen_worker_ids:
+            continue
+        seen_worker_ids.add(worker_id)
+        normalized_rows.append(
+            normalize_spawn_activation_worker(
+                row,
+                worker_id=worker_id,
+                planned_worker_id=worker_id,
+                default_stage=str(plan_worker.get("stage") or "initial_parallel"),
+            )
+        )
+
+    default_spawn_enabled = bool(spawn_plan.get("default_spawn_enabled"))
+    for worker in spawn_plan.get("workers", []):
+        if not isinstance(worker, dict):
+            continue
+        worker_id = str(worker.get("worker_id") or "").strip()
+        if not worker_id or worker_id in seen_worker_ids:
+            continue
+        if worker_id in activation["activated_worker_ids"]:
+            continue
+        if worker_id in activation["skipped_worker_ids"]:
+            continue
+        if worker_id in activation["local_fallback_worker_ids"]:
+            continue
+        if default_spawn_enabled and bool(worker.get("default_spawn")):
+            continue
+        normalized_rows.append(
+            normalize_spawn_activation_worker(
+                {},
+                worker_id=worker_id,
+                planned_worker_id=worker_id,
+                default_stage=str(worker.get("stage") or "initial_parallel"),
+            )
+        )
+
+    summary["attempted_count"] = sum(
+        1 for row in normalized_rows if row["spawn_attempted"]
+    )
+    summary["succeeded_count"] = sum(
+        1 for row in normalized_rows if row["resolved_as"] == "spawned"
+    )
+    summary["failed_count"] = sum(
+        1 for row in normalized_rows if row["resolved_as"] in {"local_fallback", "spawn_failed"}
+    )
+    summary["local_fallback_count"] = sum(
+        1 for row in normalized_rows if row["resolved_as"] == "local_fallback"
+    )
+    summary["not_activated_count"] = sum(
+        1 for row in normalized_rows if row["resolved_as"] == "not_activated"
+    )
+    activation["summary"] = summary
+    activation["workers"] = normalized_rows
+
+
+def incoming_planned_worker_ids(
+    log: dict[str, Any],
+    by_id: dict[str, dict[str, Any]],
+) -> set[str]:
+    orchestration = log.get("orchestration", {})
+    rows = ((orchestration.get("actual_workers") or {}).get("workers") or [])
+    if not isinstance(rows, list):
+        return set()
+    expected_fingerprint = str(orchestration.get("orchestrator_fingerprint") or "").strip()
+    expected_schema = str(
+        ((orchestration.get("spawn_plan") or {}).get("schema_version") or "")
+    ).strip()
+    ids: set[str] = set()
+    notes = log.setdefault("notes", [])
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        planned_worker_id = str(row.get("planned_worker_id") or "").strip()
+        if not planned_worker_id or planned_worker_id not in by_id:
+            continue
+        row_fingerprint = str(row.get("orchestrator_fingerprint") or "").strip()
+        row_schema = str(row.get("spawn_plan_schema_version") or "").strip()
+        if row_fingerprint and expected_fingerprint and row_fingerprint != expected_fingerprint:
+            notes.append(
+                "Stale orchestrator_fingerprint on worker result; recorded as unplanned execution."
+            )
+            continue
+        if row_schema and expected_schema and row_schema != expected_schema:
+            notes.append(
+                "Stale spawn_plan_schema_version on worker result; recorded as unplanned execution."
+            )
+            continue
+        ids.add(planned_worker_id)
+    return ids
+
+
+def resolve_planned_workers(log: dict[str, Any]) -> None:
+    orchestration = log.setdefault("orchestration", {})
+    spawn_plan = orchestration.get("spawn_plan")
+    if not isinstance(spawn_plan, dict):
+        spawn_plan = empty_spawn_plan()
+        orchestration["spawn_plan"] = spawn_plan
+    activation = orchestration.get("spawn_activation")
+    if not isinstance(activation, dict):
+        activation = empty_spawn_activation()
+        orchestration["spawn_activation"] = activation
+    workers = [
+        worker
+        for worker in spawn_plan.get("workers", [])
+        if isinstance(worker, dict)
+    ]
+    if not workers:
+        orchestration["planned_workers"] = empty_planned_workers()
+        return
+    worker_by_id = {
+        str(worker.get("worker_id") or "").strip(): worker
+        for worker in workers
+        if str(worker.get("worker_id") or "").strip()
+    }
+    resolved_ids: set[str] = set()
+    if bool(spawn_plan.get("default_spawn_enabled")):
+        resolved_ids.update(
+            str(worker.get("worker_id") or "").strip()
+            for worker in workers
+            if bool(worker.get("default_spawn"))
+        )
+    resolved_ids.update(
+        worker_id
+        for worker_id in stable_dedupe(
+            [
+                *list_of_strings(activation.get("activated_worker_ids")),
+                *list_of_strings(activation.get("skipped_worker_ids")),
+                *list_of_strings(activation.get("local_fallback_worker_ids")),
+            ]
+        )
+        if worker_id in worker_by_id
+    )
+    for row in activation.get("workers", []):
+        if not isinstance(row, dict):
+            continue
+        worker_id = str(row.get("planned_worker_id") or row.get("worker_id") or "").strip()
+        if worker_id and worker_id in worker_by_id and row.get("resolved_as") in {
+            "spawned",
+            "local_fallback",
+            "spawn_failed",
+        }:
+            resolved_ids.add(worker_id)
+    resolved_ids.update(incoming_planned_worker_ids(log, worker_by_id))
+    resolved_workers = [
+        worker
+        for worker in workers
+        if str(worker.get("worker_id") or "").strip() in resolved_ids
+    ]
+    orchestration["planned_workers"] = {
+        "count": len(resolved_workers),
+        "roles": stable_dedupe(
+            [str(worker.get("agent_type") or "").strip() for worker in resolved_workers]
+        ),
+        "workers": resolved_workers,
+    }
+
+
+def status_from_spawn_activation(
+    worker_id: str,
+    activation: dict[str, Any],
+) -> str:
+    for row in activation.get("workers", []):
+        if not isinstance(row, dict):
+            continue
+        candidate_id = str(row.get("planned_worker_id") or row.get("worker_id") or "").strip()
+        if candidate_id != worker_id:
+            continue
+        if row.get("resolved_as") in {"local_fallback", "spawn_failed"}:
+            return "spawn_failed"
+    return "planned_not_run"
+
+
 def normalize_actual_workers(log: dict[str, Any]) -> None:
     orchestration = log.setdefault("orchestration", {})
     planned_workers = orchestration.get("planned_workers")
     if not isinstance(planned_workers, dict):
-        planned_workers = {"count": None, "roles": [], "workers": []}
+        planned_workers = empty_planned_workers()
         orchestration["planned_workers"] = planned_workers
+    activation = orchestration.get("spawn_activation")
+    if not isinstance(activation, dict):
+        activation = empty_spawn_activation()
+        orchestration["spawn_activation"] = activation
     actual_workers = orchestration.get("actual_workers")
     if not isinstance(actual_workers, dict):
         actual_workers = {"summary": empty_actual_summary(), "workers": []}
@@ -1624,67 +2317,107 @@ def normalize_actual_workers(log: dict[str, Any]) -> None:
     assigned_planned_ids: set[str] = set()
     normalized_rows: list[dict[str, Any]] = []
     notes = log.setdefault("notes", [])
+    drift_events = activation.get("drift_events")
+    if not isinstance(drift_events, list):
+        drift_events = []
+        activation["drift_events"] = drift_events
+    expected_fingerprint = str(orchestration.get("orchestrator_fingerprint") or "").strip()
+    expected_schema = str(
+        ((orchestration.get("spawn_plan") or {}).get("schema_version") or "")
+    ).strip()
 
     for index, row in enumerate(incoming_rows):
         if not isinstance(row, dict):
             continue
         normalized = normalize_actual_worker_row(row)
         status = str(normalized.get("status") or "").strip() or "completed"
+        row_kind = normalized.get("row_kind")
         planned_worker_id = str(normalized.get("planned_worker_id") or "").strip() or None
-        if planned_worker_id and planned_worker_id in by_id:
-            normalized["planned_worker_id"] = planned_worker_id
-        elif planned_worker_id:
-            normalized["planned_worker_id"] = None
-            notes.append(
-                "Unknown planned_worker_id in actual worker payload; recorded as unplanned execution."
+        row_fingerprint = str(normalized.get("orchestrator_fingerprint") or "").strip()
+        row_schema = str(normalized.get("spawn_plan_schema_version") or "").strip()
+        drift_reason = None
+        if row_fingerprint and expected_fingerprint and row_fingerprint != expected_fingerprint:
+            drift_reason = "orchestrator_fingerprint_mismatch"
+        elif row_schema and expected_schema and row_schema != expected_schema:
+            drift_reason = "spawn_plan_schema_version_mismatch"
+        if drift_reason:
+            drift_events.append(
+                {
+                    "worker_id": str(normalized.get("worker_id") or planned_worker_id or ""),
+                    "planned_worker_id": planned_worker_id,
+                    "reason": drift_reason,
+                }
             )
+            planned_worker_id = None
+        if planned_worker_id and planned_worker_id in by_id and planned_worker_id not in assigned_planned_ids:
+            row_kind = "planned"
+            assigned_planned_ids.add(planned_worker_id)
+        elif planned_worker_id:
+            row_kind = "unplanned"
+            if planned_worker_id in assigned_planned_ids:
+                notes.append(
+                    "Duplicate planned worker ledger row recorded as unplanned execution."
+                )
+            else:
+                notes.append(
+                    "Unknown planned_worker_id in actual worker payload; recorded as unplanned execution."
+                )
+            planned_worker_id = None
         else:
             matches = by_tuple.get(actual_worker_fallback_tuple(normalized), [])
             if len(matches) == 1:
-                normalized["planned_worker_id"] = matches[0]["worker_id"]
+                candidate_id = str(matches[0]["worker_id"] or "").strip()
+                if candidate_id and candidate_id not in assigned_planned_ids:
+                    planned_worker_id = candidate_id
+                    row_kind = "planned"
+                    assigned_planned_ids.add(candidate_id)
+                else:
+                    row_kind = "unplanned"
+                    planned_worker_id = None
             elif len(matches) > 1:
-                normalized["planned_worker_id"] = None
+                row_kind = "unplanned"
+                planned_worker_id = None
                 notes.append(
                     "Ambiguous actual worker fallback match; recorded as unplanned execution."
                 )
-        if normalized.get("planned_worker_id"):
-            if status.startswith("unplanned_"):
-                status = status[len("unplanned_") :]
-            if status not in ALLOWED_ACTUAL_STATUSES:
-                status = "completed"
-            assigned_planned_ids.add(str(normalized["planned_worker_id"]))
-            normalized["worker_id"] = str(
-                normalized.get("worker_id") or normalized["planned_worker_id"]
-            )
+            else:
+                row_kind = "unplanned"
+        if row_kind == "planned":
+            normalized["row_kind"] = "planned"
+            normalized["planned_worker_id"] = planned_worker_id
+            normalized["worker_id"] = str(normalized.get("worker_id") or planned_worker_id)
+            normalized["status"] = planned_status(status)
         else:
-            status = actual_status_for_unplanned(status)
+            normalized["row_kind"] = "unplanned"
+            normalized["planned_worker_id"] = None
             normalized["worker_id"] = str(
                 normalized.get("worker_id")
                 or f"actual:unplanned:{index + 1}:{short_hash(canonical_json(normalized))}"
             )
-            normalized["planned_worker_id"] = None
-        normalized["status"] = status
+            normalized["status"] = unplanned_status(status)
         normalized_rows.append(normalized)
 
     for worker in planned_workers.get("workers", []):
         if not isinstance(worker, dict):
             continue
         worker_id = str(worker.get("worker_id") or "").strip()
-        if worker_id and worker_id not in assigned_planned_ids:
-            normalized_rows.append(
-                {
-                    "worker_id": worker_id,
-                    "planned_worker_id": worker_id,
-                    "agent_type": worker.get("agent_type"),
-                    "model": worker.get("model"),
-                    "reasoning_effort": worker.get("reasoning_effort"),
-                    "status": "planned_not_run",
-                    "input_tokens": None,
-                    "cached_input_tokens": None,
-                    "output_tokens": None,
-                    "reasoning_tokens": None,
-                }
-            )
+        if not worker_id or worker_id in assigned_planned_ids:
+            continue
+        normalized_rows.append(
+            {
+                "row_kind": "planned",
+                "worker_id": worker_id,
+                "planned_worker_id": worker_id,
+                "agent_type": worker.get("agent_type"),
+                "model": worker.get("model"),
+                "reasoning_effort": worker.get("reasoning_effort"),
+                "status": status_from_spawn_activation(worker_id, activation),
+                "input_tokens": None,
+                "cached_input_tokens": None,
+                "output_tokens": None,
+                "reasoning_tokens": None,
+            }
+        )
 
     capture_complete = to_bool(summary.get("capture_complete"))
     if capture_complete is None and normalized_rows:
@@ -1693,19 +2426,26 @@ def normalize_actual_workers(log: dict[str, Any]) -> None:
     summary["capture_incomplete_reason"] = (
         str(summary.get("capture_incomplete_reason") or "").strip() or None
     )
-    if any(row["status"] in NONTERMINAL_ACTUAL_STATUSES for row in normalized_rows):
-        if capture_complete is not False:
-            raise ValueError(
-                "Finalize payload cannot retain nonterminal actual-worker statuses when capture_complete is not false."
-            )
-        if not summary["capture_incomplete_reason"]:
-            raise ValueError(
-                "Finalize payload with nonterminal actual-worker statuses requires capture_incomplete_reason."
-            )
 
     summary["materialized_count"] = len(normalized_rows)
+    summary["planned_row_count"] = sum(
+        1 for row in normalized_rows if row.get("row_kind") == "planned"
+    )
+    summary["unplanned_row_count"] = sum(
+        1 for row in normalized_rows if row.get("row_kind") == "unplanned"
+    )
     summary["executed_count"] = sum(
-        1 for row in normalized_rows if row["status"] != "planned_not_run"
+        1
+        for row in normalized_rows
+        if str(row.get("status") or "")
+        in {
+            "completed",
+            "failed",
+            "cancelled",
+            "unplanned_completed",
+            "unplanned_failed",
+            "unplanned_cancelled",
+        }
     )
     summary["completed_count"] = sum(
         1
@@ -1720,11 +2460,11 @@ def normalize_actual_workers(log: dict[str, Any]) -> None:
         for row in normalized_rows
         if row["status"] in {"cancelled", "unplanned_cancelled"}
     )
+    summary["spawn_failed_count"] = sum(
+        1 for row in normalized_rows if row["status"] == "spawn_failed"
+    )
     summary["planned_not_run_count"] = sum(
         1 for row in normalized_rows if row["status"] == "planned_not_run"
-    )
-    summary["unplanned_count"] = sum(
-        1 for row in normalized_rows if row["status"] in UNPLANNED_STATUSES
     )
     actual_workers["summary"] = summary
     actual_workers["workers"] = normalized_rows
@@ -1819,12 +2559,12 @@ def execution_fidelity_score(log: dict[str, Any]) -> float | None:
     unplanned_total = sum(
         1
         for row in rows
-        if isinstance(row, dict) and str(row.get("status") or "") in UNPLANNED_STATUSES
+        if isinstance(row, dict) and str(row.get("row_kind") or "") == "unplanned"
     )
     planned_statuses = [
         str(row.get("status") or "")
         for row in rows
-        if isinstance(row, dict) and str(row.get("status") or "") not in UNPLANNED_STATUSES
+        if isinstance(row, dict) and str(row.get("row_kind") or "") == "planned"
     ]
     if planned_total == 0 and unplanned_total == 0:
         return 1.0
@@ -1834,7 +2574,7 @@ def execution_fidelity_score(log: dict[str, Any]) -> float | None:
         return 0.4
     if (
         planned_statuses
-        and all(status == "planned_not_run" for status in planned_statuses)
+        and all(status in {"planned_not_run", "spawn_failed"} for status in planned_statuses)
         and unplanned_total == 0
     ):
         return 0.0
@@ -1847,7 +2587,7 @@ def execution_fidelity_score(log: dict[str, Any]) -> float | None:
         return 1.0
     if (
         any(status in PLANNED_EXECUTED_STATUSES for status in planned_statuses)
-        and any(status == "planned_not_run" for status in planned_statuses)
+        and any(status in {"planned_not_run", "spawn_failed"} for status in planned_statuses)
         and unplanned_total == 0
     ):
         return 0.7
@@ -1877,7 +2617,7 @@ def worker_fit_count(log: dict[str, Any]) -> int | None:
     actual_summary = ((orchestration.get("actual_workers") or {}).get("summary") or {})
     executed_count = safe_int(actual_summary.get("executed_count"))
     materialized = safe_int(actual_summary.get("materialized_count"))
-    if materialized:
+    if materialized is not None and materialized > 0:
         return executed_count
     planned = orchestration.get("planned_workers") or {}
     count = safe_int(planned.get("count"))
@@ -2010,6 +2750,17 @@ def finalize_log(log: dict[str, Any], final_payload: dict[str, Any]) -> None:
             measurement["quality_source"] = "self_assessed"
 
     normalize_tokens(log)
+    orchestration = log.setdefault("orchestration", {})
+    spawn_plan, warnings = spawn_plan_from_payload(orchestration)
+    orchestration["spawn_plan"] = spawn_plan
+    if warnings:
+        log.setdefault("notes", []).extend(warnings)
+    if not str(orchestration.get("orchestrator_fingerprint") or "").strip():
+        orchestration["orchestrator_fingerprint"] = orchestrator_fingerprint(
+            {key: value for key, value in orchestration.items() if key != "actual_workers"}
+        )
+    normalize_spawn_activation(log)
+    resolve_planned_workers(log)
     normalize_actual_workers(log)
     packet_metrics = build_result_packet_metrics(
         {

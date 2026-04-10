@@ -913,8 +913,7 @@ def build_result_payload(
     packet_metrics: dict[str, Any],
     review_mode_baseline: str,
     review_mode_adjustments: list[str],
-    recommended_workers: list[dict[str, Any]],
-    optional_workers: list[dict[str, Any]],
+    spawn_plan_preview: dict[str, Any],
     override_signals: list[str],
 ) -> dict[str, Any]:
     orchestrator = packets["orchestrator.json"]
@@ -926,9 +925,7 @@ def build_result_payload(
         "review_mode": orchestrator["review_mode"],
         "review_mode_baseline": review_mode_baseline,
         "review_mode_adjustments": list(review_mode_adjustments),
-        "recommended_worker_count": len(recommended_workers),
-        "recommended_workers": list(recommended_workers),
-        "optional_workers": list(optional_workers),
+        "spawn_plan_preview": spawn_plan_preview,
         "override_signals": list(override_signals),
         "packet_files": list(orchestrator["packet_files"]),
         "packet_sizing_file": str(output_dir / "packet_sizing.json"),
@@ -973,14 +970,37 @@ def main() -> int:
 
     runtime_state = _build_runtime_packet_state(context, lint_report)
     packets = runtime_state["packets"]
-    for file_name, payload in packets.items():
-        contract.write_json(output_dir / file_name, payload)
-
     recommended_workers, optional_workers = recommended_worker_assignments(
         runtime_state["review_mode"],
         runtime_state["worker_count"],
         has_evidence=bool(context.get("evidence")),
     )
+    spawn_plan = common.build_spawn_plan(
+        review_mode=runtime_state["review_mode"],
+        required_workers=recommended_workers,
+        optional_workers=optional_workers,
+        common_path_sufficient=bool(
+            runtime_state["packet_metrics"].get(
+                "synthesis_packet_sufficient_for_common_path",
+                True,
+            )
+        ),
+    )
+    packets["orchestrator.json"]["spawn_plan"] = spawn_plan
+    packets["orchestrator.json"]["orchestrator_fingerprint"] = common.orchestrator_fingerprint(
+        packets["orchestrator.json"]
+    )
+    runtime_state["packet_metrics"] = build_packet_metrics(
+        context,
+        lint_report,
+        packets,
+        packet_files=list(packets["orchestrator.json"]["packet_files"]),
+        synthesis_packet=packets["synthesis_packet.json"],
+    )
+    packets["packet_sizing.json"] = common.normalize_packet_sizing(runtime_state["packet_metrics"])
+    for file_name, payload in packets.items():
+        contract.write_json(output_dir / file_name, payload)
+
     result_payload = build_result_payload(
         output_dir,
         context,
@@ -988,8 +1008,7 @@ def main() -> int:
         packet_metrics=runtime_state["packet_metrics"],
         review_mode_baseline=runtime_state["review_mode_baseline"],
         review_mode_adjustments=runtime_state["review_mode_adjustments"],
-        recommended_workers=recommended_workers,
-        optional_workers=optional_workers,
+        spawn_plan_preview=spawn_plan,
         override_signals=runtime_state["override_signals"],
     )
     if args.result_output:

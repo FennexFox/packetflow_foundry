@@ -300,7 +300,7 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
         self.assertEqual(result["review_mode"], "local-only")
         self.assertEqual(result["review_mode_baseline"], "local-only")
         self.assertEqual(result["review_mode_adjustments"], [])
-        self.assertEqual(result["planned_workers"]["count"], 0)
+        self.assertEqual(result["spawn_plan_preview"]["workers"], [])
 
     def test_local_review_mode_promotes_when_savings_floor_is_met(self) -> None:
         temp_dir, repo = make_repo()
@@ -411,7 +411,12 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
             result["review_mode_adjustments"],
             ["delegation_savings_floor"],
         )
-        self.assertEqual(result["planned_workers"]["count"], 2)
+        default_workers = [
+            worker
+            for worker in result["spawn_plan_preview"]["workers"]
+            if worker.get("default_spawn")
+        ]
+        self.assertEqual(len(default_workers), 2)
 
     def test_local_mode_surfaces_root_rewrite_blocker(self) -> None:
         temp_dir, repo = make_repo()
@@ -469,7 +474,7 @@ class BuildRewordPacketsContractTest(unittest.TestCase):
 
         self.assertEqual(exit_code, 0)
         self.assertEqual(orchestrator["review_mode"], "local-only")
-        self.assertEqual(result["planned_workers"]["count"], 0)
+        self.assertEqual(result["spawn_plan_preview"]["workers"], [])
         self.assertTrue(orchestrator["rewrite_blockers"]["root_rewrite_unsupported"])
         self.assertTrue(result["common_path_sufficient"])
 

@@ -693,6 +693,12 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         process_active=process_active,
         testing_relevant=testing_relevant,
     )
+    spawn_plan = common.build_spawn_plan(
+        review_mode=review_mode,
+        required_workers=recommended_workers,
+        optional_workers=optional_workers,
+        common_path_sufficient=True,
+    )
 
     packet_files = list(packet_payloads.keys()) + ["orchestrator.json"]
     build_result = common.normalize_build_result(
@@ -700,11 +706,8 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         "review_mode": review_mode,
         "review_mode_baseline": review_mode_baseline,
         "review_mode_adjustments": review_mode_adjustments,
-        "recommended_worker_count": len(recommended_workers),
-        "optional_worker_count": len(optional_workers),
+        "spawn_plan_preview": spawn_plan,
         "override_signals": override_signals,
-        "recommended_workers": recommended_workers,
-        "optional_workers": optional_workers,
         "delegation_non_use_cases": contract.DELEGATION_NON_USE_CASES,
         "packet_files": packet_files,
         "orchestrator_profile": contract.ORCHESTRATOR_PROFILE,
@@ -740,6 +743,7 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
         "preferred_worker_families": contract.PREFERRED_WORKER_FAMILIES,
         "packet_worker_map": contract.PACKET_WORKER_MAP,
         "routing_contract": contract.ROUTING_CONTRACT,
+        "spawn_plan": spawn_plan,
         "raw_reread_allowed_reasons": contract.RAW_REREAD_ALLOWED_REASONS,
         "common_path_contract": {
             "required_packets": contract.COMMON_PATH_REQUIRED_PACKETS,
@@ -767,6 +771,7 @@ def build_packet_payloads(context: dict[str, Any], lint_report: dict[str, Any]) 
             "qa_required": synthesis_packet["qa_required"],
         },
     }
+    orchestrator["orchestrator_fingerprint"] = common.orchestrator_fingerprint(orchestrator)
     packet_payloads["orchestrator.json"] = orchestrator
     packet_payloads["packet_sizing.json"] = common.normalize_packet_sizing(packet_metrics)
     return packet_payloads, build_result
@@ -799,7 +804,14 @@ def main() -> int:
                 "output_dir": str(output_dir),
                 "review_mode": build_result["review_mode"],
                 "packet_files": build_result["packet_files"],
-                "planned_worker_count": build_result["planned_workers"]["count"],
+                "spawn_plan_worker_count": len(build_result["spawn_plan_preview"]["workers"]),
+                "default_spawn_worker_count": len(
+                    [
+                        worker
+                        for worker in build_result["spawn_plan_preview"]["workers"]
+                        if worker.get("default_spawn")
+                    ]
+                ),
                 "packet_sizing_file": str(output_dir / "packet_sizing.json"),
                 "packet_compaction_savings_tokens": build_result["efficiency"]["packet_compaction"]["savings_tokens"],
             },
