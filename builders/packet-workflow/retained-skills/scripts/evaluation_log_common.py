@@ -35,11 +35,13 @@ ALLOWED_PLANNED_LEDGER_STATUSES = {
     "cancelled",
     "spawn_failed",
     "planned_not_run",
+    "started",
 }
 ALLOWED_UNPLANNED_LEDGER_STATUSES = {
     "unplanned_completed",
     "unplanned_failed",
     "unplanned_cancelled",
+    "unplanned_started",
 }
 ALLOWED_ACTUAL_STATUSES = {
     *ALLOWED_PLANNED_LEDGER_STATUSES,
@@ -53,6 +55,7 @@ ALLOWED_SPAWN_RESOLUTIONS = {
     "spawn_failed",
     "not_activated",
 }
+NONTERMINAL_ACTUAL_STATUSES = {"started", "unplanned_started"}
 
 
 BuildBaseLogFn = Callable[
@@ -537,6 +540,22 @@ def orchestrator_fingerprint(payload: dict[str, Any]) -> str:
         if key != "orchestrator_fingerprint"
     }
     return json_fingerprint(filtered)
+
+
+def mirrored_orchestrator_payload(payload: dict[str, Any]) -> dict[str, Any]:
+    return {
+        key: value
+        for key, value in payload.items()
+        if key
+        not in {
+            "actual_workers",
+            "planned_workers",
+            "spawn_activation",
+            "global_packet_used",
+            "raw_reread_required",
+            "override_signals",
+        }
+    }
 
 
 def packet_list_from_worker(worker: dict[str, Any]) -> list[str]:
@@ -1124,8 +1143,8 @@ def legacy_optional_worker_to_dict(worker: Any, *, index: int) -> dict[str, Any]
         "reasoning_effort": "medium",
         "model": "gpt-5.4-mini",
         "responsibility": None,
-        "execution_class": "post_draft_qa",
-        "stage": "post_draft",
+        "execution_class": "optional",
+        "stage": "initial_parallel",
     }
 
 
@@ -1952,6 +1971,8 @@ def unplanned_status(status: str) -> str:
         return status
     if status.startswith("unplanned_") and status in ALLOWED_UNPLANNED_LEDGER_STATUSES:
         return status
+    if status == "started":
+        return "unplanned_started"
     if status in {"completed", "failed", "cancelled"}:
         return f"unplanned_{status}"
     return "unplanned_completed"
@@ -2349,6 +2370,7 @@ def normalize_actual_workers(log: dict[str, Any]) -> None:
                 }
             )
             planned_worker_id = None
+            row_kind = "unplanned"
         if planned_worker_id and planned_worker_id in by_id and planned_worker_id not in assigned_planned_ids:
             row_kind = "planned"
             assigned_planned_ids.add(planned_worker_id)
@@ -2362,6 +2384,9 @@ def normalize_actual_workers(log: dict[str, Any]) -> None:
                 notes.append(
                     "Unknown planned_worker_id in actual worker payload; recorded as unplanned execution."
                 )
+            planned_worker_id = None
+        elif drift_reason:
+            row_kind = "unplanned"
             planned_worker_id = None
         else:
             matches = by_tuple.get(actual_worker_fallback_tuple(normalized), [])
@@ -2420,8 +2445,16 @@ def normalize_actual_workers(log: dict[str, Any]) -> None:
         )
 
     capture_complete = to_bool(summary.get("capture_complete"))
+    has_nonterminal_status = any(
+        str(row.get("status") or "") in NONTERMINAL_ACTUAL_STATUSES
+        for row in normalized_rows
+    )
     if capture_complete is None and normalized_rows:
-        capture_complete = True
+        capture_complete = not has_nonterminal_status
+    if capture_complete and has_nonterminal_status:
+        raise ValueError(
+            "capture_complete=true cannot include nonterminal actual worker statuses"
+        )
     summary["capture_complete"] = capture_complete
     summary["capture_incomplete_reason"] = (
         str(summary.get("capture_incomplete_reason") or "").strip() or None
@@ -2757,7 +2790,7 @@ def finalize_log(log: dict[str, Any], final_payload: dict[str, Any]) -> None:
         log.setdefault("notes", []).extend(warnings)
     if not str(orchestration.get("orchestrator_fingerprint") or "").strip():
         orchestration["orchestrator_fingerprint"] = orchestrator_fingerprint(
-            {key: value for key, value in orchestration.items() if key != "actual_workers"}
+            mirrored_orchestrator_payload(orchestration)
         )
     normalize_spawn_activation(log)
     resolve_planned_workers(log)

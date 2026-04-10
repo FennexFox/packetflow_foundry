@@ -1643,6 +1643,75 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
             self.assertEqual(len(assignments), len(planned_workers))
             self.assertEqual(len(planned_workers), 1)
 
+    def test_generated_builder_emits_all_post_draft_verifier_workers(self) -> None:
+        raw_spec = sample_spec()
+        raw_spec["skill_name"] = "packet-multi-verifier"
+        raw_spec["preferred_worker_families"] = {
+            "context_findings": ["repo_mapper", "packet_explorer", "docs_verifier"],
+            "candidate_producers": [
+                "evidence_summarizer",
+                "large_diff_auditor",
+                "log_triager",
+            ],
+            "verifiers": ["docs_verifier", "repo_mapper", "large_diff_auditor"],
+        }
+        spec = builder.derive_spec(raw_spec)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp) / str(spec["skill_name"])
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            builder.generate_files(skill_dir, spec)
+
+            context_path = Path(tmp) / "context.json"
+            packets_dir = Path(tmp) / "packets"
+            build_result_path = Path(tmp) / "build-result.json"
+            context = {
+                "context_id": "ctx-multi-verifier",
+                "repo_root": str(repo_root),
+                "repo_profile_name": "sample-repo",
+                "repo_profile_path": "profiles/sample-repo/profile.json",
+                "repo_profile_summary": "Multi-verifier regression coverage.",
+                "repo_profile": spec["repo_profile"],
+                "counts": {
+                    "task_packet_count": 3,
+                    "changed_files": 6,
+                    "batch_count": 0,
+                },
+                "override_signals": {},
+                "notes": [],
+            }
+            context_path.write_text(
+                json.dumps(context, indent=2),
+                encoding="utf-8",
+            )
+
+            run_python(
+                skill_dir / "scripts" / "build_builder_tests_packets.py",
+                "--context",
+                str(context_path),
+                "--output-dir",
+                str(packets_dir),
+                "--result-output",
+                str(build_result_path),
+            )
+
+            build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
+            qa_workers = [
+                worker
+                for worker in build_result["spawn_plan_preview"]["workers"]
+                if worker.get("execution_class") == "post_draft_qa"
+            ]
+
+            self.assertEqual(
+                [worker["agent_type"] for worker in qa_workers],
+                ["repo_mapper", "large_diff_auditor"],
+            )
+            self.assertEqual(
+                [worker["name"] for worker in qa_workers],
+                ["post-draft-qa-repo-mapper", "post-draft-qa-large-diff-auditor"],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

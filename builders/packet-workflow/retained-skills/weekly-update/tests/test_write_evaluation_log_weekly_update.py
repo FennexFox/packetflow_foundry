@@ -16,6 +16,21 @@ import write_evaluation_log as eval_log  # noqa: E402
 
 
 class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
+    @staticmethod
+    def _planned_worker() -> dict:
+        worker = {
+            "name": "mapping-repo-mapper",
+            "agent_type": "repo_mapper",
+            "model": "gpt-5.4-mini",
+            "reasoning_effort": "medium",
+            "packets": ["mapping_packet.json"],
+            "responsibility": "Map repo surfaces",
+        }
+        return {
+            **worker,
+            "worker_id": eval_log.common.planned_worker_id(worker),
+        }
+
     def test_default_output_path_uses_repo_root(self) -> None:
         repo_root = Path("repo-root")
 
@@ -283,6 +298,173 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
         self.assertIn(
             "Unknown planned_worker_id in actual worker payload; recorded as unplanned execution.",
             log["notes"],
+        )
+
+    def test_legacy_optional_worker_entries_preserve_optional_execution_semantics(self) -> None:
+        spawn_plan = eval_log.common.build_spawn_plan(
+            review_mode="targeted-delegation",
+            optional_workers=["repo_mapper"],
+            common_path_sufficient=False,
+        )
+
+        self.assertEqual(len(spawn_plan["workers"]), 1)
+        worker = spawn_plan["workers"][0]
+        self.assertEqual(worker["execution_class"], "optional")
+        self.assertEqual(worker["stage"], "initial_parallel")
+        self.assertFalse(worker["default_spawn"])
+        self.assertFalse(worker["blocking"])
+
+    def test_finalize_preserves_started_status_when_capture_is_incomplete(self) -> None:
+        worker = self._planned_worker()
+        log = {
+            "skill": {"name": "weekly-update"},
+            "measurement": {},
+            "baseline": {},
+            "orchestration": {
+                "orchestrator_fingerprint": "sha256:expected",
+                "planned_workers": {
+                    "count": 1,
+                    "roles": ["repo_mapper"],
+                    "workers": [worker],
+                },
+            },
+            "quality": {},
+            "safety": {},
+            "skill_specific": {"data": {}},
+        }
+
+        eval_log.finalize_log(
+            log,
+            {
+                "orchestration": {
+                    "actual_workers": {
+                        "summary": {
+                            "capture_complete": False,
+                            "capture_incomplete_reason": "worker telemetry truncated",
+                        },
+                        "workers": [
+                            {
+                                "planned_worker_id": worker["worker_id"],
+                                "agent_type": "repo_mapper",
+                                "model": "gpt-5.4-mini",
+                                "reasoning_effort": "medium",
+                                "status": "started",
+                                "orchestrator_fingerprint": "sha256:expected",
+                            }
+                        ],
+                    }
+                }
+            },
+        )
+
+        actual_workers = log["orchestration"]["actual_workers"]
+        self.assertFalse(actual_workers["summary"]["capture_complete"])
+        self.assertEqual(actual_workers["summary"]["executed_count"], 0)
+        self.assertEqual(actual_workers["workers"][0]["status"], "started")
+
+    def test_finalize_rejects_started_status_when_capture_is_marked_complete(self) -> None:
+        worker = self._planned_worker()
+        log = {
+            "skill": {"name": "weekly-update"},
+            "measurement": {},
+            "baseline": {},
+            "orchestration": {
+                "orchestrator_fingerprint": "sha256:expected",
+                "planned_workers": {
+                    "count": 1,
+                    "roles": ["repo_mapper"],
+                    "workers": [worker],
+                },
+            },
+            "quality": {},
+            "safety": {},
+            "skill_specific": {"data": {}},
+        }
+
+        with self.assertRaisesRegex(
+            ValueError,
+            "capture_complete=true cannot include nonterminal actual worker statuses",
+        ):
+            eval_log.finalize_log(
+                log,
+                {
+                    "orchestration": {
+                        "actual_workers": {
+                            "summary": {"capture_complete": True},
+                            "workers": [
+                                {
+                                    "planned_worker_id": worker["worker_id"],
+                                    "agent_type": "repo_mapper",
+                                    "model": "gpt-5.4-mini",
+                                    "reasoning_effort": "medium",
+                                    "status": "started",
+                                    "orchestrator_fingerprint": "sha256:expected",
+                                }
+                            ],
+                        }
+                    }
+                },
+            )
+
+    def test_finalize_keeps_drifted_worker_row_unplanned_even_when_identity_matches(self) -> None:
+        log = {
+            "skill": {"name": "weekly-update"},
+            "measurement": {},
+            "baseline": {},
+            "orchestration": {
+                "orchestrator_fingerprint": "sha256:expected",
+                "planned_workers": {
+                    "count": 1,
+                    "roles": ["repo_mapper"],
+                    "workers": [
+                        {
+                            "worker_id": "planned:mapping:repo_mapper:abc123",
+                            "name": "mapping-repo-mapper",
+                            "agent_type": "repo_mapper",
+                            "model": "gpt-5.4-mini",
+                            "reasoning_effort": "medium",
+                            "packets": ["mapping_packet.json"],
+                            "responsibility": "Map repo surfaces",
+                        }
+                    ],
+                },
+            },
+            "quality": {},
+            "safety": {},
+            "skill_specific": {"data": {}},
+        }
+
+        eval_log.finalize_log(
+            log,
+            {
+                "orchestration": {
+                    "actual_workers": {
+                        "summary": {"capture_complete": True},
+                        "workers": [
+                            {
+                                "name": "mapping-repo-mapper",
+                                "agent_type": "repo_mapper",
+                                "model": "gpt-5.4-mini",
+                                "reasoning_effort": "medium",
+                                "packets": ["mapping_packet.json"],
+                                "status": "completed",
+                                "orchestrator_fingerprint": "sha256:stale",
+                            }
+                        ],
+                    }
+                }
+            },
+        )
+
+        actual_workers = log["orchestration"]["actual_workers"]
+        self.assertEqual(actual_workers["summary"]["unplanned_row_count"], 1)
+        self.assertEqual(actual_workers["summary"]["planned_not_run_count"], 1)
+        self.assertEqual(actual_workers["workers"][0]["row_kind"], "unplanned")
+        self.assertEqual(actual_workers["workers"][0]["status"], "unplanned_completed")
+        self.assertEqual(actual_workers["workers"][1]["status"], "planned_not_run")
+        self.assertEqual(
+            log["orchestration"]["spawn_activation"]["drift_events"][0]["reason"],
+            "orchestrator_fingerprint_mismatch",
         )
 
     def test_validate_and_apply_merge_plan_and_marker_fields(self) -> None:

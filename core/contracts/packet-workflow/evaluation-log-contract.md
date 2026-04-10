@@ -73,9 +73,9 @@ Every evaluation log should contain:
   - `summary` must contain `materialized_count`, `planned_row_count`, `unplanned_row_count`, `executed_count`, `completed_count`, `failed_count`, `cancelled_count`, `spawn_failed_count`, `planned_not_run_count`, `capture_complete`, `capture_incomplete_reason`
   - `workers[]` must contain `row_kind`, `worker_id`, `planned_worker_id`, `agent_type`, `model`, `reasoning_effort`, `status`
   - `row_kind` is `planned | unplanned`
-  - planned rows allow `completed | failed | cancelled | spawn_failed | planned_not_run`
-  - unplanned rows allow `unplanned_completed | unplanned_failed | unplanned_cancelled`
-  - finalize outputs should contain terminal statuses only unless `capture_complete=false`
+  - planned rows allow `completed | failed | cancelled | spawn_failed | planned_not_run`, plus `started` only when `capture_complete=false`
+  - unplanned rows allow `unplanned_completed | unplanned_failed | unplanned_cancelled`, plus `unplanned_started` only when `capture_complete=false`
+  - finalize outputs should contain terminal statuses only unless `capture_complete=false`; `capture_complete=true` with nonterminal statuses is invalid
 
 ## Measurement
 

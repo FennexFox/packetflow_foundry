@@ -93,7 +93,21 @@ class WeeklyUpdateFailurePathTests(unittest.TestCase):
             [],
         )
         self.assertTrue(
-            all(worker["execution_class"] == "post_draft_qa" for worker in spawn_plan_preview["workers"])
+            all(worker["execution_class"] in {"optional", "post_draft_qa"} for worker in spawn_plan_preview["workers"])
+        )
+        self.assertTrue(
+            all(
+                not worker.get("default_spawn")
+                for worker in spawn_plan_preview["workers"]
+            )
+        )
+        self.assertTrue(
+            all(
+                (not worker.get("blocking"))
+                if worker["execution_class"] == "optional"
+                else bool(worker.get("blocking"))
+                for worker in spawn_plan_preview["workers"]
+            )
         )
         self.assertEqual(packets["changes_packet.json"]["candidate_ids"], [])
         self.assertEqual(packets["incidents_packet.json"]["candidate_ids"], [])

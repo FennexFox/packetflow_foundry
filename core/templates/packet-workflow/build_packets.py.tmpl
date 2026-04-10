@@ -192,22 +192,31 @@ def post_draft_qa_workers(required_workers: list[dict], review_mode: str) -> lis
         packets.append("batch-packet-01.json")
     else:
         packets.extend(f"{packet_name}.json" for packet_name in PACKET_NAMES)
-    return [
-        {
-            "name": "post-draft-qa",
-            "agent_type": verifier_types[0],
-            "model": "gpt-5.4-mini",
-            "reasoning_effort": "medium",
-            "packets": dedupe_preserve(packets),
-            "responsibility": (
-                "Cross-check the local synthesis against packet evidence and "
-                "flag coverage gaps, unsupported claims, or high-risk drift "
-                "before finalize."
-            ),
-            "execution_class": "post_draft_qa",
-            "stage": "post_draft",
-        }
-    ]
+    qa_packets = dedupe_preserve(packets)
+    workers: list[dict] = []
+    single_verifier = len(verifier_types) == 1
+    for agent_type in verifier_types:
+        workers.append(
+            {
+                "name": (
+                    "post-draft-qa"
+                    if single_verifier
+                    else f"post-draft-qa-{agent_type.replace('_', '-')}"
+                ),
+                "agent_type": agent_type,
+                "model": "gpt-5.4-mini",
+                "reasoning_effort": "medium",
+                "packets": qa_packets,
+                "responsibility": (
+                    "Cross-check the local synthesis against packet evidence and "
+                    "flag coverage gaps, unsupported claims, or high-risk drift "
+                    "before finalize."
+                ),
+                "execution_class": "post_draft_qa",
+                "stage": "post_draft",
+            }
+        )
+    return workers
 
 
 def recommended_workers(

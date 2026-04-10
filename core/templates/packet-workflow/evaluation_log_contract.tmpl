@@ -48,6 +48,7 @@ Use this top-level shape:
 - Do not reintroduce legacy shared fields such as `baseline`, `measurement.token_source`, or `measurement.efficiency_source`.
 - Keep packet sizing and packet-compaction telemetry in shared `packet_sizing` and `efficiency` blocks, not in `skill_specific.data`.
 - Build-phase logs may record `spawn_plan`, but `planned_workers` should stay empty until finalize resolves activation outcomes.
+- `actual_workers` is an execution outcome ledger, not an executed-only list. Nonterminal `started` statuses are allowed only when `capture_complete=false`.
 - Renormalize scoring weights when a signal is missing.
 
 ## Helper Workflow
