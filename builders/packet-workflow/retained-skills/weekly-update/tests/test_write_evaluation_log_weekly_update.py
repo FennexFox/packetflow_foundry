@@ -113,6 +113,62 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
         self.assertNotIn("worker_count", payload["skill_specific"]["data"])
         self.assertNotIn("worker_mix", payload["skill_specific"]["data"])
 
+    def test_build_base_log_preserves_missing_legacy_orchestrator_fingerprint(self) -> None:
+        worker = self._planned_worker()
+        context = {
+            "repo_root": str(Path("repo-root")),
+            "current_branch": "batch_3",
+            "reporting_window": {"start_utc": "2026-03-20T00:00:00Z", "end_utc": "2026-03-27T00:00:00Z"},
+        }
+        orchestrator = {
+            "review_mode": "targeted-delegation",
+            "spawn_plan": eval_log.common.build_spawn_plan(
+                review_mode="targeted-delegation",
+                required_workers=[worker],
+                common_path_sufficient=True,
+            ),
+        }
+
+        log = eval_log.build_base_log(
+            SCRIPT_DIR / "write_evaluation_log.py",
+            context,
+            orchestrator,
+            None,
+        )
+
+        self.assertNotIn("orchestrator_fingerprint", log["orchestration"])
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 0)
+
+        eval_log.finalize_log(
+            log,
+            {
+                "orchestration": {
+                    "actual_workers": {
+                        "summary": {"capture_complete": True},
+                        "workers": [
+                            {
+                                "planned_worker_id": worker["worker_id"],
+                                "agent_type": "repo_mapper",
+                                "model": "gpt-5.4-mini",
+                                "reasoning_effort": "medium",
+                                "status": "completed",
+                                "orchestrator_fingerprint": "sha256:runtime",
+                            }
+                        ],
+                    }
+                }
+            },
+        )
+
+        self.assertEqual(
+            log["orchestration"]["spawn_activation"]["drift_events"],
+            [],
+        )
+        actual_workers = log["orchestration"]["actual_workers"]
+        self.assertEqual(actual_workers["summary"]["planned_row_count"], 1)
+        self.assertEqual(actual_workers["summary"]["unplanned_row_count"], 0)
+        self.assertEqual(actual_workers["workers"][0]["row_kind"], "planned")
+
     def test_build_phase_merges_packet_sizing_efficiency_and_common_path_signals(self) -> None:
         log = {
             "skill": {"name": "weekly-update"},

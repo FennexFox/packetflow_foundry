@@ -1579,8 +1579,7 @@ def build_base_log(
     lint_summary = summarize_findings(lint_report)
     spawn_plan, warnings = spawn_plan_from_payload(orchestrator)
     resolved_orchestrator_fingerprint = str(
-        orchestrator.get("orchestrator_fingerprint")
-        or orchestrator_fingerprint(orchestrator)
+        orchestrator.get("orchestrator_fingerprint") or ""
     ).strip()
     return {
         "schema_version": SCHEMA_VERSION,
@@ -1626,7 +1625,11 @@ def build_base_log(
                 orchestrator.get("review_mode_adjustments")
             ),
             "override_signals": normalize_override_signals(orchestrator),
-            "orchestrator_fingerprint": resolved_orchestrator_fingerprint,
+            **(
+                {"orchestrator_fingerprint": resolved_orchestrator_fingerprint}
+                if resolved_orchestrator_fingerprint
+                else {}
+            ),
             "spawn_plan": spawn_plan,
             "spawn_activation": empty_spawn_activation(),
             "planned_workers": empty_planned_workers(),
