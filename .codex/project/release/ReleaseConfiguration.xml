@@ -2,15 +2,12 @@
   <ModId Value="packetflow_foundry" />
   <DisplayName Value="PacketFlow Foundry" />
   <ShortDescription Value="Vendorable packet-first workflow core for token-efficient Codex orchestration." />
-  <LongDescription>
-    PacketFlow Foundry ships reusable packet-workflow contracts, templates, builders, and retained skills.
+  <LongDescription>PacketFlow Foundry ships reusable packet-workflow contracts, templates, builders, overlay profiles, default managed agents, and retained skills.
     This repo-local release adapter exists so the draft-release-copy workflow can bind PacketFlow Foundry
-    release metadata without changing reusable core skill semantics.
-  </LongDescription>
-  <ModVersion Value="0.1.0" />
-  <ChangeLog>
-    - Restore wrapper-only repo-root .agents/skills and keep authoritative retained kernels under builders/packet-workflow/retained-skills.
-    - Add consumer bootstrap and packet-workflow versioning metadata.
-    - Capture repo-local release gating around packet-efficiency and token-savings drift.
-  </ChangeLog>
+    release metadata without changing reusable core skill semantics.</LongDescription>
+  <ModVersion Value="0.3.0" />
+  <ChangeLog>- Add managed-copy consumer bootstrap defaults and project profile sync for vendored consumers.
+    - Harden retained GitHub and local mutation workflows while expanding the retained-skill surface.
+    - Add reword-head-commit and analysis-ref-aware weekly update support.
+    - Split evaluation telemetry from runtime state and emit spawn plans and execution ledgers.</ChangeLog>
 </Configuration>
