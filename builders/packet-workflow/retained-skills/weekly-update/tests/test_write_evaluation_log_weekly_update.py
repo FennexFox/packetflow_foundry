@@ -314,6 +314,33 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
         self.assertFalse(worker["default_spawn"])
         self.assertFalse(worker["blocking"])
 
+    def test_spawn_plan_normalization_disables_default_spawn_when_blocked(self) -> None:
+        worker = self._planned_worker()
+
+        spawn_plan, warnings = eval_log.common.normalize_spawn_plan_payload(
+            {
+                "default_spawn_enabled": True,
+                "default_spawn_blockers": ["common_path_sufficient=false"],
+                "workers": [worker],
+            },
+            review_mode="targeted-delegation",
+            common_path_sufficient=False,
+        )
+
+        self.assertFalse(spawn_plan["default_spawn_enabled"])
+        self.assertEqual(
+            spawn_plan["default_spawn_blockers"],
+            ["common_path_sufficient=false"],
+        )
+        self.assertEqual(
+            eval_log.common.default_planned_workers_from_spawn_plan(spawn_plan),
+            {"count": 0, "roles": [], "workers": []},
+        )
+        self.assertIn(
+            "default_spawn_enabled was disabled because default_spawn_blockers are present.",
+            warnings,
+        )
+
     def test_finalize_migrates_legacy_planned_workers_when_spawn_plan_is_empty(self) -> None:
         worker = self._planned_worker()
         log = {
@@ -769,6 +796,56 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
             log["orchestration"]["spawn_activation"]["drift_events"][0]["reason"],
             "orchestrator_fingerprint_mismatch",
         )
+
+    def test_finalize_does_not_synthesize_missing_orchestrator_fingerprint(self) -> None:
+        worker = self._planned_worker()
+        log = {
+            "skill": {"name": "weekly-update"},
+            "measurement": {},
+            "baseline": {},
+            "orchestration": {
+                "review_mode": "targeted-delegation",
+                "spawn_plan": eval_log.common.build_spawn_plan(
+                    review_mode="targeted-delegation",
+                    required_workers=[worker],
+                    common_path_sufficient=True,
+                ),
+            },
+            "quality": {},
+            "safety": {},
+            "skill_specific": {"data": {}},
+        }
+
+        eval_log.finalize_log(
+            log,
+            {
+                "orchestration": {
+                    "actual_workers": {
+                        "summary": {"capture_complete": True},
+                        "workers": [
+                            {
+                                "planned_worker_id": worker["worker_id"],
+                                "agent_type": "repo_mapper",
+                                "model": "gpt-5.4-mini",
+                                "reasoning_effort": "medium",
+                                "status": "completed",
+                                "orchestrator_fingerprint": "sha256:runtime",
+                            }
+                        ],
+                    }
+                }
+            },
+        )
+
+        self.assertNotIn("orchestrator_fingerprint", log["orchestration"])
+        self.assertEqual(
+            log["orchestration"]["spawn_activation"]["drift_events"],
+            [],
+        )
+        actual_workers = log["orchestration"]["actual_workers"]
+        self.assertEqual(actual_workers["summary"]["planned_row_count"], 1)
+        self.assertEqual(actual_workers["summary"]["unplanned_row_count"], 0)
+        self.assertEqual(actual_workers["workers"][0]["row_kind"], "planned")
 
     def test_validate_and_apply_merge_plan_and_marker_fields(self) -> None:
         log = {

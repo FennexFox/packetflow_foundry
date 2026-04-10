@@ -1293,6 +1293,11 @@ def normalize_spawn_plan_payload(
     normalized_blockers = stable_dedupe(
         list_of_strings(payload.get("default_spawn_blockers")) or blockers
     )
+    if normalized_blockers and default_spawn_enabled:
+        default_spawn_enabled = False
+        warnings.append(
+            "default_spawn_enabled was disabled because default_spawn_blockers are present."
+        )
     return (
         {
             "schema_version": (
@@ -2008,8 +2013,6 @@ def planned_status(status: str) -> str:
     if status.startswith("unplanned_"):
         status = status[len("unplanned_") :]
     if status in ALLOWED_PLANNED_LEDGER_STATUSES:
-        return status
-    if status in PLANNED_EXECUTED_STATUSES:
         return status
     return "completed"
 
@@ -2877,10 +2880,6 @@ def finalize_log(log: dict[str, Any], final_payload: dict[str, Any]) -> None:
     orchestration["spawn_plan"] = spawn_plan
     if warnings:
         log.setdefault("notes", []).extend(warnings)
-    if not str(orchestration.get("orchestrator_fingerprint") or "").strip():
-        orchestration["orchestrator_fingerprint"] = orchestrator_fingerprint(
-            mirrored_orchestrator_payload(orchestration)
-        )
     normalize_spawn_activation(log)
     resolve_planned_workers(log)
     normalize_actual_workers(log)

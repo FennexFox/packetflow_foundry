@@ -17,7 +17,7 @@ Routing rules:
 - `packet_worker_map` is the routing authority when present
 - `orchestrator.json.spawn_plan` is the execution-ready materialization of that routing
 - family overlap is allowed
-- surfaced optional workers are deduped after family composition
+- non-default `spawn_plan` workers are deduped after family composition
 
 Projects may adjust worker selection defaults locally.
 They should not redefine shared worker behavior semantics in profiles.

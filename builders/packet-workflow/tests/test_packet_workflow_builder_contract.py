@@ -1712,6 +1712,43 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 ["post-draft-qa-repo-mapper", "post-draft-qa-large-diff-auditor"],
             )
 
+    def test_generated_builder_suppresses_post_draft_qa_without_packet_worker_map(self) -> None:
+        raw_spec = sample_spec()
+        raw_spec["skill_name"] = "packet-no-map-qa"
+        raw_spec["packet_worker_map"] = {}
+        raw_spec["preferred_worker_families"] = {
+            "context_findings": ["repo_mapper", "packet_explorer", "docs_verifier"],
+            "candidate_producers": [],
+            "verifiers": ["docs_verifier", "repo_mapper"],
+        }
+        spec = builder.derive_spec(raw_spec)
+
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp) / str(spec["skill_name"])
+            builder.generate_files(skill_dir, spec)
+            generated = load_module_from_path(
+                "packet_no_map_qa_build_packets",
+                skill_dir / "scripts" / "build_builder_tests_packets.py",
+            )
+
+            self.assertEqual(
+                generated.post_draft_qa_workers(
+                    [
+                        {
+                            "name": "manual-baseline",
+                            "agent_type": "packet_explorer",
+                            "packets": ["runtime_packet.json"],
+                        }
+                    ],
+                    "targeted-delegation",
+                ),
+                [],
+            )
+            self.assertEqual(
+                generated.post_draft_qa_workers([], "targeted-delegation"),
+                [],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()

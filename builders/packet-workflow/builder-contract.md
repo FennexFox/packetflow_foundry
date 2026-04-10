@@ -372,7 +372,7 @@ Implications:
 
 Default-spawn derivation:
 - concrete routing exists only when `packet_worker_map` is configured
-- without `packet_worker_map`, generated `spawn_plan` may stay empty
+- without `packet_worker_map`, generated `spawn_plan` stays empty
 - `worker_selection_guidance` remains descriptive metadata only
 - `packet_worker_map` is the routing authority when present
 
