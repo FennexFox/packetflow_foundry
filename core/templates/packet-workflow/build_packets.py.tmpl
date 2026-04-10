@@ -375,6 +375,31 @@ def estimate_tokens(byte_count: int) -> int:
     return max(1, (byte_count + 3) // 4)
 
 
+def common_path_sufficiency_signal(
+    context: dict,
+    lint: dict,
+    *,
+    synthesis_packet: dict | None = None,
+) -> bool:
+    sources = [context, lint]
+    if isinstance(synthesis_packet, dict):
+        sources.append(synthesis_packet)
+    for payload in sources:
+        if not isinstance(payload, dict):
+            continue
+        explicit = common.to_bool(payload.get("common_path_sufficient"))
+        if explicit is not None:
+            return explicit
+        contract_payload = payload.get("common_path_contract")
+        if not isinstance(contract_payload, dict):
+            continue
+        for key in ("common_path_sufficient", "sufficient_for_local_final_drafting"):
+            explicit = common.to_bool(contract_payload.get(key))
+            if explicit is not None:
+                return explicit
+    return True
+
+
 def packet_metrics_payload(context: dict, lint: dict, packet_payloads: dict[str, dict]) -> dict:
     packet_sizes = {name: dump_json_bytes(payload) for name, payload in packet_payloads.items()}
     ordered_sizes = sorted(packet_sizes.values(), reverse=True)
@@ -416,35 +441,47 @@ __LINT_LOAD_BLOCK__
         lint,
     )
 
-    def build_runtime_packets(final_review_mode: str) -> tuple[dict[str, dict], list[dict], dict]:
+    def build_runtime_packets(
+        final_review_mode: str,
+    ) -> tuple[dict[str, dict], dict, bool]:
         concrete_workers = recommended_workers(final_review_mode, review_mode_adjustments)
         qa_workers = post_draft_qa_workers(concrete_workers, final_review_mode)
-        spawn_plan = common.build_spawn_plan(
-            review_mode=final_review_mode,
-            required_workers=concrete_workers,
-            post_draft_qa_workers=qa_workers,
-            common_path_sufficient=True,
-        )
-        packet_payloads: dict[str, dict] = {
-            "orchestrator.json": orchestrator_payload(
-                context,
-                final_review_mode,
-                review_mode_baseline,
-                review_mode_adjustments,
-                override,
-                ordered_packets,
-                spawn_plan,
-            ),
-            "global_packet.json": global_packet_payload(context),
-        }
-        packet_payloads["orchestrator.json"]["orchestrator_fingerprint"] = (
-            common.orchestrator_fingerprint(packet_payloads["orchestrator.json"])
-        )
+        packet_payloads: dict[str, dict] = {"global_packet.json": global_packet_payload(context)}
         if SPEC_METADATA.get("shared_local_packet"):
             packet_payloads[SPEC_METADATA["shared_local_packet"]] = synthesis_packet_payload(
                 context,
                 final_review_mode,
             )
+        common_path_sufficient = common_path_sufficiency_signal(
+            context,
+            lint,
+            synthesis_packet=packet_payloads.get(SPEC_METADATA.get("shared_local_packet", "")),
+        )
+        spawn_plan = common.build_spawn_plan(
+            review_mode=final_review_mode,
+            required_workers=concrete_workers,
+            post_draft_qa_workers=qa_workers,
+            common_path_sufficient=common_path_sufficient,
+        )
+        packet_payloads["orchestrator.json"] = orchestrator_payload(
+            context,
+            final_review_mode,
+            review_mode_baseline,
+            review_mode_adjustments,
+            override,
+            ordered_packets,
+            spawn_plan,
+        )
+        if SPEC_METADATA.get("shared_local_packet"):
+            packet_payloads["orchestrator.json"]["common_path_sufficient"] = (
+                common_path_sufficient
+            )
+            packet_payloads[SPEC_METADATA["shared_local_packet"]][
+                "common_path_sufficient"
+            ] = common_path_sufficient
+        packet_payloads["orchestrator.json"]["orchestrator_fingerprint"] = (
+            common.orchestrator_fingerprint(packet_payloads["orchestrator.json"])
+        )
 
         for packet_name in PACKET_NAMES:
             packet_payloads[f"{packet_name}.json"] = __FOCUSED_PACKET_TEMPLATE__
@@ -457,9 +494,9 @@ __LINT_LOAD_BLOCK__
                 "context_id": context.get("context_id"),
                 "todo": "Group related singleton packets here when the workflow benefits from clustering.",
             }
-        return packet_payloads, concrete_workers, spawn_plan
+        return packet_payloads, spawn_plan, common_path_sufficient
 
-    packet_payloads, concrete_workers, spawn_plan = build_runtime_packets(review_mode)
+    packet_payloads, spawn_plan, common_path_sufficient = build_runtime_packets(review_mode)
     provisional_packet_metrics = packet_metrics_payload(context, lint, packet_payloads)
     review_mode, review_mode_adjustments = maybe_apply_delegation_savings_floor(
         review_mode,
@@ -467,7 +504,9 @@ __LINT_LOAD_BLOCK__
         review_mode_adjustments,
     )
     if review_mode != packet_payloads["orchestrator.json"]["review_mode"]:
-        packet_payloads, concrete_workers, spawn_plan = build_runtime_packets(review_mode)
+        packet_payloads, spawn_plan, common_path_sufficient = build_runtime_packets(
+            review_mode
+        )
 
     for file_name, payload in packet_payloads.items():
         write_json(output_dir / file_name, payload)
@@ -500,6 +539,7 @@ __LINT_LOAD_BLOCK__
     if SPEC_METADATA.get("shared_local_packet"):
         result["shared_local_packet"] = SPEC_METADATA["shared_local_packet"]
         result["common_path_contract"] = SPEC_METADATA["common_path_contract"]
+        result["common_path_sufficient"] = common_path_sufficient
 
     if args.result_output:
         write_json(Path(args.result_output).resolve(), result)

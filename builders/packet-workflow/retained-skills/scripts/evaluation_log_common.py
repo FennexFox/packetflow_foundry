@@ -542,22 +542,6 @@ def orchestrator_fingerprint(payload: dict[str, Any]) -> str:
     return json_fingerprint(filtered)
 
 
-def mirrored_orchestrator_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    return {
-        key: value
-        for key, value in payload.items()
-        if key
-        not in {
-            "actual_workers",
-            "planned_workers",
-            "spawn_activation",
-            "global_packet_used",
-            "raw_reread_required",
-            "override_signals",
-        }
-    }
-
-
 def packet_list_from_worker(worker: dict[str, Any]) -> list[str]:
     packets = worker.get("packets")
     if isinstance(packets, list):

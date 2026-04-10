@@ -524,6 +524,59 @@ class BuildReleaseCopyPacketsContractTests(unittest.TestCase):
         self.assertGreaterEqual(packet_sizing["largest_packet_bytes"], 1)
         self.assertGreaterEqual(packet_sizing["largest_two_packets_bytes"], packet_sizing["largest_packet_bytes"])
 
+    def test_main_rechecks_savings_floor_after_spawn_plan_expands_orchestrator(self) -> None:
+        context = self.build_context()
+        context["changed_files"] = [
+            "ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs",
+            "README.md",
+            "MAINTAINING.md",
+            "ExampleProduct/Properties/PublishConfiguration.xml",
+        ]
+        context["changed_file_groups"] = {
+            "runtime": {
+                "count": 1,
+                "sample_files": ["ExampleProduct/Systems/OfficeDemandDiagnosticsSystem.cs"],
+            },
+            "docs": {
+                "count": 3,
+                "sample_files": [
+                    "README.md",
+                    "MAINTAINING.md",
+                    "ExampleProduct/Properties/PublishConfiguration.xml",
+                ],
+            },
+            "config": {"count": 0, "sample_files": []},
+            "automation": {"count": 0, "sample_files": []},
+            "tests": {"count": 0, "sample_files": []},
+            "other": {"count": 0, "sample_files": []},
+        }
+        lint = self.build_lint()
+
+        with mock.patch.object(packets, "DELEGATION_SAVINGS_FLOOR", 2500):
+            exit_code, _stdout, payloads, result_payload = self.run_builder(
+                context,
+                lint,
+                result_output=True,
+            )
+
+        self.assertEqual(exit_code, 0)
+        self.assertIsNotNone(result_payload)
+        self.assertEqual(payloads["orchestrator.json"]["review_mode"], "targeted-delegation")
+        self.assertEqual(result_payload["review_mode"], "targeted-delegation")
+        self.assertEqual(
+            result_payload["review_mode_adjustments"],
+            ["delegation_savings_floor"],
+        )
+        self.assertGreaterEqual(result_payload["efficiency"]["packet_compaction"]["savings_tokens"], 2500)
+        self.assertEqual(
+            sum(
+                1
+                for worker in result_payload["spawn_plan_preview"]["workers"]
+                if worker.get("default_spawn")
+            ),
+            2,
+        )
+
 
 if __name__ == "__main__":
     unittest.main()

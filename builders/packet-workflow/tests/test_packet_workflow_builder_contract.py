@@ -1749,6 +1749,57 @@ class PacketWorkflowBuilderContractTests(unittest.TestCase):
                 [],
             )
 
+    def test_generated_builder_blocks_default_spawn_when_common_path_is_insufficient(self) -> None:
+        spec = builder.derive_spec(sample_spec())
+
+        with tempfile.TemporaryDirectory() as tmp:
+            skill_dir = Path(tmp) / str(spec["skill_name"])
+            repo_root = Path(tmp) / "repo"
+            repo_root.mkdir()
+            builder.generate_files(skill_dir, spec)
+
+            context_path = Path(tmp) / "context.json"
+            packets_dir = Path(tmp) / "packets"
+            build_result_path = Path(tmp) / "build-result.json"
+            context = {
+                "context_id": "ctx-common-path-blocked",
+                "repo_root": str(repo_root),
+                "repo_profile_name": "sample-repo",
+                "repo_profile_path": "profiles/sample-repo/profile.json",
+                "repo_profile_summary": "Common-path sufficiency blocker coverage.",
+                "repo_profile": spec["repo_profile"],
+                "counts": {
+                    "task_packet_count": 3,
+                    "changed_files": 6,
+                    "batch_count": 0,
+                },
+                "common_path_sufficient": False,
+                "override_signals": {},
+                "notes": [],
+            }
+            context_path.write_text(
+                json.dumps(context, indent=2),
+                encoding="utf-8",
+            )
+
+            run_python(
+                skill_dir / "scripts" / "build_builder_tests_packets.py",
+                "--context",
+                str(context_path),
+                "--output-dir",
+                str(packets_dir),
+                "--result-output",
+                str(build_result_path),
+            )
+
+            build_result = json.loads(build_result_path.read_text(encoding="utf-8"))
+
+            self.assertFalse(build_result["spawn_plan_preview"]["default_spawn_enabled"])
+            self.assertEqual(
+                build_result["spawn_plan_preview"]["default_spawn_blockers"],
+                ["common_path_sufficient=false"],
+            )
+
 
 if __name__ == "__main__":
     unittest.main()
