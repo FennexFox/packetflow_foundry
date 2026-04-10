@@ -736,6 +736,37 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
         self.assertEqual(actual_workers["workers"][0]["row_kind"], "planned")
         self.assertEqual(actual_workers["workers"][0]["status"], "planned_not_run")
 
+    def test_finalize_counts_default_spawn_worker_as_not_activated_without_activation_payload(
+        self,
+    ) -> None:
+        worker = self._planned_worker()
+        log = {
+            "skill": {"name": "weekly-update"},
+            "measurement": {},
+            "baseline": {},
+            "orchestration": {
+                "review_mode": "targeted-delegation",
+                "spawn_plan": eval_log.common.build_spawn_plan(
+                    review_mode="targeted-delegation",
+                    required_workers=[worker],
+                    common_path_sufficient=True,
+                ),
+            },
+            "quality": {},
+            "safety": {},
+            "skill_specific": {"data": {}},
+        }
+
+        eval_log.finalize_log(log, {"orchestration": {}})
+
+        activation = log["orchestration"]["spawn_activation"]
+        actual_workers = log["orchestration"]["actual_workers"]
+        self.assertEqual(log["orchestration"]["planned_workers"]["count"], 1)
+        self.assertEqual(activation["summary"]["not_activated_count"], 1)
+        self.assertEqual(activation["workers"][0]["resolved_as"], "not_activated")
+        self.assertEqual(actual_workers["summary"]["planned_not_run_count"], 1)
+        self.assertEqual(actual_workers["workers"][0]["status"], "planned_not_run")
+
     def test_finalize_keeps_drifted_worker_row_unplanned_even_when_identity_matches(self) -> None:
         log = {
             "skill": {"name": "weekly-update"},
@@ -841,6 +872,10 @@ class WeeklyUpdateEvaluationLogTests(unittest.TestCase):
         self.assertEqual(
             log["orchestration"]["spawn_activation"]["drift_events"],
             [],
+        )
+        self.assertEqual(
+            log["orchestration"]["spawn_activation"]["summary"]["not_activated_count"],
+            0,
         )
         actual_workers = log["orchestration"]["actual_workers"]
         self.assertEqual(actual_workers["summary"]["planned_row_count"], 1)

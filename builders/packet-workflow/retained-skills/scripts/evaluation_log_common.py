@@ -2139,13 +2139,10 @@ def normalize_spawn_activation(log: dict[str, Any]) -> None:
     )
     workers = activation.get("workers")
     incoming_rows = workers if isinstance(workers, list) else []
-    by_id = {
-        str(worker.get("worker_id") or "").strip(): worker
-        for worker in spawn_plan.get("workers", [])
-        if isinstance(worker, dict) and str(worker.get("worker_id") or "").strip()
-    }
+    by_id, by_tuple = build_planned_lookup({"workers": spawn_plan.get("workers", [])})
     normalized_rows: list[dict[str, Any]] = []
     seen_worker_ids: set[str] = set()
+    incoming_ids = incoming_planned_worker_ids(log, by_id, by_tuple)
 
     def synthesize_list_only_row(
         worker_id: str,
@@ -2215,7 +2212,6 @@ def normalize_spawn_activation(log: dict[str, Any]) -> None:
     for worker_id in activation["skipped_worker_ids"]:
         synthesize_list_only_row(worker_id, resolved_as="not_activated")
 
-    default_spawn_enabled = bool(spawn_plan.get("default_spawn_enabled"))
     for worker in spawn_plan.get("workers", []):
         if not isinstance(worker, dict):
             continue
@@ -2228,7 +2224,7 @@ def normalize_spawn_activation(log: dict[str, Any]) -> None:
             continue
         if worker_id in activation["local_fallback_worker_ids"]:
             continue
-        if default_spawn_enabled and bool(worker.get("default_spawn")):
+        if worker_id in incoming_ids:
             continue
         normalized_rows.append(
             normalize_spawn_activation_worker(
@@ -2261,6 +2257,7 @@ def normalize_spawn_activation(log: dict[str, Any]) -> None:
 def incoming_planned_worker_ids(
     log: dict[str, Any],
     by_id: dict[str, dict[str, Any]],
+    by_tuple: dict[tuple[str, str, str, str, tuple[str, ...]], list[dict[str, Any]]],
 ) -> set[str]:
     orchestration = log.get("orchestration", {})
     rows = ((orchestration.get("actual_workers") or {}).get("workers") or [])
@@ -2276,8 +2273,6 @@ def incoming_planned_worker_ids(
         if not isinstance(row, dict):
             continue
         planned_worker_id = str(row.get("planned_worker_id") or "").strip()
-        if not planned_worker_id or planned_worker_id not in by_id:
-            continue
         row_fingerprint = str(row.get("orchestrator_fingerprint") or "").strip()
         row_schema = str(row.get("spawn_plan_schema_version") or "").strip()
         if row_fingerprint and expected_fingerprint and row_fingerprint != expected_fingerprint:
@@ -2290,7 +2285,16 @@ def incoming_planned_worker_ids(
                 "Stale spawn_plan_schema_version on worker result; recorded as unplanned execution."
             )
             continue
-        ids.add(planned_worker_id)
+        if planned_worker_id and planned_worker_id in by_id:
+            ids.add(planned_worker_id)
+            continue
+        normalized = normalize_actual_worker_row(row)
+        matches = by_tuple.get(actual_worker_fallback_tuple(normalized), [])
+        if len(matches) != 1:
+            continue
+        candidate_id = str(matches[0].get("worker_id") or "").strip()
+        if candidate_id:
+            ids.add(candidate_id)
     return ids
 
 
@@ -2312,11 +2316,7 @@ def resolve_planned_workers(log: dict[str, Any]) -> None:
     if not workers:
         orchestration["planned_workers"] = empty_planned_workers()
         return
-    worker_by_id = {
-        str(worker.get("worker_id") or "").strip(): worker
-        for worker in workers
-        if str(worker.get("worker_id") or "").strip()
-    }
+    worker_by_id, worker_by_tuple = build_planned_lookup({"workers": workers})
     resolved_ids: set[str] = set()
     if bool(spawn_plan.get("default_spawn_enabled")):
         resolved_ids.update(
@@ -2346,7 +2346,7 @@ def resolve_planned_workers(log: dict[str, Any]) -> None:
             "not_activated",
         }:
             resolved_ids.add(worker_id)
-    resolved_ids.update(incoming_planned_worker_ids(log, worker_by_id))
+    resolved_ids.update(incoming_planned_worker_ids(log, worker_by_id, worker_by_tuple))
     resolved_workers = [
         worker
         for worker in workers
